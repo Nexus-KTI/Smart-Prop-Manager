@@ -1,0 +1,46 @@
+{
+  "vw": 390,
+  "h1Size": "30.4px",
+  "headerBits": "Create account Login Listings Pricing For Landlords & Agents Property Listings Rent Collection Organisation Switching Service For Tenants Card Payments Organisation Find a Home Lea",
+  "menuButtons": [
+    {
+      "aria": null,
+      "cls": "flex items-center pl-10 sidebar-sublink on-white",
+      "tag": "A"
+    },
+    {
+      "aria": null,
+      "cls": "block focus:outline-none lg:hidden",
+      "tag": "BUTTON"
+    },
+    {
+      "aria": null,
+      "cls": "flex items-center font-semibold text-blue",
+      "tag": "A"
+    },
+    {
+      "aria": null,
+      "cls": "flex items-center text-blue",
+      "tag": "A"
+    },
+    {
+      "aria": null,
+      "cls": "flex items-center text-blue",
+      "tag": "A"
+    }
+  ],
+  "primaryCta": {
+    "t": "Create account",
+    "bg": "rgb(49, 131, 200)",
+    "width": "208px",
+    "pad": "12px 24px",
+    "size": "16px"
+  },
+  "secondaryCta": {
+    "t": "Request a callback",
+    "bg": "rgb(255, 255, 255)",
+    "color": "rgb(95, 107, 122)",
+    "width": "358px",
+    "border": "3px rgb(255, 255, 255)"
+  }
+}

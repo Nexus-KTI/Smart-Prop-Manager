@@ -1,0 +1,76 @@
+{
+  "base": "http://127.0.0.1:3003",
+  "at": "2026-08-05T00:22:34.885Z",
+  "results": [
+    {
+      "id": "N8-login",
+      "status": "pass",
+      "detail": "Login subtitle/help references SMS (channel=sms)"
+    },
+    {
+      "id": "N8-signup",
+      "status": "pass",
+      "detail": "Signup references SMS"
+    },
+    {
+      "id": "marketing",
+      "status": "pass",
+      "detail": "Brand present; container ~720px"
+    },
+    {
+      "id": "auth",
+      "status": "pass",
+      "detail": "Signed in → http://127.0.0.1:3003/properties"
+    },
+    {
+      "id": "N6",
+      "status": "pass",
+      "detail": "Properties shows portfolio UI (table=true, addUnit=true)"
+    },
+    {
+      "id": "N1",
+      "status": "pass",
+      "detail": "Unit payments loaded with actions (not stuck)"
+    },
+    {
+      "id": "N4",
+      "status": "pass",
+      "detail": "Manual = primary, Paystack = outline"
+    },
+    {
+      "id": "N7",
+      "status": "pass",
+      "detail": "Download receipt label present"
+    },
+    {
+      "id": "N2",
+      "status": "partial",
+      "detail": "Manual payment saved; form reset/close checked"
+    },
+    {
+      "id": "N3",
+      "status": "pass",
+      "detail": "Failed/skipped row shows Retry (+ detail path available)"
+    },
+    {
+      "id": "N5-load",
+      "status": "pass",
+      "detail": "Settings profile rendered after load"
+    },
+    {
+      "id": "N5-dedupe",
+      "status": "pass",
+      "detail": "No Account/Settings duplicate in user menu panel (or panel closed)"
+    },
+    {
+      "id": "N5-theme",
+      "status": "partial",
+      "detail": "Theme control not found"
+    },
+    {
+      "id": "N9",
+      "status": "pass",
+      "detail": "Autocomplete edge copy shown"
+    }
+  ]
+}

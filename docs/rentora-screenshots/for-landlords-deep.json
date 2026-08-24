@@ -1,0 +1,314 @@
+{
+  "title": "Rentora for landlords & agents - List properties, collect rent, perform inventories and more - Rentora",
+  "theme": "#3183c8",
+  "body": {
+    "bg": "rgba(0, 0, 0, 0)",
+    "c": "rgb(95, 107, 122)",
+    "f": "Nunito, system-ui, BlinkMacSystemFont, -apple-system, \"Segoe UI\", Roboto, Oxygen, Ubuntu, Cantarell, \"Fira Sans\", \"Droid Sans\", \"Helvetica Neue\", sans-serif",
+    "s": "16px",
+    "lh": "25.6px"
+  },
+  "h1": {
+    "t": "We're making renting better for landlords & agents",
+    "f": "\"Noto Sans\"",
+    "s": "48px",
+    "w": "600",
+    "c": "rgb(33, 41, 52)",
+    "ls": "-1.2px"
+  },
+  "headings": [
+    {
+      "tag": "H1",
+      "t": "We're making renting better for landlords & agents",
+      "s": "48px",
+      "w": "600",
+      "f": "Noto Sans",
+      "c": "rgb(33, 41, 52)"
+    },
+    {
+      "tag": "H2",
+      "t": "Market properties, collect rent, perform inventories, store important ",
+      "s": "24px",
+      "w": "400",
+      "f": "Nunito",
+      "c": "rgb(95, 107, 122)"
+    },
+    {
+      "tag": "H3",
+      "t": "Property listings",
+      "s": "26px",
+      "w": "600",
+      "f": "Noto Sans",
+      "c": "rgb(95, 107, 122)"
+    },
+    {
+      "tag": "H3",
+      "t": "Rent Collection",
+      "s": "26px",
+      "w": "600",
+      "f": "Noto Sans",
+      "c": "rgb(95, 107, 122)"
+    },
+    {
+      "tag": "H3",
+      "t": "Stay organised",
+      "s": "26px",
+      "w": "600",
+      "f": "Noto Sans",
+      "c": "rgb(95, 107, 122)"
+    }
+  ],
+  "ctas": [
+    {
+      "t": "Create account",
+      "href": "/auth/create-account",
+      "bg": "rgb(49, 131, 200)",
+      "color": "rgb(255, 255, 255)",
+      "size": "16px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(49, 131, 200)"
+    },
+    {
+      "t": "Login",
+      "href": "/auth/login",
+      "bg": "rgb(239, 248, 255)",
+      "color": "rgb(35, 104, 162)",
+      "size": "16px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(239, 248, 255)"
+    },
+    {
+      "t": "Login",
+      "href": "/auth/login",
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(49, 131, 200)",
+      "size": "16px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(255, 255, 255)"
+    },
+    {
+      "t": "Create account",
+      "href": "/auth/create-account",
+      "bg": "rgb(49, 131, 200)",
+      "color": "rgb(255, 255, 255)",
+      "size": "16px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(49, 131, 200)"
+    },
+    {
+      "t": "Get started",
+      "href": "/auth/create-account",
+      "bg": "rgb(49, 131, 200)",
+      "color": "rgb(255, 255, 255)",
+      "size": "18px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(49, 131, 200)"
+    },
+    {
+      "t": "Request a callback",
+      "href": null,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(95, 107, 122)",
+      "size": "18px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(255, 255, 255)"
+    },
+    {
+      "t": "See more property listing features",
+      "href": "/for-landlords/property-listings",
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(49, 131, 200)",
+      "size": "16px",
+      "w": "400",
+      "r": "0px",
+      "pad": "0px",
+      "border": "0px rgb(225, 231, 236)"
+    },
+    {
+      "t": "See more rent collection features",
+      "href": "/for-landlords/rent-collection",
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(49, 131, 200)",
+      "size": "16px",
+      "w": "400",
+      "r": "0px",
+      "pad": "0px",
+      "border": "0px rgb(225, 231, 236)"
+    },
+    {
+      "t": "See more organisational features",
+      "href": "/for-landlords/organisation",
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(49, 131, 200)",
+      "size": "16px",
+      "w": "400",
+      "r": "0px",
+      "pad": "0px",
+      "border": "0px rgb(225, 231, 236)"
+    },
+    {
+      "t": "Get started",
+      "href": "/auth/create-account",
+      "bg": "rgb(32, 61, 84)",
+      "color": "rgb(255, 255, 255)",
+      "size": "18px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(32, 61, 84)"
+    },
+    {
+      "t": "Request a callback",
+      "href": null,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(95, 107, 122)",
+      "size": "18px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(255, 255, 255)"
+    },
+    {
+      "t": "Request a callback",
+      "href": null,
+      "bg": "rgb(49, 131, 200)",
+      "color": "rgb(255, 255, 255)",
+      "size": "16px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(49, 131, 200)"
+    }
+  ],
+  "containers": [
+    {
+      "cls": "container relative z-10 flex items-center max-w-3x",
+      "maxW": "1280px",
+      "display": "flex",
+      "pad": "48px 24px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-3xl mx-auto",
+      "maxW": "1280px",
+      "display": "block",
+      "pad": "0px 16px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-3xl pt-16 mx-auto xl:pt-32",
+      "maxW": "1280px",
+      "display": "block",
+      "pad": "128px 16px 0px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-3xl mx-auto",
+      "maxW": "1280px",
+      "display": "block",
+      "pad": "0px 16px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-3xl mx-auto",
+      "maxW": "1280px",
+      "display": "block",
+      "pad": "0px 16px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-3xl mx-auto",
+      "maxW": "1280px",
+      "display": "block",
+      "pad": "0px 16px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-3xl mx-auto",
+      "maxW": "1280px",
+      "display": "block",
+      "pad": "0px 16px",
+      "gap": "normal",
+      "grid": "none"
+    }
+  ],
+  "grids": [
+    {
+      "cls": "md:pb-6 lg:pb-16 xl:pb-20 grid-layout",
+      "display": "flex",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "mb-12 lg:mb-0 lg:w-1/3 grid-layout-item",
+      "display": "block",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "mb-12 lg:mb-0 lg:w-1/3 grid-layout-item",
+      "display": "block",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "mb-12 lg:mb-0 lg:w-1/3 grid-layout-item",
+      "display": "block",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "flex-col-reverse items-center lg:flex-row grid-lay",
+      "display": "flex",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "lg:w-1/2 grid-layout-item",
+      "display": "block",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "mb-6 lg:mb-0 lg:w-1/2 grid-layout-item",
+      "display": "block",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "flex-col-reverse items-center lg:flex-row-reverse ",
+      "display": "flex",
+      "grid": "none",
+      "gap": "normal"
+    }
+  ],
+  "motion": {
+    "framer": 0,
+    "aos": 0,
+    "gsap": false,
+    "anims": 0,
+    "btnTransition": "all"
+  },
+  "accentSamples": [
+    "primary",
+    "navy"
+  ]
+}

@@ -1,0 +1,166 @@
+services:
+  - type: web
+    name: smart-prop-api
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: TWILIO_SMS_FROM
+        sync: false
+      - key: EMAIL_SERVICE_PROVIDER
+        value: mailgun
+      - key: MAILGUN_API_KEY
+        sync: false
+      - key: MAILGUN_DOMAIN
+        sync: false
+      - key: MAILGUN_API_BASE_URL
+        value: https://api.mailgun.net
+      - key: MAILGUN_SENDER_EMAIL
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: Smart Prop
+      - key: FROM_EMAIL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
+      - key: SENTRY_DSN
+        sync: false
+
+  - type: cron
+    name: smart-prop-due-reminders
+    runtime: docker
+    schedule: "0 8 * * *"
+    dockerCommand: python -m lib.reminder_job
+    envVars:
+      - key: SUPABASE_URL
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SUPABASE_URL
+      - key: SUPABASE_ANON_KEY
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SUPABASE_ANON_KEY
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SUPABASE_SERVICE_ROLE_KEY
+      - key: TWILIO_ACCOUNT_SID
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: TWILIO_ACCOUNT_SID
+      - key: TWILIO_AUTH_TOKEN
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: TWILIO_AUTH_TOKEN
+      - key: TWILIO_WHATSAPP_FROM
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: TWILIO_WHATSAPP_FROM
+      - key: TWILIO_SMS_FROM
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: TWILIO_SMS_FROM
+      - key: EMAIL_SERVICE_PROVIDER
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: EMAIL_SERVICE_PROVIDER
+      - key: MAILGUN_API_KEY
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: MAILGUN_API_KEY
+      - key: MAILGUN_DOMAIN
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: MAILGUN_DOMAIN
+      - key: MAILGUN_API_BASE_URL
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: MAILGUN_API_BASE_URL
+      - key: MAILGUN_SENDER_EMAIL
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: MAILGUN_SENDER_EMAIL
+      - key: EMAIL_FROM_NAME
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: EMAIL_FROM_NAME
+      - key: FROM_EMAIL
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: FROM_EMAIL
+      - key: FRONTEND_URL
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: FRONTEND_URL
+      - key: SMTP_HOST
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SMTP_HOST
+      - key: SMTP_PORT
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SMTP_PORT
+      - key: SMTP_USERNAME
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SMTP_USERNAME
+      - key: SMTP_PASSWORD
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SMTP_PASSWORD
+      - key: SMTP_FROM
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SMTP_FROM

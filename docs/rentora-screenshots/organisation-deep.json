@@ -1,0 +1,273 @@
+{
+  "title": "Online rent collection - Easy, direct payments, straight to you - Rentora",
+  "theme": "#3183c8",
+  "body": {
+    "bg": "rgba(0, 0, 0, 0)",
+    "c": "rgb(95, 107, 122)",
+    "f": "Nunito, system-ui, BlinkMacSystemFont, -apple-system, \"Segoe UI\", Roboto, Oxygen, Ubuntu, Cantarell, \"Fira Sans\", \"Droid Sans\", \"Helvetica Neue\", sans-serif",
+    "s": "16px",
+    "lh": "25.6px"
+  },
+  "h1": {
+    "t": "Stay organised",
+    "f": "\"Noto Sans\"",
+    "s": "48px",
+    "w": "600",
+    "c": "rgb(33, 41, 52)",
+    "ls": "-1.2px"
+  },
+  "headings": [
+    {
+      "tag": "H1",
+      "t": "Stay organised",
+      "s": "48px",
+      "w": "600",
+      "f": "Noto Sans",
+      "c": "rgb(33, 41, 52)"
+    },
+    {
+      "tag": "H2",
+      "t": "Centralized, all-in-one property management: shared inventories, docum",
+      "s": "24px",
+      "w": "400",
+      "f": "Nunito",
+      "c": "rgb(95, 107, 122)"
+    },
+    {
+      "tag": "H2",
+      "t": "Property listings",
+      "s": "20px",
+      "w": "600",
+      "f": "Noto Sans",
+      "c": "rgb(49, 131, 200)"
+    },
+    {
+      "tag": "H2",
+      "t": "Rent collection",
+      "s": "20px",
+      "w": "600",
+      "f": "Noto Sans",
+      "c": "rgb(49, 131, 200)"
+    }
+  ],
+  "ctas": [
+    {
+      "t": "Create account",
+      "href": "/auth/create-account",
+      "bg": "rgb(49, 131, 200)",
+      "color": "rgb(255, 255, 255)",
+      "size": "16px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(49, 131, 200)"
+    },
+    {
+      "t": "Login",
+      "href": "/auth/login",
+      "bg": "rgb(239, 248, 255)",
+      "color": "rgb(35, 104, 162)",
+      "size": "16px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(239, 248, 255)"
+    },
+    {
+      "t": "Login",
+      "href": "/auth/login",
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(49, 131, 200)",
+      "size": "16px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(255, 255, 255)"
+    },
+    {
+      "t": "Create account",
+      "href": "/auth/create-account",
+      "bg": "rgb(49, 131, 200)",
+      "color": "rgb(255, 255, 255)",
+      "size": "16px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(49, 131, 200)"
+    },
+    {
+      "t": "Get started",
+      "href": "/auth/create-account",
+      "bg": "rgb(49, 131, 200)",
+      "color": "rgb(255, 255, 255)",
+      "size": "18px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(49, 131, 200)"
+    },
+    {
+      "t": "Request a callback",
+      "href": null,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(95, 107, 122)",
+      "size": "18px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(255, 255, 255)"
+    },
+    {
+      "t": "Get started",
+      "href": "/auth/create-account",
+      "bg": "rgb(32, 61, 84)",
+      "color": "rgb(255, 255, 255)",
+      "size": "18px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(32, 61, 84)"
+    },
+    {
+      "t": "Request a callback",
+      "href": null,
+      "bg": "rgb(255, 255, 255)",
+      "color": "rgb(95, 107, 122)",
+      "size": "18px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(255, 255, 255)"
+    },
+    {
+      "t": "Request a callback",
+      "href": null,
+      "bg": "rgb(49, 131, 200)",
+      "color": "rgb(255, 255, 255)",
+      "size": "16px",
+      "w": "600",
+      "r": "4px",
+      "pad": "12px 24px",
+      "border": "3px rgb(49, 131, 200)"
+    }
+  ],
+  "containers": [
+    {
+      "cls": "container relative z-10 flex items-center max-w-3x",
+      "maxW": "1280px",
+      "display": "flex",
+      "pad": "48px 24px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-3xl mx-auto",
+      "maxW": "1280px",
+      "display": "block",
+      "pad": "0px 16px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-2xl mx-auto",
+      "maxW": "1120px",
+      "display": "block",
+      "pad": "0px 16px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-2xl mx-auto",
+      "maxW": "1120px",
+      "display": "block",
+      "pad": "0px 16px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-2xl mx-auto",
+      "maxW": "1120px",
+      "display": "block",
+      "pad": "0px 16px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-2xl pb-24 mx-auto",
+      "maxW": "1120px",
+      "display": "block",
+      "pad": "0px 16px 96px",
+      "gap": "normal",
+      "grid": "none"
+    },
+    {
+      "cls": "container max-w-3xl mx-auto",
+      "maxW": "1280px",
+      "display": "block",
+      "pad": "0px 16px",
+      "gap": "normal",
+      "grid": "none"
+    }
+  ],
+  "grids": [
+    {
+      "cls": "flex-col-reverse items-center pt-10 lg:flex-row md",
+      "display": "flex",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "lg:w-1/2 grid-layout-item",
+      "display": "block",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "lg:w-1/2 grid-layout-item",
+      "display": "block",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "flex-col-reverse items-center pt-24 lg:flex-row-re",
+      "display": "flex",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "lg:w-1/2 grid-layout-item",
+      "display": "block",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "lg:w-1/2 grid-layout-item",
+      "display": "block",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "flex-col-reverse items-center pt-24 lg:flex-row gr",
+      "display": "flex",
+      "grid": "none",
+      "gap": "normal"
+    },
+    {
+      "cls": "lg:w-1/2 grid-layout-item",
+      "display": "block",
+      "grid": "none",
+      "gap": "normal"
+    }
+  ],
+  "motion": {
+    "framer": 0,
+    "aos": 0,
+    "gsap": false,
+    "anims": 0,
+    "btnTransition": "all"
+  },
+  "accentSamples": [
+    "primary",
+    "navy"
+  ]
+}

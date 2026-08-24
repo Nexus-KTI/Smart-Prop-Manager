@@ -1,0 +1,112 @@
+{
+  "base": "http://localhost:3004",
+  "at": "2026-08-06T19:45:12.067Z",
+  "results": [
+    {
+      "id": "login-phone-trap",
+      "status": "pass",
+      "detail": "No sticky trap across 10 tabs"
+    },
+    {
+      "id": "login-phone-coverage",
+      "status": "pass",
+      "detail": "9/10 focused controls showed a ring (0 weak)"
+    },
+    {
+      "id": "login-email-tab",
+      "status": "pass",
+      "detail": "Email tab ring via outline"
+    },
+    {
+      "id": "login-email-trap",
+      "status": "pass",
+      "detail": "No sticky trap across 8 tabs"
+    },
+    {
+      "id": "login-email-coverage",
+      "status": "pass",
+      "detail": "7/8 focused controls showed a ring (0 weak)"
+    },
+    {
+      "id": "auth",
+      "status": "pass",
+      "detail": "Signed in → http://localhost:3004/properties"
+    },
+    {
+      "id": "payments-trap",
+      "status": "pass",
+      "detail": "No sticky trap across 14 tabs"
+    },
+    {
+      "id": "payments-coverage",
+      "status": "pass",
+      "detail": "13/14 focused controls showed a ring (0 weak)"
+    },
+    {
+      "id": "payments-manual-btn",
+      "status": "pass",
+      "detail": "Manual CTA has focus ring"
+    },
+    {
+      "id": "payments-form-trap",
+      "status": "pass",
+      "detail": "No sticky trap across 10 tabs"
+    },
+    {
+      "id": "payments-form-coverage",
+      "status": "pass",
+      "detail": "10/10 focused controls showed a ring (0 weak)"
+    },
+    {
+      "id": "payments-cancel",
+      "status": "pass",
+      "detail": "Cancel has focus ring"
+    },
+    {
+      "id": "reminders-retry",
+      "status": "pass",
+      "detail": "Retry has focus ring"
+    },
+    {
+      "id": "reminders-trap",
+      "status": "pass",
+      "detail": "No sticky trap across 12 tabs"
+    },
+    {
+      "id": "reminders-coverage",
+      "status": "pass",
+      "detail": "12/12 focused controls showed a ring (0 weak)"
+    },
+    {
+      "id": "settings-trap",
+      "status": "pass",
+      "detail": "No sticky trap across 16 tabs"
+    },
+    {
+      "id": "settings-coverage",
+      "status": "pass",
+      "detail": "15/16 focused controls showed a ring (0 weak)"
+    },
+    {
+      "id": "settings-tab-profile",
+      "status": "pass",
+      "detail": "Profile tab ring via outline"
+    },
+    {
+      "id": "settings-tab-notifications",
+      "status": "pass",
+      "detail": "Notifications tab ring via outline"
+    },
+    {
+      "id": "settings-tab-security",
+      "status": "pass",
+      "detail": "Security tab ring via outline"
+    },
+    {
+      "id": "sidebar-nav",
+      "status": "pass",
+      "detail": "Sidebar nav has focus ring"
+    }
+  ],
+  "fails": 0
+}

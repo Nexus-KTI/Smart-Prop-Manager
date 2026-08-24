@@ -1,0 +1,77 @@
+{
+  "base": "http://localhost:3004",
+  "viewport": "390x844",
+  "at": "2026-08-06T20:42:55.407Z",
+  "results": [
+    {
+      "id": "auth",
+      "status": "pass",
+      "detail": "Signed in → http://localhost:3004/properties"
+    },
+    {
+      "id": "properties-overflow",
+      "status": "pass",
+      "detail": "No page horizontal overflow"
+    },
+    {
+      "id": "properties-zero-unit",
+      "status": "pass",
+      "detail": "Zero-unit row / Add unit visible"
+    },
+    {
+      "id": "money-in-overflow",
+      "status": "pass",
+      "detail": "No page horizontal overflow"
+    },
+    {
+      "id": "money-in-load",
+      "status": "pass",
+      "detail": "Money-in feed settled"
+    },
+    {
+      "id": "money-in-table-scroll",
+      "status": "pass",
+      "detail": "wrap overflow-x=auto scroll=640/292"
+    },
+    {
+      "id": "payments-overflow",
+      "status": "pass",
+      "detail": "No page horizontal overflow"
+    },
+    {
+      "id": "payments-load",
+      "status": "pass",
+      "detail": "Unit payments settled with CTAs"
+    },
+    {
+      "id": "manual-cta",
+      "status": "pass",
+      "detail": "pad=10/16/10/16 size=201x44"
+    },
+    {
+      "id": "paystack-cta",
+      "status": "pass",
+      "detail": "pad=10/16/10/16 size=160x44"
+    },
+    {
+      "id": "manual-form",
+      "status": "pass",
+      "detail": "visible=true fill=true overflow=false"
+    },
+    {
+      "id": "reminders-overflow",
+      "status": "pass",
+      "detail": "No page horizontal overflow"
+    },
+    {
+      "id": "reminders-retry",
+      "status": "pass",
+      "detail": "Failed row + Retry visible"
+    },
+    {
+      "id": "retry-cta",
+      "status": "pass",
+      "detail": "padY≈10+10 size=62x42"
+    }
+  ]
+}
