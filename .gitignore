@@ -43,3 +43,8 @@ tmp-audit/
 .turbo/
 coverage/
 .gstack/
+
+# Competitive audit screenshot dumps (local only)
+docs/tc-audience-hover/
+docs/tenantcloud-screenshots/
+docs/tenantcloud-tenant-audit/
