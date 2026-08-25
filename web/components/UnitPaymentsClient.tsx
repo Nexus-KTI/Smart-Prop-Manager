@@ -5,6 +5,10 @@ import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from "
 
 import { LoadMoreButton } from "@/components/LoadMoreButton";
 import { useToast } from "@/components/ToastProvider";
+import { UnitTenantInviteCard } from "@/components/UnitTenantInviteCard";
+import { UnitMaintenanceRequestsCard } from "@/components/UnitMaintenanceRequestsCard";
+import { UnitUtilityProvidersCard } from "@/components/UnitUtilityProvidersCard";
+import { UnitFeesAndApplyCard } from "@/components/UnitFeesAndApplyCard";
 import {
   confirmPaystackPayment,
   createPendingPaystackPayment,
@@ -21,6 +25,11 @@ import {
   parseTermEnd,
   resolveChargeStatus,
 } from "@/lib/dashboard";
+import {
+  CHANNEL_LABELS,
+  PAYMENT_STATUS_LABELS,
+  labelOrTitle,
+} from "@/lib/labels";
 import type { ChargeType, Transaction, Unit } from "@/lib/types";
 
 type Props = {
@@ -105,6 +114,19 @@ export function UnitPaymentsClient({
   const [paystackError, setPaystackError] = useState<string | null>(null);
   const [pendingPaystack, startPaystackTransition] = useTransition();
   const manualSubmitLock = useRef(false);
+  const openedFromQuery = useRef(false);
+
+  useEffect(() => {
+    if (openedFromQuery.current || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const manual = params.get("manual");
+    const charge = params.get("charge");
+    if (manual === "1" || manual === "other" || charge === "other") {
+      openedFromQuery.current = true;
+      setManualOpen(true);
+      setChargeType("other");
+    }
+  }, []);
 
   const unitForStatus: Unit = useMemo(
     () => ({
@@ -221,7 +243,7 @@ export function UnitPaymentsClient({
       try {
         await refreshHistory();
       } catch {
-        showToast("Payment saved — refresh the page if it doesn’t appear yet.");
+        showToast("Payment saved. Refresh the page if it doesn’t appear yet.");
       }
     } catch (err) {
       setManualError(
@@ -330,7 +352,7 @@ export function UnitPaymentsClient({
     renewalDays == null || !renewalDate
       ? null
       : renewalDays < 0
-        ? `Renewal overdue — term ended ${formatDueDate(renewalDate)}`
+        ? `Renewal overdue: term ended ${formatDueDate(renewalDate)}`
         : renewalDays === 0
           ? `Renewal due today (${formatDueDate(renewalDate)})`
           : `Renewal due in ${renewalDays} day${renewalDays === 1 ? "" : "s"} (${formatDueDate(renewalDate)})`;
@@ -342,7 +364,7 @@ export function UnitPaymentsClient({
       if (window.sessionStorage.getItem(key)) return;
       window.sessionStorage.setItem(key, "1");
     } catch {
-      /* private mode — still attempt once via ref below */
+      /* private mode, still attempt once via ref below */
     }
     void trackRenewalBannerViewed(unitId);
   }, [renewalCopy, unitId]);
@@ -358,7 +380,7 @@ export function UnitPaymentsClient({
           </p>
           <h1 className="page-title">Payments</h1>
           <p className="page-subtitle">
-            Log cash or transfer, or collect online — rent and other charges
+            Log cash or transfer, or collect online, rent and other charges
             share this history.
             {tenantName ? ` · ${tenantName}` : ""}
             {tenancyHref ? (
@@ -452,6 +474,21 @@ export function UnitPaymentsClient({
           )}
         </div>
       </div>
+
+      <UnitTenantInviteCard
+        unitId={unitId}
+        propertyId={propertyId}
+        tenantName={tenantName}
+        tenantContact={tenantContact}
+        editUnitHref={editUnitHref}
+        tenancyHref={tenancyHref}
+      />
+
+      <UnitFeesAndApplyCard unitId={unitId} />
+
+      <UnitMaintenanceRequestsCard unitId={unitId} />
+
+      <UnitUtilityProvidersCard unitId={unitId} />
 
       {paystackError ? (
         <p className="form-error">
@@ -577,7 +614,20 @@ export function UnitPaymentsClient({
             {transactions.length === 0 ? (
               <tr>
                 <td colSpan={6} className="table-empty">
-                  No payments yet. Record one above to start this log.
+                  {manualOpen ? (
+                    "No payments yet. Save the form above to start this log."
+                  ) : (
+                    <div className="dashboard-empty" style={{ padding: "8px 0" }}>
+                      <p style={{ margin: "0 0 8px" }}>No payments yet.</p>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={() => setManualOpen(true)}
+                      >
+                        Record manual payment
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -597,10 +647,12 @@ export function UnitPaymentsClient({
                     <td className="mono-data">
                       {formatNaira(Number(txn.amount) || 0)}
                     </td>
-                    <td>{txn.method || "-"}</td>
+                    <td>
+                      {labelOrTitle(CHANNEL_LABELS, txn.method, "-")}
+                    </td>
                     <td>
                       <span className={`status-badge ${statusTone(txn.status)}`}>
-                        {txn.status}
+                        {labelOrTitle(PAYMENT_STATUS_LABELS, txn.status)}
                       </span>
                     </td>
                     <td>
@@ -610,11 +662,12 @@ export function UnitPaymentsClient({
                           className="table-link"
                           target="_blank"
                           rel="noreferrer"
+                          onClick={() => showToast("Receipt opened")}
                         >
-                          Download receipt
+                          Open receipt
                         </a>
                       ) : (
-                        "—"
+                        "-"
                       )}
                     </td>
                   </tr>

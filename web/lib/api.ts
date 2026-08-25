@@ -19,7 +19,7 @@ function apiBaseUrl(): string {
   );
 }
 
-/** Public — no auth. Used after phone OTP when Supabase returns OK but SMS may have failed. */
+/** Public, no auth. Used after phone OTP when Supabase returns OK but SMS may have failed. */
 export async function checkSmsDelivery(phone: string): Promise<{
   found: boolean;
   status: string | null;
@@ -39,7 +39,7 @@ export async function checkSmsDelivery(phone: string): Promise<{
   return res.json();
 }
 
-/** Single-flight refresh — concurrent refreshSession() races cause "Already Used". */
+/** Single-flight refresh, concurrent refreshSession() races cause "Already Used". */
 let refreshInFlight: Promise<Session | null> | null = null;
 
 function sessionExpiringSoon(session: Session | null, skewMs = 60_000): boolean {
@@ -65,7 +65,7 @@ async function resolveAccessToken(): Promise<string | null> {
         if (!error && data.session?.access_token) {
           return data.session;
         }
-        // Another tab/middleware may have won the refresh race — re-read storage.
+        // Another tab/middleware may have won the refresh race, re-read storage.
         const {
           data: { session: latest },
         } = await supabase.auth.getSession();
@@ -94,7 +94,11 @@ function buildHeaders(
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
-  if (init.body && !headers.has("Content-Type")) {
+  if (
+    init.body &&
+    !(init.body instanceof FormData) &&
+    !headers.has("Content-Type")
+  ) {
     headers.set("Content-Type", "application/json");
   }
   const portfolioOwnerId = readPortfolioOwnerId();
@@ -118,7 +122,7 @@ export async function apiFetch(
     headers: buildHeaders(init, accessToken),
   });
 
-  // Expired JWT that slipped past skew check — refresh once and retry.
+  // Expired JWT that slipped past skew check, refresh once and retry.
   if (response.status === 401 && !retried) {
     refreshInFlight = null;
     const refreshed = await resolveAccessToken();
@@ -425,6 +429,7 @@ export async function sendBulkReminders(payload: {
   skipped: number;
   channel?: string;
   errors?: { unit_id: string; label: string; detail: string }[];
+  failed_unit_ids?: string[];
 }> {
   const res = await apiFetch("/reminders/bulk", {
     method: "POST",
@@ -439,6 +444,7 @@ export async function sendBulkReminders(payload: {
     skipped: number;
     channel?: string;
     errors?: { unit_id: string; label: string; detail: string }[];
+    failed_unit_ids?: string[];
   };
 }
 
@@ -576,22 +582,31 @@ export type UserProfile = {
   name: string;
   business_name: string | null;
   notification_channel: string;
-  role: "landlord" | "tenant";
+  role: "landlord" | "tenant" | "artisan" | string;
+  signup_persona?: string | null;
+  signup_unit_count?: number | null;
+  signup_years?: string | null;
   phone: string | null;
   email: string | null;
+  avatar_url?: string | null;
   created_at?: string | null;
 };
 
 function parseUserProfile(data: Partial<UserProfile> & { role?: string }): UserProfile {
-  const role = data.role === "tenant" ? "tenant" : "landlord";
+  const rawRole = String(data.role ?? "landlord").trim() || "landlord";
   return {
     id: String(data.id ?? ""),
     name: String(data.name ?? "").trim(),
     business_name: data.business_name ? String(data.business_name) : null,
     notification_channel: String(data.notification_channel ?? "sms"),
-    role,
+    role: rawRole,
+    signup_persona: data.signup_persona ? String(data.signup_persona) : null,
+    signup_unit_count:
+      typeof data.signup_unit_count === "number" ? data.signup_unit_count : null,
+    signup_years: data.signup_years ? String(data.signup_years) : null,
     phone: data.phone ? String(data.phone) : null,
     email: data.email ? String(data.email) : null,
+    avatar_url: data.avatar_url ? String(data.avatar_url) : null,
     created_at: data.created_at ?? null,
   };
 }
@@ -609,6 +624,10 @@ export async function updateMe(payload: {
   business_name?: string | null;
   email?: string | null;
   notification_channel?: string | null;
+  role?: "landlord" | "tenant" | "artisan";
+  signup_persona?: string | null;
+  signup_unit_count?: number | null;
+  signup_years?: string | null;
 }): Promise<UserProfile> {
   const body: Record<string, unknown> = {};
   if (payload.name !== undefined) body.name = payload.name;
@@ -619,6 +638,16 @@ export async function updateMe(payload: {
   if (payload.notification_channel !== undefined) {
     body.notification_channel = payload.notification_channel;
   }
+  if (payload.role !== undefined) body.role = payload.role;
+  if (payload.signup_persona !== undefined) {
+    body.signup_persona = payload.signup_persona;
+  }
+  if (payload.signup_unit_count !== undefined) {
+    body.signup_unit_count = payload.signup_unit_count;
+  }
+  if (payload.signup_years !== undefined) {
+    body.signup_years = payload.signup_years;
+  }
 
   const res = await apiFetch("/users/me", {
     method: "PATCH",
@@ -626,6 +655,19 @@ export async function updateMe(payload: {
   });
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Could not update profile"));
+  }
+  return parseUserProfile((await res.json()) as Partial<UserProfile>);
+}
+
+export async function uploadMyAvatar(file: File): Promise<UserProfile> {
+  const body = new FormData();
+  body.append("file", file);
+  const res = await apiFetch("/users/me/avatar", {
+    method: "POST",
+    body,
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not upload photo"));
   }
   return parseUserProfile((await res.json()) as Partial<UserProfile>);
 }
@@ -651,7 +693,7 @@ export async function trackRenewalBannerViewed(unitId: string): Promise<void> {
     body: JSON.stringify({ unit_id: unitId }),
   });
   if (!res.ok) {
-    // Best-effort analytics — never block the payments UI.
+    // Best-effort analytics, never block the payments UI.
     return;
   }
 }
@@ -907,6 +949,8 @@ export type Tenancy = {
   start_date?: string | null;
   term_end?: string | null;
   status: string;
+  invite_token?: string | null;
+  invite_sent_at?: string | null;
   checklist?: ChecklistItem[];
   required_checklist_complete?: boolean;
   can_activate?: boolean;
@@ -978,7 +1022,14 @@ export async function activateTenancy(tenancyId: string): Promise<Tenancy> {
 
 export async function inviteTenant(
   tenancyId: string,
-): Promise<{ tenancy: Tenancy; invite_token: string; claim_path: string }> {
+): Promise<{
+  tenancy: Tenancy;
+  invite_token: string;
+  claim_path: string;
+  invite_sent?: boolean;
+  invite_channel?: string | null;
+  invite_error?: string | null;
+}> {
   const res = await apiFetch(`/tenancies/${tenancyId}/invite`, {
     method: "POST",
     body: JSON.stringify({}),
@@ -990,6 +1041,9 @@ export async function inviteTenant(
     tenancy: Tenancy;
     invite_token: string;
     claim_path: string;
+    invite_sent?: boolean;
+    invite_channel?: string | null;
+    invite_error?: string | null;
   };
 }
 
@@ -1014,6 +1068,427 @@ export async function fetchMyTenancy(): Promise<Tenancy | null> {
   return data.tenancy ?? null;
 }
 
+export type MaintenanceRequest = {
+  id: string;
+  unit_id: string;
+  tenancy_id?: string | null;
+  landlord_id: string;
+  tenant_user_id?: string | null;
+  title: string;
+  details?: string | null;
+  priority: string;
+  status: string;
+  allow_entry: boolean;
+  category?: string;
+  photo_url?: string | null;
+  preferred_time?: string | null;
+  origin?: string;
+  artisan_user_id?: string | null;
+  scheduled_start?: string | null;
+  scheduled_end?: string | null;
+  access_pass_id?: string | null;
+  completed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  // Nested join from /maintenance/artisan/me
+  access_passes?: {
+    id: string;
+    code: string;
+    valid_from?: string;
+    valid_until?: string;
+    status?: string;
+  } | {
+    id: string;
+    code: string;
+    valid_from?: string;
+    valid_until?: string;
+    status?: string;
+  }[] | null;
+};
+
+export async function fetchMyMaintenanceRequests(): Promise<MaintenanceRequest[]> {
+  const res = await apiFetch("/maintenance/me");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load requests"));
+  }
+  const data = (await res.json()) as { items?: MaintenanceRequest[] };
+  return data.items ?? [];
+}
+
+export async function createMyMaintenanceRequest(payload: {
+  title: string;
+  details?: string;
+  priority?: string;
+  allow_entry?: boolean;
+  category?: string;
+  photo_url?: string;
+  preferred_time?: string;
+}): Promise<MaintenanceRequest> {
+  const res = await apiFetch("/maintenance/me", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not submit request"));
+  }
+  const data = (await res.json()) as { item: MaintenanceRequest };
+  return data.item;
+}
+
+export async function cancelMyMaintenanceRequest(
+  requestId: string,
+): Promise<MaintenanceRequest> {
+  const res = await apiFetch(`/maintenance/me/${requestId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "canceled" }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not cancel request"));
+  }
+  const data = (await res.json()) as { item: MaintenanceRequest };
+  return data.item;
+}
+
+export async function fetchUnitMaintenanceRequests(
+  unitId: string,
+): Promise<MaintenanceRequest[]> {
+  const res = await apiFetch(`/maintenance/unit/${unitId}`);
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load requests"));
+  }
+  const data = (await res.json()) as { items?: MaintenanceRequest[] };
+  return data.items ?? [];
+}
+
+export async function updateMaintenanceRequestStatus(
+  requestId: string,
+  statusValue: string,
+): Promise<MaintenanceRequest> {
+  const res = await apiFetch(`/maintenance/${requestId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: statusValue }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not update request"));
+  }
+  const data = (await res.json()) as { item: MaintenanceRequest };
+  return data.item;
+}
+
+export type UtilityProvider = {
+  id: string;
+  unit_id: string;
+  landlord_id: string;
+  kind: string;
+  provider_name: string;
+  account_or_meter?: string | null;
+  notes?: string | null;
+  how_to_pay?: string | null;
+  is_enabled: boolean;
+  sort_order?: number;
+};
+
+export async function fetchMyUtilities(): Promise<UtilityProvider[]> {
+  const res = await apiFetch("/utilities/me");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load utilities"));
+  }
+  const data = (await res.json()) as { items?: UtilityProvider[] };
+  return data.items ?? [];
+}
+
+export async function fetchUnitUtilities(
+  unitId: string,
+): Promise<UtilityProvider[]> {
+  const res = await apiFetch(`/utilities/unit/${unitId}`);
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load utilities"));
+  }
+  const data = (await res.json()) as { items?: UtilityProvider[] };
+  return data.items ?? [];
+}
+
+export async function createUnitUtility(
+  unitId: string,
+  payload: {
+    kind: string;
+    provider_name: string;
+    account_or_meter?: string;
+    notes?: string;
+    how_to_pay?: string;
+    is_enabled?: boolean;
+  },
+): Promise<UtilityProvider> {
+  const res = await apiFetch(`/utilities/unit/${unitId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not add provider"));
+  }
+  const data = (await res.json()) as { item: UtilityProvider };
+  return data.item;
+}
+
+export async function updateUtilityProvider(
+  providerId: string,
+  payload: Partial<{
+    kind: string;
+    provider_name: string;
+    account_or_meter: string | null;
+    notes: string | null;
+    how_to_pay: string | null;
+    is_enabled: boolean;
+  }>,
+): Promise<UtilityProvider> {
+  const res = await apiFetch(`/utilities/${providerId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not update provider"));
+  }
+  const data = (await res.json()) as { item: UtilityProvider };
+  return data.item;
+}
+
+export async function deleteUtilityProvider(providerId: string): Promise<void> {
+  const res = await apiFetch(`/utilities/${providerId}`, { method: "DELETE" });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not delete provider"));
+  }
+}
+
+export type AccessPass = {
+  id: string;
+  landlord_id: string;
+  property_id: string;
+  unit_id?: string | null;
+  subject_type: string;
+  subject_user_id?: string | null;
+  subject_label: string;
+  code: string;
+  valid_from: string;
+  valid_until: string;
+  status: string;
+  effective_status?: string;
+};
+
+export async function fetchAccessPasses(
+  propertyId?: string,
+): Promise<AccessPass[]> {
+  const q = propertyId
+    ? `?property_id=${encodeURIComponent(propertyId)}`
+    : "";
+  const res = await apiFetch(`/access/passes${q}`);
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load access passes"));
+  }
+  const data = (await res.json()) as { items?: AccessPass[] };
+  return data.items ?? [];
+}
+
+export type AccessOccupant = {
+  tenancy_id: string;
+  unit_id: string;
+  unit_label: string;
+  tenant_user_id: string;
+  tenant_name: string;
+};
+
+export async function fetchAccessOccupants(
+  propertyId: string,
+): Promise<AccessOccupant[]> {
+  const res = await apiFetch(
+    `/access/occupants?property_id=${encodeURIComponent(propertyId)}`,
+  );
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load occupants"));
+  }
+  const data = (await res.json()) as { items?: AccessOccupant[] };
+  return data.items ?? [];
+}
+
+export async function createAccessPass(payload: {
+  property_id: string;
+  unit_id?: string;
+  subject_type: string;
+  subject_label: string;
+  subject_user_id?: string;
+  valid_until: string;
+  valid_from?: string;
+  code?: string;
+}): Promise<AccessPass> {
+  const res = await apiFetch("/access/passes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not issue pass"));
+  }
+  const data = (await res.json()) as { item: AccessPass };
+  return data.item;
+}
+
+export async function revokeAccessPass(passId: string): Promise<AccessPass> {
+  const res = await apiFetch(`/access/passes/${passId}/revoke`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not revoke pass"));
+  }
+  const data = (await res.json()) as { item: AccessPass };
+  return data.item;
+}
+
+export async function fetchMyAccessPasses(): Promise<AccessPass[]> {
+  const res = await apiFetch("/access/me");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load your passes"));
+  }
+  const data = (await res.json()) as { items?: AccessPass[] };
+  return data.items ?? [];
+}
+
+export type ArtisanRosterItem = {
+  id: string;
+  landlord_id: string;
+  artisan_user_id?: string | null;
+  invite_token?: string | null;
+  invite_contact?: string | null;
+  status: string;
+};
+
+export async function fetchArtisanRoster(): Promise<ArtisanRosterItem[]> {
+  const res = await apiFetch("/artisans/roster");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load artisans"));
+  }
+  const data = (await res.json()) as { items?: ArtisanRosterItem[] };
+  return data.items ?? [];
+}
+
+export async function inviteArtisan(invite_contact: string): Promise<{
+  item: ArtisanRosterItem;
+  claim_path: string;
+}> {
+  const res = await apiFetch("/artisans/invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ invite_contact }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not invite artisan"));
+  }
+  return (await res.json()) as { item: ArtisanRosterItem; claim_path: string };
+}
+
+export async function claimArtisanInvite(payload: {
+  token: string;
+  display_name: string;
+  trades?: string[] | string;
+  phone?: string;
+}): Promise<unknown> {
+  const res = await apiFetch("/artisans/claim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not claim invite"));
+  }
+  return res.json();
+}
+
+export async function fetchArtisanProfile(): Promise<{
+  user_id: string;
+  display_name: string;
+  trades?: string[];
+  phone?: string | null;
+  status: string;
+} | null> {
+  const res = await apiFetch("/artisans/me");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load profile"));
+  }
+  const data = (await res.json()) as { profile?: { user_id: string; display_name: string; trades?: string[]; phone?: string | null; status: string } | null };
+  return data.profile ?? null;
+}
+
+export async function createUnitWorkOrder(
+  unitId: string,
+  payload: { title: string; details?: string; priority?: string },
+): Promise<MaintenanceRequest> {
+  const res = await apiFetch(`/maintenance/unit/${unitId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not create work order"));
+  }
+  const data = (await res.json()) as { item: MaintenanceRequest };
+  return data.item;
+}
+
+export async function assignMaintenanceArtisan(
+  requestId: string,
+  payload: {
+    artisan_user_id: string;
+    scheduled_start?: string;
+    scheduled_end?: string;
+    issue_access_pass?: boolean;
+  },
+): Promise<MaintenanceRequest> {
+  const res = await apiFetch(`/maintenance/${requestId}/assign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not assign artisan"));
+  }
+  const data = (await res.json()) as { item: MaintenanceRequest };
+  return data.item;
+}
+
+export async function completeMaintenanceRequest(
+  requestId: string,
+): Promise<MaintenanceRequest> {
+  const res = await apiFetch(`/maintenance/${requestId}/complete`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not complete job"));
+  }
+  const data = (await res.json()) as { item: MaintenanceRequest };
+  return data.item;
+}
+
+export async function fetchArtisanJobs(): Promise<MaintenanceRequest[]> {
+  const res = await apiFetch("/maintenance/artisan/me");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load jobs"));
+  }
+  const data = (await res.json()) as { items?: MaintenanceRequest[] };
+  return data.items ?? [];
+}
+
+export async function fetchMaintenanceBoard(): Promise<MaintenanceRequest[]> {
+  const res = await apiFetch("/maintenance/board");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load work orders"));
+  }
+  const data = (await res.json()) as { items?: MaintenanceRequest[] };
+  return data.items ?? [];
+}
+
 export async function fetchTenancyDocuments(tenancyId: string): Promise<{
   docs_upload_enabled: boolean;
   items: Array<{
@@ -1022,6 +1497,8 @@ export async function fetchTenancyDocuments(tenancyId: string): Promise<{
     file_name: string;
     url?: string | null;
     expires_on?: string | null;
+    requires_ack?: boolean;
+    acknowledged_at?: string | null;
   }>;
   message?: string;
 }> {
@@ -1037,6 +1514,8 @@ export async function fetchTenancyDocuments(tenancyId: string): Promise<{
       file_name: string;
       url?: string | null;
       expires_on?: string | null;
+      requires_ack?: boolean;
+      acknowledged_at?: string | null;
     }>;
     message?: string;
   };
@@ -1049,6 +1528,7 @@ export async function uploadTenancyDocument(payload: {
   content_type: string;
   content_base64: string;
   expires_on?: string | null;
+  requires_ack?: boolean;
 }): Promise<void> {
   const res = await apiFetch(`/tenancies/${payload.tenancyId}/documents`, {
     method: "POST",
@@ -1058,6 +1538,7 @@ export async function uploadTenancyDocument(payload: {
       content_type: payload.content_type,
       content_base64: payload.content_base64,
       expires_on: payload.expires_on || null,
+      requires_ack: Boolean(payload.requires_ack),
     }),
   });
   if (!res.ok) {
@@ -1091,4 +1572,527 @@ export async function updateLeadStatus(
     throw new Error(await readErrorDetail(res, "Could not update lead"));
   }
   return (await res.json()) as Lead;
+}
+
+// --- Competitive ops gaps (applications, expenses, pubs, tasks, fees) ---
+
+export type RentalApplication = {
+  id: string;
+  landlord_id: string;
+  property_id: string;
+  unit_id: string;
+  invite_token: string;
+  status: string;
+  applicant_name?: string | null;
+  applicant_email?: string | null;
+  applicant_phone?: string | null;
+  notes?: string | null;
+  screening_answers?: Record<string, string>;
+  created_at?: string;
+};
+
+export async function fetchApplications(): Promise<RentalApplication[]> {
+  const res = await apiFetch("/applications/");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load applications"));
+  const data = (await res.json()) as { items?: RentalApplication[] };
+  return data.items ?? [];
+}
+
+export async function openApplicationInvite(unitId: string): Promise<{
+  item: RentalApplication;
+  apply_path: string;
+  apply_url: string;
+}> {
+  const res = await apiFetch(`/applications/unit/${unitId}`, { method: "POST" });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not open apply link"));
+  return (await res.json()) as {
+    item: RentalApplication;
+    apply_path: string;
+    apply_url: string;
+  };
+}
+
+export async function previewApplicationToken(token: string): Promise<{
+  token: string;
+  status: string;
+  unit_label?: string | null;
+  property_name?: string | null;
+  property_address?: string | null;
+  questions: Array<{ key: string; label: string }>;
+}> {
+  const base = apiBaseUrl();
+  const res = await fetch(`${base}/applications/token/${encodeURIComponent(token)}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Invite not found"));
+  return (await res.json()) as {
+    token: string;
+    status: string;
+    unit_label?: string | null;
+    property_name?: string | null;
+    property_address?: string | null;
+    questions: Array<{ key: string; label: string }>;
+  };
+}
+
+export async function submitApplication(
+  token: string,
+  payload: {
+    applicant_name: string;
+    applicant_email?: string;
+    applicant_phone?: string;
+    notes?: string;
+    screening_answers?: Record<string, string>;
+  },
+): Promise<RentalApplication> {
+  const res = await apiFetch(`/applications/token/${encodeURIComponent(token)}/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not submit application"));
+  const data = (await res.json()) as { item: RentalApplication };
+  return data.item;
+}
+
+export async function decideApplication(
+  applicationId: string,
+  status: "approved" | "rejected" | "closed",
+): Promise<RentalApplication> {
+  const res = await apiFetch(`/applications/${applicationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not update application"));
+  const data = (await res.json()) as { item: RentalApplication };
+  return data.item;
+}
+
+export async function connectLandlord(payload: {
+  landlord_email: string;
+  landlord_name?: string;
+  message?: string;
+}): Promise<void> {
+  const res = await apiFetch("/applications/connect-landlord", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not send invite"));
+}
+
+export type Expense = {
+  id: string;
+  category: string;
+  amount: number;
+  currency: string;
+  paid_on: string;
+  vendor?: string | null;
+  notes?: string | null;
+  property_id?: string | null;
+  unit_id?: string | null;
+};
+
+export async function fetchExpenses(): Promise<Expense[]> {
+  const res = await apiFetch("/expenses");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load expenses"));
+  const data = (await res.json()) as { items?: Expense[] };
+  return data.items ?? [];
+}
+
+export async function createExpense(payload: {
+  category: string;
+  amount: number;
+  paid_on?: string;
+  vendor?: string;
+  notes?: string;
+  property_id?: string;
+  unit_id?: string;
+}): Promise<Expense> {
+  const res = await apiFetch("/expenses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not save expense"));
+  const data = (await res.json()) as { item: Expense };
+  return data.item;
+}
+
+export async function deleteExpense(expenseId: string): Promise<void> {
+  const res = await apiFetch(`/expenses/${expenseId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not delete expense"));
+}
+
+export type RentRollReport = {
+  generated_at: string;
+  items: Array<{
+    unit_id: string;
+    unit_label?: string | null;
+    property_name?: string | null;
+    rent_amount?: number | null;
+    currency: string;
+    frequency?: string | null;
+    tenancy_status?: string | null;
+    tenant_name?: string | null;
+    tenant_contact?: string | null;
+    term_end?: string | null;
+  }>;
+  month_expenses_total: number;
+  occupied: number;
+  vacant: number;
+};
+
+export async function fetchRentRoll(): Promise<RentRollReport> {
+  const res = await apiFetch("/reports/rent-roll");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load rent roll"));
+  return (await res.json()) as RentRollReport;
+}
+
+export type ScheduledFee = {
+  id: string;
+  unit_id: string;
+  label: string;
+  amount: number;
+  currency: string;
+  due_on: string;
+  charge_type: string;
+  status: string;
+};
+
+export async function fetchUnitFees(unitId: string): Promise<ScheduledFee[]> {
+  const res = await apiFetch(`/fees/unit/${unitId}`);
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load fees"));
+  const data = (await res.json()) as { items?: ScheduledFee[] };
+  return data.items ?? [];
+}
+
+export async function createUnitFee(
+  unitId: string,
+  payload: {
+    label: string;
+    amount: number;
+    due_on: string;
+    charge_type?: string;
+    tenancy_id?: string;
+  },
+): Promise<ScheduledFee> {
+  const res = await apiFetch(`/fees/unit/${unitId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not create fee"));
+  const data = (await res.json()) as { item: ScheduledFee };
+  return data.item;
+}
+
+export async function updateFeeStatus(
+  feeId: string,
+  status: string,
+): Promise<ScheduledFee> {
+  const res = await apiFetch(`/fees/${feeId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not update fee"));
+  const data = (await res.json()) as { item: ScheduledFee };
+  return data.item;
+}
+
+export async function fetchMyFees(): Promise<ScheduledFee[]> {
+  const res = await apiFetch("/fees/me");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load fees"));
+  const data = (await res.json()) as { items?: ScheduledFee[] };
+  return data.items ?? [];
+}
+
+export type Publication = {
+  id: string;
+  title: string;
+  body: string;
+  property_id?: string | null;
+  published_at?: string;
+  is_read?: boolean;
+};
+
+export async function fetchPublications(): Promise<Publication[]> {
+  const res = await apiFetch("/publications/");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load publications"));
+  const data = (await res.json()) as { items?: Publication[] };
+  return data.items ?? [];
+}
+
+export async function createPublication(payload: {
+  title: string;
+  body: string;
+  property_id?: string;
+}): Promise<Publication> {
+  const res = await apiFetch("/publications/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not publish"));
+  const data = (await res.json()) as { item: Publication };
+  return data.item;
+}
+
+export async function archivePublication(id: string): Promise<void> {
+  const res = await apiFetch(`/publications/${id}/archive`, { method: "POST" });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not archive"));
+}
+
+export async function fetchMyPublications(): Promise<{
+  items: Publication[];
+  unread_count: number;
+}> {
+  const res = await apiFetch("/publications/me");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load bulletin"));
+  return (await res.json()) as { items: Publication[]; unread_count: number };
+}
+
+export async function markPublicationRead(id: string): Promise<void> {
+  const res = await apiFetch(`/publications/${id}/read`, { method: "POST" });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not mark read"));
+}
+
+export type OpsTask = {
+  id: string;
+  title: string;
+  details?: string | null;
+  due_on?: string | null;
+  status: string;
+  audience: string;
+  tenant_user_id?: string | null;
+  unit_id?: string | null;
+  tenancy_id?: string | null;
+};
+
+export type CalendarEvent = {
+  kind: string;
+  id: string;
+  title?: string | null;
+  date?: string | null;
+  meta?: Record<string, unknown>;
+};
+
+export async function fetchTasks(): Promise<OpsTask[]> {
+  const res = await apiFetch("/tasks/");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load tasks"));
+  const data = (await res.json()) as { items?: OpsTask[] };
+  return data.items ?? [];
+}
+
+export async function createTask(payload: {
+  title: string;
+  details?: string;
+  due_on?: string;
+  audience?: string;
+  tenancy_id?: string;
+  tenant_user_id?: string;
+  unit_id?: string;
+}): Promise<OpsTask> {
+  const res = await apiFetch("/tasks/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not create task"));
+  const data = (await res.json()) as { item: OpsTask };
+  return data.item;
+}
+
+export async function updateTaskStatus(
+  taskId: string,
+  status: string,
+): Promise<OpsTask> {
+  const res = await apiFetch(`/tasks/${taskId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not update task"));
+  const data = (await res.json()) as { item: OpsTask };
+  return data.item;
+}
+
+export async function fetchMyTasks(): Promise<OpsTask[]> {
+  const res = await apiFetch("/tasks/me");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load tasks"));
+  const data = (await res.json()) as { items?: OpsTask[] };
+  return data.items ?? [];
+}
+
+export async function fetchCalendar(): Promise<CalendarEvent[]> {
+  const res = await apiFetch("/tasks/calendar");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load calendar"));
+  const data = (await res.json()) as { items?: CalendarEvent[] };
+  return data.items ?? [];
+}
+
+export async function fetchMyCalendar(): Promise<CalendarEvent[]> {
+  const res = await apiFetch("/tasks/calendar/me");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load calendar"));
+  const data = (await res.json()) as { items?: CalendarEvent[] };
+  return data.items ?? [];
+}
+
+export type PortfolioTenancy = {
+  id: string;
+  unit_id: string;
+  status: string;
+  tenant_name?: string | null;
+  tenant_contact?: string | null;
+  tenant_user_id?: string | null;
+  term_end?: string | null;
+  unit_label?: string | null;
+  property_name?: string | null;
+  property_id?: string | null;
+};
+
+export async function fetchPortfolioTenancies(): Promise<PortfolioTenancy[]> {
+  const res = await apiFetch("/tenancies/");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load tenancies"));
+  const data = (await res.json()) as { items?: PortfolioTenancy[] };
+  return data.items ?? [];
+}
+
+export async function acknowledgeTenancyDocument(
+  tenancyId: string,
+  documentId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    `/tenancies/${tenancyId}/documents/${documentId}/acknowledge`,
+    { method: "POST" },
+  );
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not acknowledge"));
+}
+
+// --- Messages hub (TenantCloud-style) ---
+
+export type MessageThread = {
+  id: string;
+  kind: "chat" | "maintenance" | string;
+  landlord_id: string;
+  tenant_user_id?: string | null;
+  unit_id?: string | null;
+  tenancy_id?: string | null;
+  maintenance_request_id?: string | null;
+  subject?: string | null;
+  last_message_at?: string | null;
+  last_message_preview?: string | null;
+  created_at?: string;
+  unread?: boolean;
+};
+
+export type ChatMessage = {
+  id: string;
+  thread_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
+  kind?: "user" | "payment" | string;
+  meta?: {
+    transaction_id?: string;
+    amount?: number | string;
+    currency?: string;
+    status?: string;
+    charge_type?: string;
+    charge_label?: string;
+    receipt_url?: string | null;
+  } | null;
+};
+
+export type MessageContact = {
+  role: "tenant" | "landlord" | string;
+  tenancy_id: string;
+  unit_id?: string | null;
+  user_id?: string | null;
+  name: string;
+  unit_label?: string | null;
+  property_name?: string | null;
+  tenancy_status?: string | null;
+};
+
+export async function fetchMessageUnreadCount(): Promise<number> {
+  const res = await apiFetch("/messages/unread-count");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load unread"));
+  const data = (await res.json()) as { unread_threads?: number };
+  return data.unread_threads ?? 0;
+}
+
+export async function fetchMessageContacts(): Promise<MessageContact[]> {
+  const res = await apiFetch("/messages/contacts");
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load contacts"));
+  const data = (await res.json()) as { items?: MessageContact[] };
+  return data.items ?? [];
+}
+
+export async function fetchMessageThreads(
+  kind?: "chat" | "maintenance",
+): Promise<MessageThread[]> {
+  const q = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+  const res = await apiFetch(`/messages/threads${q}`);
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load threads"));
+  const data = (await res.json()) as { items?: MessageThread[] };
+  return data.items ?? [];
+}
+
+export async function openChatThread(tenancyId: string): Promise<MessageThread> {
+  const res = await apiFetch("/messages/threads/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tenancy_id: tenancyId }),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not open chat"));
+  const data = (await res.json()) as { item: MessageThread };
+  return data.item;
+}
+
+export async function openMaintenanceThread(
+  requestId: string,
+): Promise<MessageThread> {
+  const res = await apiFetch(`/messages/threads/maintenance/${requestId}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not open thread"));
+  const data = (await res.json()) as { item: MessageThread };
+  return data.item;
+}
+
+export async function fetchThreadMessages(
+  threadId: string,
+): Promise<{ items: ChatMessage[]; peer_last_read_at: string | null }> {
+  const res = await apiFetch(`/messages/threads/${threadId}/messages`);
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load messages"));
+  const data = (await res.json()) as {
+    items?: ChatMessage[];
+    peer_last_read_at?: string | null;
+  };
+  return {
+    items: data.items ?? [],
+    peer_last_read_at: data.peer_last_read_at ?? null,
+  };
+}
+
+export async function sendThreadMessage(
+  threadId: string,
+  body: string,
+): Promise<ChatMessage> {
+  const res = await apiFetch(`/messages/threads/${threadId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not send"));
+  const data = (await res.json()) as { item: ChatMessage };
+  return data.item;
+}
+
+export async function markThreadRead(threadId: string): Promise<void> {
+  const res = await apiFetch(`/messages/threads/${threadId}/read`, { method: "POST" });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not mark read"));
 }

@@ -6,14 +6,21 @@ import { useCallback, useEffect, useState } from "react";
 import { LoadMoreButton } from "@/components/LoadMoreButton";
 import { FetchErrorState } from "@/components/FetchErrorState";
 import { TableSkeleton } from "@/components/TableSkeleton";
-import { fetchPortfolioPaymentsPage } from "@/lib/api";
-import { chargeTypeLabel, formatNaira } from "@/lib/dashboard";
+import {
+  fetchPortfolioPaymentsPage,
+  fetchPortfolioUnitsPage,
+} from "@/lib/api";
+import {
+  CHANNEL_LABELS,
+  labelOrTitle,
+} from "@/lib/labels";
+import { chargeTypeLabel, formatNaira, resolveUnitStatus } from "@/lib/dashboard";
 import type { PortfolioPayment } from "@/lib/types";
 
 function formatWhen(value?: string | null): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "-";
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
@@ -37,6 +44,7 @@ export default function PaymentsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [overdueCount, setOverdueCount] = useState(0);
 
   const loadPage = useCallback(async (cursor?: string | null) => {
     const page = await fetchPortfolioPaymentsPage(cursor);
@@ -55,12 +63,25 @@ export default function PaymentsPage() {
     (async () => {
       try {
         await loadPage(null);
+        try {
+          const unitsPage = await fetchPortfolioUnitsPage(null);
+          if (!active) return;
+          const overdue = unitsPage.items.filter(
+            (item) =>
+              resolveUnitStatus(item.unit, item.unit.transactions ?? []) ===
+              "OVERDUE",
+          ).length;
+          setOverdueCount(overdue);
+        } catch {
+          if (active) setOverdueCount(0);
+        }
       } catch (err) {
         if (active) {
           setError(
             err instanceof Error ? err.message : "Failed to load money-in feed",
           );
           setItems([]);
+          setOverdueCount(0);
         }
       } finally {
         if (active) setLoading(false);
@@ -98,16 +119,45 @@ export default function PaymentsPage() {
 
   return (
     <section className="dashboard">
-      <header className="dashboard-header">
+      <header className="dashboard-header dashboard-header-row">
         <div>
           <h1 className="page-title">Payments</h1>
           <p className="page-subtitle">
             Recent money in across your units. Open a unit to record a payment.
           </p>
         </div>
+        <div className="dashboard-header-actions">
+          {overdueCount > 0 ? (
+            <Link href="/reminders" className="btn-primary">
+              {overdueCount} overdue → Chase
+            </Link>
+          ) : (
+            <Link href="/reminders" className="btn-secondary">
+              Reminders
+            </Link>
+          )}
+          <Link href="/properties" className="btn-secondary">
+            Properties
+          </Link>
+        </div>
       </header>
 
       {error ? <p className="form-error">{error}</p> : null}
+
+      {overdueCount > 0 && !loading ? (
+        <p className="page-subtitle" role="status">
+          {overdueCount === 1
+            ? "1 unit is overdue."
+            : `${overdueCount} units are overdue.`}{" "}
+          <Link href="/reminders" className="table-link">
+            Chase on Reminders
+          </Link>
+          {" · "}
+          <Link href="/ops" className="table-link">
+            Ops view
+          </Link>
+        </p>
+      ) : null}
 
       {loading ? (
         <div className="data-table-wrap">
@@ -133,10 +183,19 @@ export default function PaymentsPage() {
           <p className="dashboard-empty-title mono-data">No money in yet.</p>
           <p className="dashboard-empty-copy">
             When you log cash, transfer, or Paystack on a unit, it shows up here.
+            {overdueCount > 0
+              ? " Start with overdue units that still owe."
+              : ""}
           </p>
-          <Link href="/properties" className="btn-primary">
-            Go to properties
-          </Link>
+          {overdueCount > 0 ? (
+            <Link href="/reminders" className="btn-primary">
+              Chase overdue
+            </Link>
+          ) : (
+            <Link href="/properties" className="btn-primary">
+              Go to properties
+            </Link>
+          )}
         </div>
       ) : (
         <>
@@ -174,14 +233,16 @@ export default function PaymentsPage() {
                           unitLabel(row)
                         )}
                       </td>
-                      <td>{row.tenant_name?.trim() || "—"}</td>
+                      <td>{row.tenant_name?.trim() || "-"}</td>
                       <td>
                         {chargeTypeLabel(row.charge_type, row.charge_label)}
                       </td>
                       <td className="mono-data">
                         {formatNaira(Number(row.amount) || 0)}
                       </td>
-                      <td>{row.method || "—"}</td>
+                      <td>
+                        {labelOrTitle(CHANNEL_LABELS, row.method, "-")}
+                      </td>
                       <td>
                         {hasReceipt ? (
                           <a
@@ -190,10 +251,10 @@ export default function PaymentsPage() {
                             target="_blank"
                             rel="noreferrer"
                           >
-                            Download receipt
+                            Open receipt
                           </a>
                         ) : (
-                          "—"
+                          "-"
                         )}
                       </td>
                     </tr>

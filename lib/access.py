@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 
 StaffRole = Literal["owner", "manager", "caretaker"]
 
-# Permission keys — access_visitor_passes is schema-complete but Phase 5 no-op at runtime.
+# Permission keys — visitor passes enforced in access router (Phase 5).
 PERM_MONEY = "money"
 PERM_MONEY_LOG_CASH = "money_log_cash"
 PERM_CHASE = "chase"
@@ -64,9 +64,6 @@ class AccessContext:
     def has(self, permission: str) -> bool:
         if self.role == "owner":
             return True
-        # Phase 5: visitor-pass permission may be granted but capability is disabled.
-        if permission == PERM_ACCESS_VISITOR_PASSES:
-            return False
         return permission in self.permissions
 
     def require(self, permission: str) -> None:

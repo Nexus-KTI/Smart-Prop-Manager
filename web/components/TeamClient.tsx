@@ -10,6 +10,11 @@ import {
   revokeStaffMembership,
   type StaffMembership,
 } from "@/lib/api";
+import {
+  STAFF_ROLE_LABELS,
+  STAFF_STATUS_LABELS,
+  labelOrTitle,
+} from "@/lib/labels";
 
 export function TeamClient() {
   const [items, setItems] = useState<StaffMembership[]>([]);
@@ -71,7 +76,7 @@ export function TeamClient() {
           <p className="form-kicker">Owner / Manager</p>
           <h1 className="page-title">Team</h1>
           <p className="page-subtitle">
-            Invite Managers and Caretakers. They claim via OTP — same path as
+            Invite Managers and Caretakers. They claim via OTP, same path as
             tenant invites.
           </p>
         </div>
@@ -136,10 +141,12 @@ export function TeamClient() {
             ) : (
               items.map((m) => (
                 <tr key={m.id}>
-                  <td>{m.role}</td>
-                  <td className="mono-data">{m.invite_contact || "—"}</td>
+                  <td>{labelOrTitle(STAFF_ROLE_LABELS, m.role)}</td>
+                  <td className="mono-data">{m.invite_contact || "-"}</td>
                   <td>
-                    <span className="status-badge pending">{m.status}</span>
+                    <span className="status-badge pending">
+                      {labelOrTitle(STAFF_STATUS_LABELS, m.status)}
+                    </span>
                   </td>
                   <td>
                     {m.status !== "revoked" ? (

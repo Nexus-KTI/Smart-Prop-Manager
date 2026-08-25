@@ -9,9 +9,11 @@ import {
   fetchPaymentHistoryPage,
 } from "@/lib/api";
 import { formatNaira } from "@/lib/dashboard";
+import { CHANNEL_LABELS, labelOrTitle } from "@/lib/labels";
 import type { Transaction } from "@/lib/types";
 
 export default function TenantReceiptsPage() {
+  const [hasTenancy, setHasTenancy] = useState(true);
   const [rows, setRows] = useState<Transaction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -21,10 +23,12 @@ export default function TenantReceiptsPage() {
     setError(null);
     try {
       const tenancy = await fetchMyTenancy();
-      if (!tenancy?.unit_id) {
+      if (!tenancy?.unit_id || tenancy.status !== "active") {
+        setHasTenancy(false);
         setRows([]);
         return;
       }
+      setHasTenancy(true);
       const page = await fetchPaymentHistoryPage(tenancy.unit_id);
       setRows(page.items.filter((t) => t.status === "paid"));
     } catch (err) {
@@ -52,6 +56,17 @@ export default function TenantReceiptsPage() {
   return (
     <section className="dashboard">
       <h1 className="page-title">Receipts</h1>
+      {!hasTenancy ? (
+        <>
+          <p className="page-subtitle">
+            Receipts unlock after your landlord links and activates your unit.
+          </p>
+          <Link href="/tenant/claim" className="btn-primary">
+            Claim invite
+          </Link>
+        </>
+      ) : (
+        <>
       <p className="page-subtitle">
         Paid history for your unit. Same ledger as your landlord.
       </p>
@@ -75,7 +90,7 @@ export default function TenantReceiptsPage() {
               rows.map((row) => (
                 <tr key={row.id}>
                   <td className="mono-data">{formatNaira(Number(row.amount) || 0)}</td>
-                  <td>{row.method}</td>
+                  <td>{labelOrTitle(CHANNEL_LABELS, row.method, "-")}</td>
                   <td>
                     {row.receipt_url ? (
                       <a
@@ -84,10 +99,10 @@ export default function TenantReceiptsPage() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        Download
+                        Open
                       </a>
                     ) : (
-                      "—"
+                      "-"
                     )}
                   </td>
                 </tr>
@@ -96,9 +111,11 @@ export default function TenantReceiptsPage() {
           </tbody>
         </table>
       </div>
+        </>
+      )}
       <p style={{ marginTop: 16 }}>
         <Link href="/tenant" className="table-link">
-          Back to your rent
+          Back to home
         </Link>
       </p>
     </section>

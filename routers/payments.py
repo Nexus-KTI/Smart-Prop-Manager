@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
@@ -50,6 +50,22 @@ def _first_row(data: Any) -> dict | None:
     if isinstance(data, dict):
         return data
     return None
+
+
+def _post_paid_to_chat(db, transaction: dict, receipt_url: str | None = None) -> None:
+    """Best-effort: surface paid status in existing landlord↔tenant chat."""
+    try:
+        from routers.messages import post_payment_to_chat
+
+        payload = dict(transaction)
+        if receipt_url:
+            payload["receipt_url"] = receipt_url
+        post_payment_to_chat(db, payload)
+    except Exception:
+        logger.exception(
+            "Failed to post payment to chat for txn %s",
+            transaction.get("id"),
+        )
 
 
 def _load_unit_context(db, unit_id: str) -> tuple[dict, str, str | None] | None:
@@ -163,6 +179,34 @@ def _log_landlord_payment_notice(
     )
 
 
+def _landlord_payment_notice_already_sent(
+    db, unit_id: str, paid_at: Any = None
+) -> bool:
+    """True if we already emailed the landlord for this payment window."""
+    table = getattr(db, "table", None)
+    if not callable(table):
+        return False
+    try:
+        q = (
+            db.table("reminders")
+            .select("id")
+            .eq("unit_id", unit_id)
+            .eq("kind", "landlord_payment")
+            .eq("status", "sent")
+            .order("sent_at", desc=True)
+            .limit(1)
+        )
+        if paid_at:
+            q = q.gte("sent_at", paid_at)
+        rows = q.execute().data or []
+        return bool(rows)
+    except Exception:
+        logger.exception(
+            "Could not check prior landlord_payment notice for unit %s", unit_id
+        )
+        return False
+
+
 def _owner_id_for_unit(db, unit_id: str) -> str | None:
     rows = (
         db.table("units")
@@ -267,25 +311,43 @@ def deliver_payment_receipt(db, transaction: dict) -> str | None:
         channel = get_owner_notification_channel(db, owner_id)
 
         # Landlord notice is independent of PDF/tenant delivery; never blocks paid.
-        landlord_status = notify_landlord_payment_received(
-            owner_id,
-            amount=transaction.get("amount"),
-            unit_label=unit_label,
-            property_name=property_name,
-            tenant_name=unit.get("tenant_name"),
-            unit_id=str(unit_id),
-        )
-        try:
-            _log_landlord_payment_notice(
-                db,
-                unit_id,
-                landlord_status,
-                error_detail=landlord_payment_notice_detail(landlord_status),
+        # Skip re-send if a successful landlord_payment notice already logged
+        # for this payment (Paystack confirm/webhook can re-enter after PDF fail).
+        if _landlord_payment_notice_already_sent(
+            db, str(unit_id), transaction.get("paid_at")
+        ):
+            landlord_result_status = "sent"
+            landlord_detail = None
+        else:
+            landlord_result = notify_landlord_payment_received(
+                owner_id,
+                amount=transaction.get("amount"),
+                unit_label=unit_label,
+                property_name=property_name,
+                tenant_name=unit.get("tenant_name"),
+                unit_id=str(unit_id),
             )
-        except Exception:
-            logger.exception(
-                "Failed to log landlord payment notice for unit %s", unit_id
-            )
+            # Tests may monkeypatch a plain status string.
+            if isinstance(landlord_result, str):
+                landlord_result_status = landlord_result
+                landlord_detail = landlord_payment_notice_detail(landlord_result_status)
+            else:
+                landlord_result_status = landlord_result.status
+                landlord_detail = (
+                    landlord_result.detail
+                    or landlord_payment_notice_detail(landlord_result.status)
+                )
+            try:
+                _log_landlord_payment_notice(
+                    db,
+                    unit_id,
+                    landlord_result_status,
+                    error_detail=landlord_detail,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to log landlord payment notice for unit %s", unit_id
+                )
 
         receipt_payload = {
             **transaction,
@@ -383,14 +445,44 @@ def portfolio_money_in(
     user: AuthedUser = Depends(get_current_user),
     cursor: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1, le=50),
+    x_portfolio_owner_id: str | None = Header(
+        default=None, alias="X-Portfolio-Owner-Id"
+    ),
 ):
     """
-    Lightweight portfolio money-in feed: paid transactions across owned units.
-    Not a full ledger (no money-out, filters, or Pending/Sent/Total).
+    Lightweight portfolio money-in feed: paid transactions across the active
+    portfolio (owner self or staff with X-Portfolio-Owner-Id).
     """
+    from lib.access import (
+        accessible_property_ids_for_portfolio,
+        resolve_portfolio,
+    )
+    from lib.db import create_service_client
+
+    portfolio_owner_id = (x_portfolio_owner_id or "").strip() or None
+    ctx = resolve_portfolio(user.id, portfolio_owner_id)
+    db = user.db if ctx.role == "owner" else create_service_client()
+    property_ids = accessible_property_ids_for_portfolio(ctx)
+    if not property_ids:
+        return {"items": [], "next_cursor": None}
+
+    unit_rows = (
+        db.table("units")
+        .select("id, properties!inner(owner_id)")
+        .in_("property_id", property_ids)
+        .eq("properties.owner_id", ctx.owner_id)
+        .limit(2000)
+        .execute()
+        .data
+        or []
+    )
+    unit_ids = [str(r["id"]) for r in unit_rows if r.get("id")]
+    if not unit_ids:
+        return {"items": [], "next_cursor": None}
+
     size = page_size(limit)
     query = (
-        user.db.table("transactions")
+        db.table("transactions")
         .select(
             "id, unit_id, amount, status, method, paid_at, receipt_url, "
             "payment_reference, charge_type, charge_label, created_at, "
@@ -398,7 +490,7 @@ def portfolio_money_in(
             "properties!inner(id, name, owner_id))"
         )
         .eq("status", "paid")
-        .eq("units.properties.owner_id", user.id)
+        .in_("unit_id", unit_ids)
         .order("created_at", desc=True)
         .order("id", desc=True)
     )
@@ -493,6 +585,7 @@ def record_manual_payment(payload: dict, user: AuthedUser = Depends(get_current_
         receipt_url = deliver_payment_receipt(db, txn)
         if receipt_url and isinstance(inserted, list) and inserted:
             inserted[0]["receipt_url"] = receipt_url
+        _post_paid_to_chat(db, txn, receipt_url)
     record_audit(
         ctx,
         action="payment.manual",
@@ -633,10 +726,12 @@ def confirm_paystack_payment(
 
     if txn and txn.get("status") == "paid":
         existing_url = (txn.get("receipt_url") or "").strip()
-        if not existing_url.startswith("http"):
+        receipt_url = existing_url if existing_url.startswith("http") else None
+        if not receipt_url:
             receipt_url = deliver_payment_receipt(db, txn)
             if receipt_url and isinstance(result, list) and result:
                 result[0]["receipt_url"] = receipt_url
+        _post_paid_to_chat(db, txn, receipt_url)
 
     return result
 
@@ -682,6 +777,8 @@ async def paystack_webhook(request: Request):
             if txn and txn.get("status") == "paid":
                 # Avoid duplicate receipt WhatsApps if confirm already delivered
                 existing_url = (txn.get("receipt_url") or "").strip()
-                if not existing_url.startswith("http"):
-                    deliver_payment_receipt(db, txn)
+                receipt_url = existing_url if existing_url.startswith("http") else None
+                if not receipt_url:
+                    receipt_url = deliver_payment_receipt(db, txn)
+                _post_paid_to_chat(db, txn, receipt_url)
     return {"status": "ok"}

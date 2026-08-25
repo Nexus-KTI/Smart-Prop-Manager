@@ -1,0 +1,276 @@
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import { TenantLeaseGate } from "@/components/TenantLeaseGate";
+import { useToast } from "@/components/ToastProvider";
+import {
+  cancelMyMaintenanceRequest,
+  createMyMaintenanceRequest,
+  fetchMyMaintenanceRequests,
+  openMaintenanceThread,
+  type MaintenanceRequest,
+} from "@/lib/api";
+import {
+  MAINTENANCE_STATUS_LABELS,
+  PRIORITY_LABELS,
+  labelOrTitle,
+} from "@/lib/labels";
+
+export function TenantRequestsClient() {
+  const { showToast } = useToast();
+  const router = useRouter();
+  const [items, setItems] = useState<MaintenanceRequest[]>([]);
+  const [listError, setListError] = useState<string | null>(null);
+  const [listLoading, setListLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    setListLoading(true);
+    setListError(null);
+    try {
+      setItems(await fetchMyMaintenanceRequests());
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : "Could not load");
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const title = String(data.get("title") || "").trim();
+    const details = String(data.get("details") || "").trim();
+    const priority = String(data.get("priority") || "normal");
+    const category = String(data.get("category") || "general");
+    const photo_url = String(data.get("photo_url") || "").trim();
+    const preferred_time = String(data.get("preferred_time") || "").trim();
+    const allow_entry = data.get("allow_entry") === "on";
+    if (!title) return;
+
+    setSubmitting(true);
+    try {
+      await createMyMaintenanceRequest({
+        title,
+        details: details || undefined,
+        priority,
+        category,
+        photo_url: photo_url || undefined,
+        preferred_time: preferred_time || undefined,
+        allow_entry,
+      });
+      showToast("Request sent to your landlord");
+      form.reset();
+      setFormOpen(false);
+      await load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not submit");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onCancel(id: string) {
+    try {
+      await cancelMyMaintenanceRequest(id);
+      showToast("Request canceled");
+      await load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not cancel");
+    }
+  }
+
+  return (
+    <TenantLeaseGate
+      title="Requests"
+      subtitle="Repair and maintenance requests for your unit."
+    >
+      {() => (
+        <>
+          <div className="dashboard-header-actions">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => setFormOpen((open) => !open)}
+            >
+              {formOpen ? "Close form" : "New request"}
+            </button>
+            <Link href="/tenant" className="btn-secondary">
+              Back to home
+            </Link>
+          </div>
+
+          {formOpen ? (
+            <form className="form-card" onSubmit={(e) => void onSubmit(e)} style={{ marginTop: 16 }}>
+              <label className="form-field">
+                <span className="form-label">Title</span>
+                <input
+                  className="form-input"
+                  name="title"
+                  required
+                  maxLength={120}
+                  placeholder="e.g. Leaking kitchen tap"
+                  disabled={submitting}
+                />
+              </label>
+              <label className="form-field">
+                <span className="form-label">Details</span>
+                <textarea
+                  className="form-input"
+                  name="details"
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="What happened, when, and any access notes"
+                  disabled={submitting}
+                />
+              </label>
+              <label className="form-field">
+                <span className="form-label">Category</span>
+                <select className="form-input" name="category" defaultValue="general" disabled={submitting}>
+                  <option value="general">General</option>
+                  <option value="plumbing">Plumbing</option>
+                  <option value="electrical">Electrical</option>
+                  <option value="hvac">HVAC / AC</option>
+                  <option value="appliance">Appliance</option>
+                  <option value="structural">Structural</option>
+                  <option value="pest">Pest</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label className="form-field">
+                <span className="form-label">Priority</span>
+                <select className="form-input" name="priority" defaultValue="normal" disabled={submitting}>
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </label>
+              <label className="form-field">
+                <span className="form-label">Preferred time (optional)</span>
+                <input
+                  className="form-input"
+                  name="preferred_time"
+                  maxLength={120}
+                  placeholder="e.g. Weekday mornings"
+                  disabled={submitting}
+                />
+              </label>
+              <label className="form-field">
+                <span className="form-label">Photo URL (optional)</span>
+                <input
+                  className="form-input"
+                  name="photo_url"
+                  maxLength={2000}
+                  placeholder="https://…"
+                  disabled={submitting}
+                />
+              </label>
+              <label className="form-field" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="checkbox" name="allow_entry" disabled={submitting} />
+                <span className="form-label" style={{ margin: 0 }}>
+                  Allow entry if I’m away
+                </span>
+              </label>
+              <button type="submit" className="btn-primary" disabled={submitting}>
+                {submitting ? "Sending…" : "Submit request"}
+              </button>
+            </form>
+          ) : null}
+
+          {listLoading ? (
+            <p className="page-subtitle" style={{ marginTop: 16 }}>
+              Loading requests…
+            </p>
+          ) : null}
+          {listError ? <p className="form-error">{listError}</p> : null}
+
+          <div className="data-table-wrap" style={{ marginTop: 16 }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Request</th>
+                  <th>Category</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {items.length === 0 && !listLoading ? (
+                  <tr>
+                    <td colSpan={5} className="table-muted">
+                      No repair requests yet. Submit one when something needs
+                      fixing, your landlord sees it on this unit’s Payments page.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <strong>{row.title}</strong>
+                        {row.details ? (
+                          <p className="table-muted" style={{ margin: "4px 0 0" }}>
+                            {row.details}
+                          </p>
+                        ) : null}
+                        {row.photo_url ? (
+                          <p style={{ margin: "4px 0 0" }}>
+                            <a href={row.photo_url} className="table-link" target="_blank" rel="noreferrer">
+                              Photo
+                            </a>
+                          </p>
+                        ) : null}
+                      </td>
+                      <td>{row.category || "general"}</td>
+                      <td>{labelOrTitle(PRIORITY_LABELS, row.priority)}</td>
+                      <td>{labelOrTitle(MAINTENANCE_STATUS_LABELS, row.status)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="table-link"
+                          onClick={() =>
+                            void openMaintenanceThread(row.id)
+                              .then(() => router.push("/tenant/messages"))
+                              .catch((err) =>
+                                showToast(
+                                  err instanceof Error ? err.message : "Could not open messages",
+                                ),
+                              )
+                          }
+                        >
+                          Message
+                        </button>
+                        {row.status === "new" || row.status === "in_progress" ? (
+                          <>
+                            {" · "}
+                            <button
+                              type="button"
+                              className="table-link"
+                              onClick={() => void onCancel(row.id)}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </TenantLeaseGate>
+  );
+}

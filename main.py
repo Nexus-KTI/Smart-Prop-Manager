@@ -8,7 +8,27 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import admin, events, leads, notify_diag, payments, properties, reminders, staff, tenancies, users
+from routers import (
+    access,
+    admin,
+    applications,
+    artisans,
+    events,
+    expenses,
+    leads,
+    maintenance,
+    messages,
+    notify_diag,
+    payments,
+    properties,
+    publications,
+    reminders,
+    staff,
+    tasks,
+    tenancies,
+    users,
+    utilities,
+)
 
 _sentry_dsn = (os.getenv("SENTRY_DSN") or "").strip()
 if _sentry_dsn:
@@ -50,6 +70,15 @@ app.include_router(properties.router)
 app.include_router(payments.router)
 app.include_router(reminders.router)
 app.include_router(tenancies.router)
+app.include_router(maintenance.router)
+app.include_router(utilities.router)
+app.include_router(access.router)
+app.include_router(artisans.router)
+app.include_router(applications.router)
+app.include_router(expenses.router)
+app.include_router(publications.router)
+app.include_router(tasks.router)
+app.include_router(messages.router)
 app.include_router(staff.router)
 app.include_router(leads.router)
 app.include_router(admin.router)

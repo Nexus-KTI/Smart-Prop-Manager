@@ -9,6 +9,7 @@ import {
   readPortfolioOwnerId,
   writePortfolioOwnerId,
 } from "@/lib/portfolio";
+import { STAFF_ROLE_LABELS, labelOrTitle } from "@/lib/labels";
 
 export function PortfolioSwitcherClient() {
   const [items, setItems] = useState<StaffPortfolio[]>([]);
@@ -72,7 +73,7 @@ export function PortfolioSwitcherClient() {
               <div>
                 <div>{p.owner_label || "Owner"}</div>
                 <div className="table-muted">
-                  {p.role} · {p.property_count}{" "}
+                  {labelOrTitle(STAFF_ROLE_LABELS, p.role)} · {p.property_count}{" "}
                   {p.property_count === 1 ? "property" : "properties"}
                 </div>
               </div>

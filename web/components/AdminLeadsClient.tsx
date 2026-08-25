@@ -12,6 +12,7 @@ import {
   type Lead,
   type LeadStatus,
 } from "@/lib/api";
+import { LEAD_STATUS_LABELS, labelOrTitle } from "@/lib/labels";
 
 const STATUSES: LeadStatus[] = ["new", "contacted", "invited", "closed"];
 
@@ -120,12 +121,12 @@ export function AdminLeadsClient() {
       }
       if (result.invite_sent) {
         showToast(
-          `Invite sent via ${result.invite_channel ?? "SMS"}. Link copied — they must open that SMS link to sign up.`,
+          `Invite sent via ${result.invite_channel ?? "SMS"}. Link copied. They must open that SMS link to sign up.`,
         );
       } else {
         showToast(
           result.invite_error
-            ? `Invite link copied — send failed: ${result.invite_error}`
+            ? `Invite link copied, send failed: ${result.invite_error}`
             : "Invite link copied",
         );
         const wa = whatsappHref(lead.whatsapp);
@@ -156,17 +157,17 @@ export function AdminLeadsClient() {
       <div className="stat-row">
         <div className="stat-block">
           <p className="stat-label">New (loaded)</p>
-          <p className="stat-value mono-data">{loading ? "—" : stats.fresh}</p>
+          <p className="stat-value mono-data">{loading ? "-" : stats.fresh}</p>
         </div>
         <div className="stat-block">
           <p className="stat-label">Contacted (loaded)</p>
           <p className="stat-value mono-data">
-            {loading ? "—" : stats.contacted}
+            {loading ? "-" : stats.contacted}
           </p>
         </div>
         <div className="stat-block">
           <p className="stat-label">Loaded</p>
-          <p className="stat-value mono-data">{loading ? "—" : stats.total}</p>
+          <p className="stat-value mono-data">{loading ? "-" : stats.total}</p>
         </div>
       </div>
 
@@ -215,9 +216,11 @@ export function AdminLeadsClient() {
                         lead.whatsapp
                       )}
                     </td>
-                    <td className="mono-data">{lead.source ?? "access"}</td>
                     <td className="mono-data">
-                      {lead.unit_count == null ? "—" : lead.unit_count}
+                      {labelOrTitle({}, lead.source ?? "access")}
+                    </td>
+                    <td className="mono-data">
+                      {lead.unit_count == null ? "-" : lead.unit_count}
                     </td>
                     <td>
                       <select
@@ -234,7 +237,7 @@ export function AdminLeadsClient() {
                       >
                         {STATUSES.map((value) => (
                           <option key={value} value={value}>
-                            {value}
+                            {labelOrTitle(LEAD_STATUS_LABELS, value)}
                           </option>
                         ))}
                       </select>

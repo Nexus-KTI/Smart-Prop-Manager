@@ -14,6 +14,7 @@ import {
   uploadTenancyDocument,
   type Tenancy,
 } from "@/lib/api";
+import { tenancyStatusLabel } from "@/lib/labels";
 
 type Props = {
   unitId: string;
@@ -30,12 +31,32 @@ export function TenancyDossierClient({
   const [docsMessage, setDocsMessage] = useState<string | null>(null);
   const [docsEnabled, setDocsEnabled] = useState(false);
   const [docItems, setDocItems] = useState<
-    Array<{ id: string; doc_type: string; file_name: string; url?: string | null }>
+    Array<{
+      id: string;
+      doc_type: string;
+      file_name: string;
+      url?: string | null;
+      expires_on?: string | null;
+      requires_ack?: boolean;
+      acknowledged_at?: string | null;
+    }>
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [invitePath, setInvitePath] = useState<string | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [requireAck, setRequireAck] = useState(false);
+  const [expiresOn, setExpiresOn] = useState("");
+
+  useEffect(() => {
+    if (!invitePath) {
+      setInviteUrl(null);
+      return;
+    }
+    setInviteUrl(`${window.location.origin}${invitePath}`);
+  }, [invitePath]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,15 +134,39 @@ export function TenancyDossierClient({
     if (!tenancy) return;
     setBusy(true);
     setError(null);
+    setInviteCopied(false);
     try {
       const result = await inviteTenant(tenancy.id);
       setTenancy(result.tenancy);
       setInvitePath(result.claim_path);
+      if (result.invite_sent) {
+        /* dossier uses same toast-free path; note via success class below */
+      } else if (result.invite_error) {
+        setError(`Link ready. Notify failed: ${result.invite_error}`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invite failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function copyInviteLink() {
+    if (!inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setInviteCopied(true);
+    } catch {
+      setError("Could not copy link. Select it manually.");
+    }
+  }
+
+  function shareWhatsApp() {
+    if (!inviteUrl) return;
+    const text = encodeURIComponent(
+      `Claim your Nexora tenant invite to see rent and pay online:\n${inviteUrl}`,
+    );
+    window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
   }
 
   async function onUpload(file: File, docType: string) {
@@ -141,6 +186,8 @@ export function TenancyDossierClient({
         file_name: file.name,
         content_type: file.type || "application/pdf",
         content_base64: btoa(binary),
+        expires_on: expiresOn || null,
+        requires_ack: requireAck,
       });
       await load();
     } catch (err) {
@@ -206,7 +253,8 @@ export function TenancyDossierClient({
       ) : (
         <>
           <p className="page-subtitle">
-            Status: <span className="mono-data">{tenancy.status}</span>
+            Status:{" "}
+            <span className="mono-data">{tenancyStatusLabel(tenancy.status)}</span>
             {tenancy.tenant_name ? ` · ${tenancy.tenant_name}` : null}
             {tenancy.tenant_contact ? ` · ${tenancy.tenant_contact}` : null}
           </p>
@@ -241,34 +289,70 @@ export function TenancyDossierClient({
             ))}
           </ul>
 
-          <div className="dashboard-header-actions" style={{ marginTop: 16 }}>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={busy || tenancy.status === "active" || !tenancy.can_activate}
-              onClick={() => void onActivate()}
-            >
-              Activate occupancy
-            </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={busy || !tenancy.tenant_contact}
-              onClick={() => void onInvite()}
-            >
-              Invite tenant
-            </button>
+          <div className="form-card tenant-invite-panel" style={{ marginTop: 16 }}>
+            <h2 className="page-title" style={{ fontSize: "1.1rem", margin: 0 }}>
+              Tenant invite
+            </h2>
+            <p className="page-subtitle" style={{ margin: 0 }}>
+              Send a one-time claim link. Your tenant signs in with the same
+              phone/email on the unit, opens the link, and links this occupancy.
+            </p>
+            {!tenancy.tenant_contact ? (
+              <p className="form-error">
+                Add a tenant phone or WhatsApp on the unit first, then invite.{" "}
+                <Link href={`/properties/${propertyId}`}>Edit property units</Link>
+              </p>
+            ) : null}
+            <div className="dashboard-header-actions">
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy || tenancy.status === "active" || !tenancy.can_activate}
+                onClick={() => void onActivate()}
+              >
+                Activate occupancy
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy || !tenancy.tenant_contact}
+                onClick={() => void onInvite()}
+              >
+                {invitePath ? "Resend invite link" : "Invite tenant"}
+              </button>
+            </div>
+            {tenancy.activation_blockers && tenancy.activation_blockers.length > 0 ? (
+              <p className="table-muted">
+                Still needed: {tenancy.activation_blockers.join(", ")}
+              </p>
+            ) : null}
+            {inviteUrl ? (
+              <div className="tenant-invite-link-box">
+                <p className="form-label">Claim link</p>
+                <p className="mono-data tenant-invite-url">{inviteUrl}</p>
+                <div className="dashboard-header-actions">
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => void copyInviteLink()}
+                  >
+                    {inviteCopied ? "Copied" : "Copy link"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={shareWhatsApp}
+                  >
+                    Share on WhatsApp
+                  </button>
+                </div>
+                <p className="table-muted">
+                  We also try SMS/email to {tenancy.tenant_contact} when notify
+                  is configured.
+                </p>
+              </div>
+            ) : null}
           </div>
-          {tenancy.activation_blockers && tenancy.activation_blockers.length > 0 ? (
-            <p className="table-muted">
-              Still needed: {tenancy.activation_blockers.join(", ")}
-            </p>
-          ) : null}
-          {invitePath ? (
-            <p className="page-subtitle">
-              Claim link: <span className="mono-data">{invitePath}</span>
-            </p>
-          ) : null}
 
           <h2 className="page-title" style={{ fontSize: "1.15rem", marginTop: 28 }}>
             Documents
@@ -285,20 +369,43 @@ export function TenancyDossierClient({
               ).
             </p>
           ) : (
-            <label className="form-field" style={{ maxWidth: 320 }}>
-              <span className="form-label">Upload PDF (agreement / ID / other)</span>
-              <input
-                type="file"
-                accept="application/pdf,image/*"
-                disabled={busy}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  void onUpload(file, "other");
-                  event.target.value = "";
-                }}
-              />
-            </label>
+            <div className="form-card" style={{ maxWidth: 420 }}>
+              <label className="form-field">
+                <span className="form-label">Expires on (optional)</span>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={expiresOn}
+                  onChange={(e) => setExpiresOn(e.target.value)}
+                  disabled={busy}
+                />
+              </label>
+              <label className="form-field" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={requireAck}
+                  onChange={(e) => setRequireAck(e.target.checked)}
+                  disabled={busy}
+                />
+                <span className="form-label" style={{ margin: 0 }}>
+                  Require tenant acknowledgment
+                </span>
+              </label>
+              <label className="form-field">
+                <span className="form-label">Upload PDF (agreement / ID / other)</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  disabled={busy}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    void onUpload(file, "other");
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
           )}
           {docItems.length === 0 ? (
             <p className="table-muted">No documents yet.</p>

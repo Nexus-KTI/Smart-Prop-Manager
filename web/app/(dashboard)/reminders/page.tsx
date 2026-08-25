@@ -98,7 +98,10 @@ export default function RemindersPage() {
         const existing = new Set(current.map((row) => row.id));
         const appended = newRows.filter((row) => !existing.has(row.id));
         const combined = [...current, ...appended];
-        setSelected((prev) => ({ ...prev, ...overdueSelection(combined) }));
+        setSelected((prev) => ({
+          ...prev,
+          ...overdueSelection(appended),
+        }));
         return combined;
       });
       setNextCursor(page.next_cursor);
@@ -118,12 +121,30 @@ export default function RemindersPage() {
     try {
       const result = await sendBulkReminders({ unit_ids: selectedIds });
       const channel = result.channel ? ` via ${result.channel}` : "";
-      const firstError = result.errors?.[0]?.detail;
+      const errBits = (result.errors ?? [])
+        .slice(0, 2)
+        .map((e) =>
+          e.label ? `${e.label}: ${e.detail}` : e.detail,
+        )
+        .filter(Boolean);
+      const errSuffix = errBits.length ? `, ${errBits.join("; ")}` : "";
       showToast(
-        firstError
-          ? `Reminders: ${result.sent} sent, ${result.failed} failed${channel}. ${firstError}`
-          : `Reminders: ${result.sent} sent, ${result.failed} failed, ${result.skipped} skipped${channel}.`,
+        `Reminders: ${result.sent} sent, ${result.failed} failed, ${result.skipped} skipped${channel}${errSuffix}.`,
       );
+      // Keep failed units selected so landlord can open those logs / fix contact.
+      const failedIds = new Set(
+        [
+          ...(result.failed_unit_ids ?? []),
+          ...(result.errors ?? []).map((e) => e.unit_id),
+        ].filter((id): id is string => Boolean(id)),
+      );
+      if (failedIds.size > 0) {
+        setSelected(
+          Object.fromEntries([...failedIds].map((id) => [id, true])),
+        );
+      } else if (result.failed === 0) {
+        setSelected({});
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send reminders");
     } finally {

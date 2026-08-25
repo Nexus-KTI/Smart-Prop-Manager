@@ -81,7 +81,7 @@ function buildGettingStarted(properties: Property[]): {
       id: "payment",
       label: "Record your first payment",
       done: hasPayment,
-      // Only link once a unit exists — otherwise the prior step is the action.
+      // Only link once a unit exists, otherwise the prior step is the action.
       href: hasPayment || !firstUnitId ? null : `/payments/${firstUnitId}`,
     },
   ];
@@ -278,9 +278,9 @@ export function PropertiesDashboard({
                             No units yet. Add a unit to track rent and reminders.
                           </p>
                         </td>
-                        <td className="table-muted">—</td>
-                        <td className="mono-data table-muted">—</td>
-                        <td className="mono-data table-muted">—</td>
+                        <td className="table-muted">-</td>
+                        <td className="mono-data table-muted">-</td>
+                        <td className="mono-data table-muted">-</td>
                         <td>
                           <span className="status-badge pending">NO UNIT</span>
                         </td>
@@ -314,16 +314,16 @@ export function PropertiesDashboard({
                       data-highlighted={highlightedUnit ? "true" : undefined}
                     >
                       <td>
-                        {row.propertyId ? (
+                        {row.unitId ? (
                           <Link
-                            href={`/properties/${row.propertyId}`}
+                            href={`/payments/${row.unitId}`}
                             className="table-link"
                           >
                             {row.unit}
                           </Link>
-                        ) : row.unitId ? (
+                        ) : row.propertyId ? (
                           <Link
-                            href={`/payments/${row.unitId}`}
+                            href={`/properties/${row.propertyId}`}
                             className="table-link"
                           >
                             {row.unit}
@@ -349,6 +349,24 @@ export function PropertiesDashboard({
                       </td>
                       <td>
                         <div className="table-actions">
+                          {row.unitId &&
+                          (row.status === "OVERDUE" ||
+                            row.status === "DUE SOON") ? (
+                            <>
+                              <Link
+                                href={`/payments/${row.unitId}`}
+                                className="btn-primary btn-table-cta"
+                              >
+                                Record payment
+                              </Link>
+                              <Link
+                                href={`/reminders/${row.unitId}`}
+                                className="table-link"
+                              >
+                                Remind
+                              </Link>
+                            </>
+                          ) : null}
                           {row.unitId ? (
                             <Link
                               href={`/properties/units/${row.unitId}/edit`}

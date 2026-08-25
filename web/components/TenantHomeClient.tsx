@@ -4,25 +4,68 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { FetchErrorState } from "@/components/FetchErrorState";
+import { TenantNoLeaseEmpty } from "@/components/TenantNoLeaseEmpty";
 import {
   createPendingPaystackPayment,
   confirmPaystackPayment,
+  fetchMe,
   fetchMyTenancy,
+  fetchMyUtilities,
   type Tenancy,
 } from "@/lib/api";
+import { BRAND_NAME, supportWhatsAppUrl } from "@/lib/brand";
 import { formatNaira } from "@/lib/dashboard";
+import { tenancyStatusLabel } from "@/lib/labels";
+import { useToast } from "@/components/ToastProvider";
+
+const WELCOME_KEY = "nexora-tenant-welcome-seen";
+
+function readWelcomeSeen(): boolean {
+  try {
+    return window.localStorage.getItem(WELCOME_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
+
+function markWelcomeSeen() {
+  try {
+    window.localStorage.setItem(WELCOME_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
 
 export function TenantHomeClient() {
+  const { showToast } = useToast();
   const [tenancy, setTenancy] = useState<Tenancy | null>(null);
+  const [profileName, setProfileName] = useState("");
+  const [profileEmail, setProfileEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [supportUrl, setSupportUrl] = useState<string | null>(null);
+  const [hasUtilities, setHasUtilities] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setTenancy(await fetchMyTenancy());
+      const [row, me] = await Promise.all([fetchMyTenancy(), fetchMe()]);
+      setTenancy(row);
+      setProfileName(me.name || "");
+      setProfileEmail(me.email);
+      if (row?.status === "active") {
+        try {
+          const utils = await fetchMyUtilities();
+          setHasUtilities(utils.length > 0);
+        } catch {
+          setHasUtilities(false);
+        }
+      } else {
+        setHasUtilities(false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
     } finally {
@@ -34,6 +77,30 @@ export function TenantHomeClient() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (loading) return;
+    if (!readWelcomeSeen()) setWelcomeOpen(true);
+  }, [loading]);
+
+  useEffect(() => {
+    setSupportUrl(supportWhatsAppUrl());
+  }, []);
+
+  function dismissWelcome() {
+    markWelcomeSeen();
+    setWelcomeOpen(false);
+  }
+
+  async function copyHomeLink() {
+    try {
+      const url = `${window.location.origin}/tenant`;
+      await navigator.clipboard.writeText(url);
+      showToast("Home link copied. Save it or send to yourself");
+    } catch {
+      showToast("Could not copy link");
+    }
+  }
+
   const unit = tenancy?.units;
   const propertyName = useMemo(() => {
     const props = unit?.properties;
@@ -44,9 +111,11 @@ export function TenantHomeClient() {
   const rent = Number(unit?.rent_amount || 0);
   const sc = Number(unit?.service_charge_amount || 0);
   const due = rent + sc;
+  const isActive = tenancy?.status === "active";
+  const isLinkedPending = Boolean(tenancy && !isActive);
 
   async function payRent() {
-    if (!tenancy?.unit_id || due <= 0) return;
+    if (!tenancy?.unit_id || due <= 0 || !isActive) return;
     setPaying(true);
     setError(null);
     try {
@@ -97,65 +166,239 @@ export function TenantHomeClient() {
     }
   }
 
-  if (loading) return <p className="page-subtitle">Loading…</p>;
-  if (error && !tenancy) {
+  const welcomeModal = welcomeOpen ? (
+    <div className="tenant-welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="tenant-welcome-title">
+      <div className="tenant-welcome-card onboarding-card">
+        <button
+          type="button"
+          className="tenant-welcome-close"
+          aria-label="Close"
+          onClick={dismissWelcome}
+        >
+          ×
+        </button>
+        <p className="form-kicker">Tenant account</p>
+        <h2 id="tenant-welcome-title" className="page-title">
+          Welcome
+        </h2>
+        <p className="page-subtitle">
+          Your {BRAND_NAME} account is ready. Claim your landlord invite, then
+          pay and download receipts here, no separate app required.
+        </p>
+        <div className="form-actions auth-actions">
+          <Link
+            href="/tenant/claim"
+            className="btn-primary"
+            onClick={dismissWelcome}
+          >
+            Claim invite
+          </Link>
+          <button type="button" className="btn-secondary" onClick={dismissWelcome}>
+            Done
+          </button>
+        </div>
+        <div className="tenant-welcome-secondary">
+          <button type="button" className="auth-alt-link" onClick={() => void copyHomeLink()}>
+            Copy home link
+          </button>
+          <Link
+            href="/tenant/settings"
+            className="auth-alt-link"
+            onClick={dismissWelcome}
+          >
+            Configure settings
+          </Link>
+          <Link
+            href="/tenant/notices"
+            className="auth-alt-link"
+            onClick={dismissWelcome}
+          >
+            View notices
+          </Link>
+          {supportUrl ? (
+            <a
+              href={supportUrl}
+              className="auth-alt-link"
+              target="_blank"
+              rel="noreferrer"
+              onClick={dismissWelcome}
+            >
+              WhatsApp support
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  if (loading) {
     return (
-      <FetchErrorState
-        title="Couldn’t load your rent"
-        message={error}
-        onRetry={() => void load()}
-      />
+      <>
+        <p className="page-subtitle">Loading…</p>
+        {welcomeModal}
+      </>
     );
   }
+
+  if (error && !tenancy) {
+    return (
+      <>
+        <FetchErrorState
+          title="Couldn’t load your rent"
+          message={error}
+          onRetry={() => void load()}
+        />
+        {welcomeModal}
+      </>
+    );
+  }
+
   if (!tenancy) {
     return (
-      <section className="dashboard">
-        <h1 className="page-title">Your rent</h1>
-        <p className="page-subtitle">
-          No active tenancy linked yet. Use your invite claim link after sign-in.
-        </p>
-        <Link href="/tenant/claim" className="btn-secondary">
-          Claim invite
-        </Link>
-      </section>
+      <>
+        <TenantNoLeaseEmpty
+          profileName={profileName}
+          profileEmail={profileEmail}
+        />
+        {welcomeModal}
+      </>
+    );
+  }
+
+  if (isLinkedPending) {
+    return (
+      <>
+        <section className="dashboard">
+          <p className="form-kicker">Linked</p>
+          <h1 className="page-title">Almost there</h1>
+          <p className="page-subtitle">
+            You’re linked to{" "}
+            {unit?.label ? (
+              <span className="mono-data">{unit.label}</span>
+            ) : (
+              "your unit"
+            )}
+            {propertyName ? ` · ${propertyName}` : ""}. Your landlord still needs
+            to activate occupancy before rent and receipts unlock.
+          </p>
+          <p className="form-success" role="status">
+            Status: {tenancyStatusLabel(tenancy.status)}
+          </p>
+          <div className="dashboard-checklist" style={{ marginTop: 24 }}>
+            <h2 className="dashboard-checklist-title">Getting started</h2>
+            <ol className="dashboard-checklist-list">
+              <li className="dashboard-checklist-item" data-state="complete">
+                <span className="onboarding-step-dot" aria-hidden="true">
+                  ✓
+                </span>
+                <span className="dashboard-checklist-label">Invite claimed</span>
+              </li>
+              <li className="dashboard-checklist-item" data-state="active">
+                <span className="onboarding-step-dot" aria-hidden="true">
+                  2
+                </span>
+                <span className="dashboard-checklist-label">
+                  Landlord activates occupancy
+                </span>
+              </li>
+              <li className="dashboard-checklist-item" data-state="upcoming">
+                <span className="onboarding-step-dot" aria-hidden="true">
+                  3
+                </span>
+                <span className="dashboard-checklist-label">Pay and get receipts</span>
+              </li>
+            </ol>
+          </div>
+          <div className="tenant-action-cards" aria-label="Waiting modules">
+            <Link href="/tenant/utilities" className="tenant-action-card">
+              <p className="tenant-action-card-title">Utilities</p>
+              <p className="tenant-action-card-body">
+                Unlock after occupancy is active, and only when your landlord
+                sets providers up on their side.
+              </p>
+              <p className="tenant-action-card-cta">Check utilities →</p>
+            </Link>
+            <Link href="/tenant/requests" className="tenant-action-card">
+              <p className="tenant-action-card-title">Repair requests</p>
+              <p className="tenant-action-card-body">
+                Same gate: active occupancy first, then honest empty until you
+                submit a request.
+              </p>
+              <p className="tenant-action-card-cta">View requests →</p>
+            </Link>
+          </div>
+        </section>
+        {welcomeModal}
+      </>
     );
   }
 
   return (
-    <section className="dashboard">
-      <p className="form-kicker">Tenant view</p>
-      <h1 className="page-title">Your rent</h1>
-      <p className="page-subtitle">
-        {tenancy.tenant_name || "Tenant"}
-        {unit?.label ? ` · ${unit.label}` : ""}
-        {propertyName ? ` · ${propertyName}` : ""}
-      </p>
-      {error ? <p className="form-error">{error}</p> : null}
-      <div className="stat-row">
-        <div className="stat-block">
-          <p className="stat-label">Amount due</p>
-          <p className="stat-value mono-data">{formatNaira(due)}</p>
-          <p className="table-muted">
-            {sc > 0 ? "Rent + service charge" : "Rent"}
-          </p>
+    <>
+      <section className="dashboard">
+        <p className="form-kicker">Tenant view</p>
+        <h1 className="page-title">Your rent</h1>
+        <p className="page-subtitle">
+          {tenancy.tenant_name || "Tenant"}
+          {unit?.label ? ` · ${unit.label}` : ""}
+          {propertyName ? ` · ${propertyName}` : ""}
+        </p>
+        {error ? <p className="form-error">{error}</p> : null}
+        <div className="stat-row">
+          <div className="stat-block">
+            <p className="stat-label">Amount due</p>
+            <p className="stat-value mono-data">{formatNaira(due)}</p>
+            <p className="table-muted">
+              {sc > 0 ? "Rent + service charge" : "Rent"}
+            </p>
+          </div>
         </div>
-      </div>
-      <div className="dashboard-header-actions">
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={paying || due <= 0}
-          onClick={() => void payRent()}
-        >
-          Pay rent
-        </button>
-        <Link href="/tenant/documents" className="btn-secondary">
-          Your documents
-        </Link>
-        <Link href="/tenant/receipts" className="btn-secondary">
-          Receipts
-        </Link>
-      </div>
-    </section>
+        <div className="dashboard-header-actions">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={paying || due <= 0}
+            onClick={() => void payRent()}
+          >
+            Pay rent
+          </button>
+          <Link href="/tenant/documents" className="btn-secondary">
+            Your documents
+          </Link>
+          <Link href="/tenant/receipts" className="btn-secondary">
+            Receipts
+          </Link>
+        </div>
+        <div className="tenant-action-cards" aria-label="Landlord-originated tasks">
+          <Link href="/tenant/utilities" className="tenant-action-card">
+            <p className="tenant-action-card-title">
+              {hasUtilities ? "Utilities ready" : "Set up utilities"}
+            </p>
+            <p className="tenant-action-card-body">
+              {hasUtilities
+                ? "Your landlord published providers for this unit, open Utilities for meter and pay notes."
+                : "If your landlord invited you to turn on utilities for this unit, open the module to see setup status."}
+            </p>
+            <p className="tenant-action-card-cta">Open utilities →</p>
+          </Link>
+          <Link href="/tenant/requests" className="tenant-action-card">
+            <p className="tenant-action-card-title">Report a repair</p>
+            <p className="tenant-action-card-body">
+              Submit a request with priority and access notes, your landlord
+              sees it on this unit’s Payments page.
+            </p>
+            <p className="tenant-action-card-cta">Open requests →</p>
+          </Link>
+          <Link href="/tenant/access" className="tenant-action-card">
+            <p className="tenant-action-card-title">Gate codes</p>
+            <p className="tenant-action-card-body">
+              View active access passes issued to your account.
+            </p>
+            <p className="tenant-action-card-cta">Open access →</p>
+          </Link>
+        </div>
+      </section>
+      {welcomeModal}
+    </>
   );
 }

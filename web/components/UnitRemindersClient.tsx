@@ -7,6 +7,11 @@ import { LoadMoreButton } from "@/components/LoadMoreButton";
 import { useToast } from "@/components/ToastProvider";
 import { fetchReminderLogPage, retryReminder, sendReminder } from "@/lib/api";
 import { formatNaira } from "@/lib/dashboard";
+import {
+  CHANNEL_LABELS,
+  REMINDER_STATUS_LABELS,
+  labelOrTitle,
+} from "@/lib/labels";
 import type { Reminder } from "@/lib/types";
 
 type Props = {
@@ -123,7 +128,7 @@ export function UnitRemindersClient({
       } catch {
         /* keep prior rows if refresh fails */
       }
-      // Keep recovery on the row — toast only, not a full-page empty.
+      // Keep recovery on the row, toast only, not a full-page empty.
       showToast(
         err instanceof Error ? err.message : "Could not retry notice.",
       );
@@ -271,12 +276,14 @@ export function UnitRemindersClient({
                   return (
                     <tr key={reminder.id}>
                       <td className="mono-data">{kindLabel(reminder.kind)}</td>
-                      <td className="mono-data">{reminder.channel}</td>
+                      <td className="mono-data">
+                        {labelOrTitle(CHANNEL_LABELS, reminder.channel)}
+                      </td>
                       <td>
                         <span
                           className={`status-badge ${statusTone(reminder.status)}`}
                         >
-                          {reminder.status}
+                          {labelOrTitle(REMINDER_STATUS_LABELS, reminder.status)}
                         </span>
                         {detail ? (
                           <p className="reminder-error-detail" title={detail}>

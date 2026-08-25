@@ -14,6 +14,7 @@ import {
   resolveUnitStatus,
 } from "@/lib/dashboard";
 import { fetchProperty, fetchPropertyUnitsPage } from "@/lib/api";
+import { PROPERTY_TYPE_LABELS, labelOrTitle } from "@/lib/labels";
 import type { Property, Unit } from "@/lib/types";
 
 function PropertyDetailSkeleton() {
@@ -170,7 +171,10 @@ export default function PropertyDetailPage() {
             {property.type ? (
               <>
                 {" "}
-                · <span className="mono-data">{property.type}</span>
+                ·{" "}
+                <span className="mono-data">
+                  {labelOrTitle(PROPERTY_TYPE_LABELS, property.type)}
+                </span>
               </>
             ) : null}
           </p>
@@ -242,7 +246,7 @@ export default function PropertyDetailPage() {
                           {unit.label}
                         </Link>
                       </td>
-                      <td>{unit.tenant_name?.trim() || "—"}</td>
+                      <td>{unit.tenant_name?.trim() || "-"}</td>
                       <td className="mono-data">
                         {formatNaira(Number(unit.rent_amount) || 0)}
                         {Number(unit.service_charge_amount) > 0 ? (

@@ -62,11 +62,11 @@ def _default_message(
     ).text
 
 
-def _business_name(user: AuthedUser) -> str | None:
+def _business_name_for_owner(db, owner_id: str) -> str | None:
     rows = (
-        user.db.table("profiles")
+        db.table("profiles")
         .select("business_name")
-        .eq("id", user.id)
+        .eq("id", owner_id)
         .limit(1)
         .execute()
         .data
@@ -78,6 +78,10 @@ def _business_name(user: AuthedUser) -> str | None:
     return name or None
 
 
+def _business_name(user: AuthedUser) -> str | None:
+    return _business_name_for_owner(user.db, user.id)
+
+
 @router.get("/unit/{unit_id}")
 def reminder_log(
     unit_id: str,
@@ -85,9 +89,14 @@ def reminder_log(
     cursor: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1, le=50),
 ):
+    from lib.access import PERM_CHASE, require_unit_access
+    from lib.db import create_service_client
+
+    ctx = require_unit_access(user.id, str(unit_id), permission=PERM_CHASE)
+    db = user.db if ctx.role == "owner" else create_service_client()
     size = page_size(limit)
     query = (
-        user.db.table("reminders")
+        db.table("reminders")
         .select("*")
         .eq("unit_id", unit_id)
         .order("sent_at", desc=True)
@@ -200,6 +209,9 @@ def send_reminder(payload: dict, user: AuthedUser = Depends(get_current_user)):
 def send_bulk_reminders(
     payload: dict, user: AuthedUser = Depends(get_current_user)
 ):
+    from lib.access import PERM_CHASE, require_unit_access
+    from lib.db import create_service_client
+
     unit_ids = payload.get("unit_ids") or []
     if not isinstance(unit_ids, list) or not unit_ids:
         raise HTTPException(
@@ -207,26 +219,38 @@ def send_bulk_reminders(
             detail="unit_ids is required",
         )
     unit_ids = [str(u) for u in unit_ids if u][:50]
+    svc = create_service_client()
 
-    channel = get_owner_notification_channel(user.db, user.id)
-    business = _business_name(user)
     stats: dict = {
         "sent": 0,
         "failed": 0,
         "skipped": 0,
-        "channel": channel,
+        "channel": None,
         "errors": [],
+        "failed_unit_ids": [],
     }
 
     for unit_id in unit_ids:
+        try:
+            ctx = require_unit_access(user.id, unit_id, permission=PERM_CHASE)
+        except HTTPException:
+            stats["skipped"] += 1
+            continue
+
+        db = user.db if ctx.role == "owner" else svc
+        channel = get_owner_notification_channel(db, ctx.owner_id)
+        if not stats["channel"]:
+            stats["channel"] = channel
+        business = _business_name_for_owner(db, ctx.owner_id)
+
         rows = (
-            user.db.table("units")
+            db.table("units")
             .select(
                 "id, label, rent_amount, tenant_contact, "
                 "properties!inner(name, owner_id)"
             )
             .eq("id", unit_id)
-            .eq("properties.owner_id", user.id)
+            .eq("properties.owner_id", ctx.owner_id)
             .limit(1)
             .execute()
             .data
@@ -243,9 +267,35 @@ def send_bulk_reminders(
             property_row = property_row[0] if property_row else {}
         property_name = property_row.get("name") or "your property"
         unit_label = unit.get("label") or "unit"
+        unit_key = f"{property_name} · {unit_label}"
+
+        def _note_failure(detail: str) -> None:
+            stats["failed"] += 1
+            stats["failed_unit_ids"].append(unit_id)
+            if len(stats["errors"]) < 20:
+                stats["errors"].append(
+                    {
+                        "unit_id": unit_id,
+                        "label": unit_key,
+                        "detail": detail,
+                    }
+                )
 
         if not contact or not contact_matches_channel(channel, contact):
-            stats["skipped"] += 1
+            # Mirror cron: persist failed row so landlord can Retry from unit log.
+            if not contact:
+                error_detail = "Unit has no tenant contact"
+            else:
+                error_detail = f"Tenant contact does not match {channel} channel"
+            _note_failure(error_detail)
+            _insert_reminder(
+                db,
+                unit_id=unit_id,
+                channel=channel,
+                kind="due",
+                reminder_status="failed",
+                error_detail=error_detail,
+            )
             continue
 
         from lib.email_templates import tenant_due
@@ -271,24 +321,15 @@ def send_bulk_reminders(
         except Exception as exc:
             used = channel
             reminder_status = "failed"
-            stats["failed"] += 1
             reason = getattr(exc, "msg", None) or str(exc)
-            # TwilioRestException puts detail in .msg; keep it short for UI
             reason = str(reason).strip()
             if len(reason) > 180:
                 reason = reason[:177] + "…"
             error_detail = reason or "Send failed"
-            if len(stats["errors"]) < 5:
-                stats["errors"].append(
-                    {
-                        "unit_id": unit_id,
-                        "label": f"{property_name} · {unit_label}",
-                        "detail": error_detail,
-                    }
-                )
+            _note_failure(error_detail)
 
         _insert_reminder(
-            user.db,
+            db,
             unit_id=unit_id,
             channel=used,
             kind="due",
@@ -305,11 +346,17 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
     Retry a failed reminder/receipt/landlord-notice row.
     Inserts a new log entry; never blocks on prior row state beyond ownership checks.
     """
+    from lib.access import PERM_CHASE, require_unit_access
+    from lib.db import create_service_client
+
+    svc = create_service_client()
     rows = (
-        user.db.table("reminders")
-        .select("*, units!inner(id, label, rent_amount, tenant_contact, property_id, properties!inner(id, name, owner_id))")
+        svc.table("reminders")
+        .select(
+            "*, units!inner(id, label, rent_amount, tenant_contact, tenant_name, "
+            "property_id, properties!inner(id, name, owner_id))"
+        )
         .eq("id", reminder_id)
-        .eq("units.properties.owner_id", user.id)
         .limit(1)
         .execute()
         .data
@@ -333,16 +380,22 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         property_row = property_row[0] if property_row else {}
 
     unit_id = reminder.get("unit_id") or unit.get("id")
+    if not unit_id:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+
+    ctx = require_unit_access(user.id, str(unit_id), permission=PERM_CHASE)
+    db = user.db if ctx.role == "owner" else svc
+    owner_id = ctx.owner_id
     kind = reminder.get("kind") or "due"
-    channel = get_owner_notification_channel(user.db, user.id)
+    channel = get_owner_notification_channel(db, owner_id)
     property_name = property_row.get("name") or "your property"
     unit_label = unit.get("label") or "unit"
-    business = _business_name(user)
+    business = _business_name_for_owner(db, owner_id)
 
     if kind == "landlord_payment":
         amount = 0
         paid_rows = (
-            user.db.table("transactions")
+            db.table("transactions")
             .select("amount")
             .eq("unit_id", unit_id)
             .eq("status", "paid")
@@ -354,17 +407,22 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         )
         if paid_rows:
             amount = paid_rows[0].get("amount") or 0
-        notify_status = notify_landlord_payment_received(
-            user.id,
+        notify_result = notify_landlord_payment_received(
+            owner_id,
             amount=amount,
             unit_label=unit_label,
             property_name=property_name,
             tenant_name=(unit.get("tenant_name") or None),
             unit_id=str(unit_id),
         )
-        detail = landlord_payment_notice_detail(notify_status)
+        if isinstance(notify_result, str):
+            notify_status = notify_result
+            detail = landlord_payment_notice_detail(notify_status)
+        else:
+            notify_status = notify_result.status
+            detail = notify_result.detail or landlord_payment_notice_detail(notify_status)
         inserted = _insert_reminder(
-            user.db,
+            db,
             unit_id=unit_id,
             channel="email",
             kind="landlord_payment",
@@ -382,7 +440,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         from routers.payments import deliver_payment_receipt
 
         paid = (
-            user.db.table("transactions")
+            db.table("transactions")
             .select("*")
             .eq("unit_id", unit_id)
             .eq("status", "paid")
@@ -395,7 +453,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         if not paid:
             detail = "No paid transaction to resend a receipt for"
             _insert_reminder(
-                user.db,
+                db,
                 unit_id=unit_id,
                 channel=channel,
                 kind="receipt",
@@ -414,7 +472,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
             if not contact:
                 detail = "Unit has no tenant contact"
                 _insert_reminder(
-                    user.db,
+                    db,
                     unit_id=unit_id,
                     channel=channel,
                     kind="receipt",
@@ -443,7 +501,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
                     email_html=receipt_mail.html,
                 )
                 return _insert_reminder(
-                    user.db,
+                    db,
                     unit_id=unit_id,
                     channel=used,
                     kind="receipt",
@@ -452,7 +510,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
             except Exception as exc:
                 detail = str(exc).strip() or f"Failed to send {channel} receipt"
                 _insert_reminder(
-                    user.db,
+                    db,
                     unit_id=unit_id,
                     channel=channel,
                     kind="receipt",
@@ -465,7 +523,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
                 ) from exc
 
         # No public receipt yet — run full delivery (logs its own reminder rows).
-        receipt_url = deliver_payment_receipt(user.db, txn)
+        receipt_url = deliver_payment_receipt(db, txn)
         if not receipt_url:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -473,7 +531,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
             )
         # deliver_payment_receipt already logged; return latest receipt row
         latest = (
-            user.db.table("reminders")
+            db.table("reminders")
             .select("*")
             .eq("unit_id", unit_id)
             .eq("kind", "receipt")
@@ -491,7 +549,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         from lib.notify import get_owner_email, send_email
 
         term_rows = (
-            user.db.table("units")
+            db.table("units")
             .select("term_end, tenant_name")
             .eq("id", unit_id)
             .limit(1)
@@ -510,7 +568,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         if term_end is None:
             detail = "Unit has no term end date"
             _insert_reminder(
-                user.db,
+                db,
                 unit_id=unit_id,
                 channel="email",
                 kind="renewal",
@@ -521,11 +579,11 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=detail,
             )
-        email = get_owner_email(user.id)
+        email = get_owner_email(owner_id)
         if not email:
             detail = "No email on landlord profile"
             _insert_reminder(
-                user.db,
+                db,
                 unit_id=unit_id,
                 channel="email",
                 kind="renewal",
@@ -553,7 +611,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
                 html=content.html,
             )
             return _insert_reminder(
-                user.db,
+                db,
                 unit_id=unit_id,
                 channel="email",
                 kind="renewal",
@@ -562,7 +620,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         except Exception as exc:
             detail = str(exc).strip() or "Failed to send renewal email"
             _insert_reminder(
-                user.db,
+                db,
                 unit_id=unit_id,
                 channel="email",
                 kind="renewal",
@@ -579,7 +637,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
     if not contact:
         detail = "Unit has no tenant contact"
         _insert_reminder(
-            user.db,
+            db,
             unit_id=unit_id,
             channel=channel,
             kind="due",
@@ -593,7 +651,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
     if not contact_matches_channel(channel, contact):
         detail = f"Tenant contact does not match {channel} channel"
         _insert_reminder(
-            user.db,
+            db,
             unit_id=unit_id,
             channel=channel,
             kind="due",
@@ -622,7 +680,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
             email_html=due_mail.html,
         )
         return _insert_reminder(
-            user.db,
+            db,
             unit_id=unit_id,
             channel=used,
             kind="due",
@@ -631,7 +689,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
     except Exception as exc:
         detail = str(exc).strip() or f"Failed to send {channel} reminder"
         _insert_reminder(
-            user.db,
+            db,
             unit_id=unit_id,
             channel=channel,
             kind="due",
