@@ -247,7 +247,7 @@ async function main() {
   await page.waitForTimeout(2000);
   await shot(page, "11-settings");
   const settingsText = await page.locator("main, .shell-content").innerText();
-  const flashDash = /Profile/.test(early) && /\n—\n|\?\s*$/m.test(early);
+  const flashDash = /Profile/.test(early) && /\n[-—]\n|\?\s*$/m.test(early);
   const themeCount = await page.locator("button, [role='switch']").filter({ hasText: /theme|dark|light|appearance/i }).count();
   const themeToggle = await page.locator(".theme-toggle, [data-theme-toggle], button:has-text('Dark'), button:has-text('Light')").count();
   if (/Retry|Could not load/i.test(settingsText) && /Profile|Settings/i.test(settingsText)) {

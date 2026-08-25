@@ -8,7 +8,7 @@ import {
   type Theme,
 } from "@/lib/theme";
 
-/** Single Appearance control — used on Settings → Profile only. */
+/** Single Appearance control, used on Settings → Profile only. */
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>("light");
   const [ready, setReady] = useState(false);

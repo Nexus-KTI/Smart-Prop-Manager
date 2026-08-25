@@ -80,20 +80,21 @@ def test_notify_swallows_smtp_errors(monkeypatch):
     monkeypatch.setattr(
         "lib.notify.get_owner_email", lambda _owner_id: "landlord@example.com"
     )
+    monkeypatch.setenv("MAILGUN_API_KEY", "test-key")
+    monkeypatch.setenv("MAILGUN_DOMAIN", "example.com")
 
     def _boom(*_args, **_kwargs):
         raise RuntimeError("SMTP down")
 
     monkeypatch.setattr("lib.notify.send_email", _boom)
-    assert (
-        notify_landlord_payment_received(
-            "owner-1",
-            amount=1000,
-            unit_label="A",
-            property_name="B",
-        )
-        == "failed"
+    result = notify_landlord_payment_received(
+        "owner-1",
+        amount=1000,
+        unit_label="A",
+        property_name="B",
     )
+    assert result == "failed"
+    assert result.detail and "SMTP down" in result.detail
 
 
 def test_manual_and_webhook_paths_call_deliver_payment_receipt():

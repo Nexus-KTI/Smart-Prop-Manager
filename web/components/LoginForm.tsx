@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
-import { ForgotPasswordModal } from "@/components/auth/ForgotPasswordModal";
+import { AuthLoadingGate } from "@/components/auth/AuthLoadingGate";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
+import { formatEmailLoginError } from "@/lib/auth-errors";
+import { redirectAfterAuth } from "@/lib/auth-redirect";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "phone" | "email";
@@ -17,7 +19,7 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [forgotOpen, setForgotOpen] = useState(false);
+  const [booting, setBooting] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("error") === "auth_callback") {
@@ -26,35 +28,14 @@ export function LoginForm() {
     }
   }, [searchParams]);
 
-  async function redirectAfterLogin() {
-    let nextPath = "/onboarding";
-    try {
-      const { fetchAdminMe, fetchMe, fetchPropertiesPage } = await import(
-        "@/lib/api"
-      );
-      const profile = await fetchMe();
-      if (profile.role === "tenant") {
-        nextPath = "/tenant";
-      } else {
-        const me = await fetchAdminMe();
-        if (me.is_admin) {
-          nextPath = "/admin/leads";
-        } else {
-          const page = await fetchPropertiesPage();
-          if (page.items.length > 0) nextPath = "/properties";
-        }
-      }
-    } catch {
-      /* new landlords without API access land on onboarding */
-    }
-
-    router.replace(nextPath);
-    router.refresh();
-  }
-
   function selectMode(next: Mode) {
     setMode(next);
     setError(null);
+  }
+
+  async function continueAfterAuth() {
+    setBooting(true);
+    await redirectAfterAuth(router);
   }
 
   async function onEmailSubmit(event: FormEvent<HTMLFormElement>) {
@@ -63,7 +44,7 @@ export function LoginForm() {
     setPending(true);
 
     const form = new FormData(event.currentTarget);
-    const nextEmail = String(form.get("email") ?? "").trim();
+    const nextEmail = String(form.get("email") ?? "").trim().toLowerCase();
     const password = String(form.get("password") ?? "");
     setEmail(nextEmail);
 
@@ -75,12 +56,21 @@ export function LoginForm() {
 
     if (signInError) {
       setPending(false);
-      setError(signInError.message);
+      setError(formatEmailLoginError(signInError.message));
       return;
     }
 
-    await redirectAfterLogin();
+    setPending(false);
+    await continueAfterAuth();
   }
+
+  if (booting) {
+    return <AuthLoadingGate label="Signing you in…" />;
+  }
+
+  const forgotHref = email.trim()
+    ? `/forgot-password?email=${encodeURIComponent(email.trim())}`
+    : "/forgot-password";
 
   return (
     <div className="form-card auth-card">
@@ -111,13 +101,22 @@ export function LoginForm() {
           purpose="signin"
           className="auth-tab-panel"
           verifyLabel="Verify and sign in"
-          onSuccess={redirectAfterLogin}
+          onSuccess={() => void continueAfterAuth()}
         />
       ) : null}
 
       {mode === "email" ? (
         <form className="auth-tab-panel" onSubmit={onEmailSubmit}>
-          {error ? <p className="form-error">{error}</p> : null}
+          {error ? (
+            <p className="form-error">
+              {error}{" "}
+              {searchParams.get("error") === "auth_callback" ? (
+                <Link href={forgotHref} className="auth-alt-link">
+                  Reset password
+                </Link>
+              ) : null}
+            </p>
+          ) : null}
 
           <label className="form-field">
             <span className="form-label">Email</span>
@@ -136,13 +135,9 @@ export function LoginForm() {
           <label className="form-field">
             <div className="form-label-row">
               <span className="form-label">Password</span>
-              <button
-                type="button"
-                className="auth-alt-link"
-                onClick={() => setForgotOpen(true)}
-              >
+              <Link href={forgotHref} className="auth-alt-link">
                 Forgot password?
-              </button>
+              </Link>
             </div>
             <input
               className="form-input"
@@ -168,12 +163,6 @@ export function LoginForm() {
           Create one
         </Link>
       </p>
-
-      <ForgotPasswordModal
-        open={forgotOpen}
-        initialEmail={email}
-        onClose={() => setForgotOpen(false)}
-      />
     </div>
   );
 }

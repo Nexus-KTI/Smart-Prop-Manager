@@ -10,7 +10,7 @@ export default function Phase5HubPage() {
       </p>
       <p className="osx-persona">Landlord / caretaker · gate</p>
       <h1 className="page-title">Gate codes</h1>
-      <p className="page-subtitle">Who may enter — issue a code or invite a guest.</p>
+      <p className="page-subtitle">Who may enter, issue a code or invite a guest.</p>
       <div className="osx-actions">
         <button type="button" className="btn-primary">
           Issue gate code

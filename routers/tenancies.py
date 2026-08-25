@@ -123,6 +123,35 @@ def docs_flag(user: AuthedUser = Depends(get_current_user)):
     return {"docs_upload_enabled": docs_upload_enabled()}
 
 
+@router.get("/")
+def list_portfolio_tenancies(user: AuthedUser = Depends(get_current_user)):
+    """First-class tenancies/tenants list for landlord nav."""
+    rows = (
+        user.db.table("tenancies")
+        .select(
+            "id, unit_id, status, tenant_name, tenant_contact, tenant_user_id, "
+            "term_end, start_date, activated_at, created_at, "
+            "units(label, property_id, properties(name))"
+        )
+        .eq("landlord_id", user.id)
+        .order("created_at", desc=True)
+        .limit(200)
+        .execute()
+        .data
+        or []
+    )
+    items = []
+    for row in rows:
+        item = dict(row)
+        unit = item.pop("units", None) or {}
+        prop = unit.get("properties") if isinstance(unit, dict) else None
+        item["unit_label"] = unit.get("label") if isinstance(unit, dict) else None
+        item["property_name"] = prop.get("name") if isinstance(prop, dict) else None
+        item["property_id"] = unit.get("property_id") if isinstance(unit, dict) else None
+        items.append(item)
+    return {"items": items}
+
+
 @router.get("/unit/{unit_id}")
 def get_or_list_tenancy(unit_id: str, user: AuthedUser = Depends(get_current_user)):
     _require_owned_unit(user, unit_id)
@@ -148,25 +177,32 @@ def create_tenancy(unit_id: str, payload: dict, user: AuthedUser = Depends(get_c
     unit = _require_owned_unit(user, unit_id)
     existing = (
         user.db.table("tenancies")
-        .select("id")
+        .select("*")
         .eq("unit_id", unit_id)
+        .eq("landlord_id", user.id)
         .neq("status", "ended")
+        .order("created_at", desc=True)
         .limit(1)
         .execute()
         .data
         or []
     )
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="An open tenancy already exists for this unit",
-        )
+        # Idempotent: handshake retries should invite the open row, not 409.
+        return {"tenancy": _serialize(dict(existing[0]))}
+
+    props = unit.get("properties")
+    if isinstance(props, list):
+        props = props[0] if props else {}
+    if not isinstance(props, dict):
+        props = {}
+    landlord_id = (props.get("owner_id") or user.id)
 
     start = payload.get("start_date") or date.today().isoformat()
     term_end = payload.get("term_end") or unit.get("term_end")
     row = {
         "unit_id": unit_id,
-        "landlord_id": user.id,
+        "landlord_id": landlord_id,
         "tenant_name": (payload.get("tenant_name") or unit.get("tenant_name") or "").strip()
         or None,
         "tenant_contact": (
@@ -179,6 +215,26 @@ def create_tenancy(unit_id: str, payload: dict, user: AuthedUser = Depends(get_c
     }
     inserted = user.db.table("tenancies").insert(row).execute().data
     tenancy = _first_row(inserted)
+    if not tenancy:
+        # Some PostgREST configs omit RETURNING; re-read after insert.
+        refreshed = (
+            user.db.table("tenancies")
+            .select("*")
+            .eq("unit_id", unit_id)
+            .eq("landlord_id", landlord_id)
+            .neq("status", "ended")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        tenancy = _first_row(refreshed)
+    if not tenancy:
+        # Last resort: service insert when user JWT insert is blocked/empty.
+        svc = create_service_client()
+        inserted_svc = svc.table("tenancies").insert(row).execute().data
+        tenancy = _first_row(inserted_svc)
     if not tenancy:
         raise HTTPException(status_code=500, detail="Could not create tenancy")
     return {"tenancy": _serialize(dict(tenancy))}
@@ -226,13 +282,14 @@ def claim_tenancy(payload: dict, user: AuthedUser = Depends(get_current_user)):
 
 @router.get("/me/current")
 def my_tenancy(user: AuthedUser = Depends(get_current_user)):
-    """Tenant: active tenancy linked to this user."""
+    """Tenant: linked tenancy — prefer active, else latest claimed (pending activate)."""
     svc = create_service_client()
-    rows = (
+    select = (
+        "*, units(id, label, rent_amount, service_charge_amount, properties(name))"
+    )
+    active = (
         svc.table("tenancies")
-        .select(
-            "*, units(id, label, rent_amount, service_charge_amount, properties(name))"
-        )
+        .select(select)
         .eq("tenant_user_id", user.id)
         .eq("status", "active")
         .order("activated_at", desc=True)
@@ -241,9 +298,22 @@ def my_tenancy(user: AuthedUser = Depends(get_current_user)):
         .data
         or []
     )
-    if not rows:
+    if active:
+        return {"tenancy": _serialize(dict(active[0]))}
+
+    linked = (
+        svc.table("tenancies")
+        .select(select)
+        .eq("tenant_user_id", user.id)
+        .order("updated_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not linked:
         return {"tenancy": None}
-    return {"tenancy": _serialize(dict(rows[0]))}
+    return {"tenancy": _serialize(dict(linked[0]))}
 
 
 @router.get("/{tenancy_id}")
@@ -350,25 +420,45 @@ def invite_tenant(tenancy_id: str, user: AuthedUser = Depends(get_current_user))
         .data
     )
     row = _first_row(updated) or tenancy
-    # Soft notify: reuse landlord channel toward tenant contact when possible.
+    claim_path = f"/tenant/claim?token={token}"
+    from lib.email_templates import frontend_base_url
+
+    claim_url = f"{frontend_base_url()}{claim_path}"
+    invite_sent = False
+    invite_channel: str | None = None
+    invite_error: str | None = None
     try:
-        from lib.notify import get_owner_notification_channel, send_notification
+        from lib.notify import (
+            get_owner_notification_channel,
+            normalize_e164,
+            send_notification,
+        )
 
         channel = get_owner_notification_channel(user.db, user.id) or "sms"
-        send_notification(
+        notify_to = (
+            contact
+            if channel == "email"
+            else normalize_e164(contact)
+        )
+        invite_channel = send_notification(
             channel,
-            contact,
+            notify_to,
             (
-                f"You're invited to view rent and pay on Nexora. "
-                f"Sign in with this phone/email, then open /tenant/claim?token={token}"
+                "You're invited to view rent and pay on Nexora. "
+                f"Open this link, then sign in with this phone/email: {claim_url}"
             ),
         )
-    except Exception:
-        pass
+        invite_sent = True
+    except Exception as exc:
+        invite_error = str(exc) or "Could not send invite notification"
     return {
         "tenancy": _serialize(dict(row)),
         "invite_token": token,
-        "claim_path": f"/tenant/claim?token={token}",
+        "claim_path": claim_path,
+        "claim_url": claim_url,
+        "invite_sent": invite_sent,
+        "invite_channel": invite_channel,
+        "invite_error": None if invite_sent else invite_error,
     }
 
 
@@ -395,7 +485,10 @@ def list_documents(tenancy_id: str, user: AuthedUser = Depends(get_current_user)
         }
     docs = (
         svc.table("tenancy_documents")
-        .select("id, doc_type, file_name, expires_on, retain_until, created_at, storage_path")
+        .select(
+            "id, doc_type, file_name, expires_on, retain_until, created_at, storage_path, "
+            "requires_ack, acknowledged_at, acknowledged_by"
+        )
         .eq("tenancy_id", tenancy_id)
         .order("created_at", desc=True)
         .execute()
@@ -441,6 +534,7 @@ def upload_document(tenancy_id: str, payload: dict, user: AuthedUser = Depends(g
 
     doc_id = str(uuid.uuid4())
     expires_on = payload.get("expires_on")
+    requires_ack = bool(payload.get("requires_ack"))
     retain_until = default_retain_until()
     path = upload_tenancy_document(
         tenancy_id=tenancy_id,
@@ -458,7 +552,51 @@ def upload_document(tenancy_id: str, payload: dict, user: AuthedUser = Depends(g
         "storage_path": path,
         "content_type": content_type,
         "expires_on": expires_on,
+        "requires_ack": requires_ack,
         "retain_until": retain_until.isoformat(),
     }
     inserted = user.db.table("tenancy_documents").insert(row).execute().data
     return {"document": _first_row(inserted) or row, "tenancy_id": tenancy["id"]}
+
+
+@router.post("/{tenancy_id}/documents/{document_id}/acknowledge")
+def acknowledge_document(
+    tenancy_id: str,
+    document_id: str,
+    user: AuthedUser = Depends(get_current_user),
+):
+    """Thin e-sign: tenant acknowledges they received/read the document."""
+    svc = create_service_client()
+    tenancy_rows = (
+        svc.table("tenancies").select("*").eq("id", tenancy_id).limit(1).execute().data
+        or []
+    )
+    if not tenancy_rows:
+        raise HTTPException(status_code=404, detail="Tenancy not found")
+    tenancy = dict(tenancy_rows[0])
+    if tenancy.get("tenant_user_id") != user.id:
+        raise HTTPException(status_code=403, detail="Only the linked tenant can acknowledge")
+    docs = (
+        svc.table("tenancy_documents")
+        .select("*")
+        .eq("id", document_id)
+        .eq("tenancy_id", tenancy_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not docs:
+        raise HTTPException(status_code=404, detail="Document not found")
+    doc = dict(docs[0])
+    if doc.get("acknowledged_at"):
+        return {"document": doc, "already": True}
+    now = datetime.now(timezone.utc).isoformat()
+    updated = (
+        svc.table("tenancy_documents")
+        .update({"acknowledged_at": now, "acknowledged_by": user.id})
+        .eq("id", document_id)
+        .execute()
+        .data
+    )
+    return {"document": _first_row(updated) or {**doc, "acknowledged_at": now}}

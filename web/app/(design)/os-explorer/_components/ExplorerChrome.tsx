@@ -18,7 +18,7 @@ export function ExplorerChrome({ children }: { children: React.ReactNode }) {
   return (
     <div className="osx-root">
       <div className="osx-banner">
-        <strong>Wireframe explorer</strong> — mock data — not production ·
+        <strong>Wireframe explorer</strong> · mock data · not production ·
         Nexora by KTI
       </div>
       <div className="osx-shell">

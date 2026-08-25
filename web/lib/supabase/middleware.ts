@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { isAdminEmail } from "@/lib/admin";
 
-const AUTH_ROUTES = new Set(["/login", "/signup"]);
+const AUTH_ROUTES = new Set(["/login", "/signup", "/forgot-password"]);
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -40,9 +40,12 @@ export async function updateSession(request: NextRequest) {
   const isPublic =
     isAuthRoute ||
     pathname === "/" ||
+    pathname === "/pricing" ||
     pathname.startsWith("/auth/") ||
+    pathname.startsWith("/apply/") ||
     pathname === "/tenant/claim" ||
-    pathname === "/staff/claim";
+    pathname === "/staff/claim" ||
+    pathname === "/artisan/claim";
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
@@ -78,6 +81,10 @@ export async function updateSession(request: NextRequest) {
       url.pathname = "/tenant";
       return NextResponse.redirect(url);
     }
+    if (profile?.role === "artisan") {
+      url.pathname = "/artisan";
+      return NextResponse.redirect(url);
+    }
 
     const { count, error } = await supabase
       .from("properties")
@@ -86,6 +93,46 @@ export async function updateSession(request: NextRequest) {
     url.pathname =
       !error && (count ?? 0) > 0 ? "/properties" : "/onboarding";
     return NextResponse.redirect(url);
+  }
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profile?.role === "tenant") {
+      const isTenantSurface =
+        pathname === "/tenant" ||
+        pathname.startsWith("/tenant/") ||
+        pathname.startsWith("/apply/") ||
+        pathname.startsWith("/auth/");
+      if (!isTenantSurface) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/tenant";
+        return NextResponse.redirect(url);
+      }
+    }
+    if (profile?.role === "artisan") {
+      const isArtisanSurface =
+        pathname === "/artisan" ||
+        pathname.startsWith("/artisan/") ||
+        pathname.startsWith("/auth/");
+      if (!isArtisanSurface) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/artisan";
+        return NextResponse.redirect(url);
+      }
+    } else if (
+      pathname.startsWith("/artisan") &&
+      pathname !== "/artisan/claim"
+    ) {
+      // Claim is allowed before role flips to artisan; other artisan routes are not.
+      const url = request.nextUrl.clone();
+      url.pathname =
+        profile?.role === "tenant" ? "/tenant" : "/properties";
+      return NextResponse.redirect(url);
+    }
   }
 
   if (user && (pathname === "/leads" || pathname.startsWith("/leads/"))) {

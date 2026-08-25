@@ -140,7 +140,7 @@ export default function UnitPaymentsPage() {
         );
         if (seq !== requestSeq.current) return;
 
-        // Empty history is success — show the client with the empty-table copy.
+        // Empty history is success, show the client with the empty-table copy.
         setContext(unitContext);
         setTransactions(history.items);
         setNextCursor(history.next_cursor);

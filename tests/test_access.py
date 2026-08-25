@@ -30,7 +30,8 @@ def test_role_defaults_manager_has_grants():
     assert d["team_invite"] is True
 
 
-def test_visitor_pass_permission_is_noop_at_runtime():
+def test_visitor_pass_permission_enforced_at_runtime():
+    """Phase 5: caretakers with the flag can issue visitor passes."""
     ctx = AccessContext(
         user_id="S1",
         owner_id="O1",
@@ -38,8 +39,16 @@ def test_visitor_pass_permission_is_noop_at_runtime():
         membership_id="M1",
         permissions={PERM_ACCESS_VISITOR_PASSES, "chase"},
     )
-    assert ctx.has(PERM_ACCESS_VISITOR_PASSES) is False
+    assert ctx.has(PERM_ACCESS_VISITOR_PASSES) is True
     assert ctx.has("chase") is True
+    denied = AccessContext(
+        user_id="S2",
+        owner_id="O1",
+        role="caretaker",
+        membership_id="M2",
+        permissions={"chase"},
+    )
+    assert denied.has(PERM_ACCESS_VISITOR_PASSES) is False
 
 
 def test_owner_has_all_permissions():

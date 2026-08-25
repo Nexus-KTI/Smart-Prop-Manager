@@ -1,17 +1,32 @@
 const FACTS = [
-  { label: "Money truth", body: "Who paid, who owes, what was chased" },
-  { label: "Cash still works", body: "Record payment. Paystack optional" },
-  { label: "Bills & renewals", body: "Service charge and term end on the unit" },
-  { label: "Free to first value", body: "No hard paywall once you’re in" },
+  {
+    label: "Honest reminders",
+    body: "Failure detail you can act on, not a silent send",
+  },
+  {
+    label: "One ledger",
+    body: "Cash, transfer, and Paystack on the same list",
+  },
+  {
+    label: "Scoped staff",
+    body: "Managers and caretakers without a shared login",
+  },
+  {
+    label: "Free to first value",
+    body: "No hard paywall once you’re in",
+  },
 ] as const;
 
-/** Compact trust band — job labels, no LIVE spam. */
+/** Trust band under hero, outcome chips, not a second feature parade. */
 export function MarketingTrustStrip() {
   return (
-    <ul className="marketing-trust" aria-label="Today on Nexora">
+    <ul
+      className="marketing-trust marketing-trust-cards"
+      aria-label="Why landlords choose Nexora"
+    >
       {FACTS.map((fact) => (
         <li key={fact.label} className="marketing-trust-item">
-          <p className="marketing-trust-label mono-data">{fact.label}</p>
+          <p className="marketing-trust-label">{fact.label}</p>
           <p className="marketing-trust-body">{fact.body}</p>
         </li>
       ))}

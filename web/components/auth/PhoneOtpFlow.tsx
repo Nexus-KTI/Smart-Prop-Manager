@@ -19,11 +19,13 @@ export type PhoneOtpPurpose = "signup" | "signin" | "change";
 
 type PhoneOtpFlowProps = {
   purpose: PhoneOtpPurpose;
-  /** Signup only — collect name before sending OTP. */
+  /** Signup only, collect name before sending OTP. */
   showName?: boolean;
   initialName?: string;
   /** Prefill from invite link WhatsApp / phone (E.164 or local). */
   initialPhone?: string;
+  /** Extra auth user_metadata merged on signup OTP (role, qualify fields). */
+  userMetadata?: Record<string, string | number | boolean | null | undefined>;
   className?: string;
   sendLabel?: string;
   verifyLabel?: string;
@@ -56,6 +58,7 @@ export function PhoneOtpFlow({
   showName = false,
   initialName = "",
   initialPhone = "",
+  userMetadata,
   className,
   sendLabel = "Send verification code",
   verifyLabel = "Verify and continue",
@@ -106,14 +109,21 @@ export function PhoneOtpFlow({
         const { error } = await supabase.auth.updateUser({ phone });
         otpError = error;
       } else if (purpose === "signup") {
+        const meta: Record<string, string | number | boolean> = {
+          full_name: name,
+          name,
+        };
+        if (userMetadata) {
+          for (const [key, value] of Object.entries(userMetadata)) {
+            if (value === undefined || value === null || value === "") continue;
+            meta[key] = value;
+          }
+        }
         const { error } = await supabase.auth.signInWithOtp({
           phone,
           options: {
             channel: otpChannel,
-            data: {
-              full_name: name,
-              name,
-            },
+            data: meta,
           },
         });
         otpError = error;
@@ -166,7 +176,7 @@ export function PhoneOtpFlow({
             );
           }
         } catch {
-          /* ignore probe failures — user can still enter a code if SMS arrived */
+          /* ignore probe failures, user can still enter a code if SMS arrived */
         }
       })();
     }

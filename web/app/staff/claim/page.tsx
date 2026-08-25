@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
+import { AuthLoadingGate } from "@/components/auth/AuthLoadingGate";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { claimStaffInvite } from "@/lib/api";
 import { BRAND_NAME } from "@/lib/brand";
@@ -30,6 +31,10 @@ function ClaimInner() {
     }
   }
 
+  if (linking) {
+    return <AuthLoadingGate label="Linking your access…" />;
+  }
+
   return (
     <section className="auth-card">
       <p className="auth-brand">{BRAND_NAME}</p>
@@ -49,14 +54,15 @@ function ClaimInner() {
           }}
         />
       )}
-      {linking ? <p className="page-subtitle">Linking membership…</p> : null}
     </section>
   );
 }
 
 export default function StaffClaimPage() {
   return (
-    <Suspense fallback={<p className="page-subtitle">Loading…</p>}>
+    <Suspense
+      fallback={<AuthLoadingGate variant="panel" label="Loading…" />}
+    >
       <ClaimInner />
     </Suspense>
   );

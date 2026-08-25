@@ -2,17 +2,25 @@
 
 import { FormEvent, useState } from "react";
 
+import { PasswordFields } from "@/components/auth/PasswordFields";
+import {
+  formatPasswordAuthError,
+  validatePasswordPair,
+} from "@/lib/password";
 import { createClient } from "@/lib/supabase/client";
 
 type ChangePasswordFormProps = {
   /** Defaults to `.form-card` for standalone auth panels. */
   className?: string;
+  /** Reset-link flow vs settings change. */
+  variant?: "change" | "reset";
   onSuccess?: () => void;
   onCancel?: () => void;
 };
 
 export function ChangePasswordForm({
   className = "form-card",
+  variant = "change",
   onSuccess,
   onCancel,
 }: ChangePasswordFormProps) {
@@ -21,19 +29,17 @@ export function ChangePasswordForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
+  const isReset = variant === "reset";
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setPending(true);
 
-    if (newPassword.length < 6) {
+    const check = validatePasswordPair(newPassword, confirmPassword);
+    if (!check.ok) {
       setPending(false);
-      setError("Password must be at least 6 characters.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPending(false);
-      setError("Passwords do not match.");
+      setError(check.message);
       return;
     }
 
@@ -45,7 +51,7 @@ export function ChangePasswordForm({
     setPending(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(formatPasswordAuthError(updateError.message));
       return;
     }
 
@@ -58,37 +64,15 @@ export function ChangePasswordForm({
     <form className={className} onSubmit={onSubmit}>
       {error ? <p className="form-error">{error}</p> : null}
 
-      <label className="form-field">
-        <span className="form-label">New password</span>
-        <input
-          className="form-input"
-          name="new_password"
-          type="password"
-          required
-          minLength={6}
-          autoComplete="new-password"
-          value={newPassword}
-          disabled={pending}
-          onChange={(event) => setNewPassword(event.target.value)}
-          placeholder="At least 6 characters"
-        />
-      </label>
-
-      <label className="form-field">
-        <span className="form-label">Confirm password</span>
-        <input
-          className="form-input"
-          name="confirm_password"
-          type="password"
-          required
-          minLength={6}
-          autoComplete="new-password"
-          value={confirmPassword}
-          disabled={pending}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          placeholder="Repeat password"
-        />
-      </label>
+      <PasswordFields
+        password={newPassword}
+        confirm={confirmPassword}
+        onPasswordChange={setNewPassword}
+        onConfirmChange={setConfirmPassword}
+        disabled={pending}
+        passwordLabel={isReset ? "New password" : "New password"}
+        confirmLabel="Confirm password"
+      />
 
       <div
         className={
@@ -108,7 +92,13 @@ export function ChangePasswordForm({
           </button>
         ) : null}
         <button className="btn-primary" type="submit" disabled={pending}>
-          {pending ? "Updating…" : "Update password"}
+          {pending
+            ? isReset
+              ? "Saving…"
+              : "Updating…"
+            : isReset
+              ? "Save new password"
+              : "Update password"}
         </button>
       </div>
     </form>

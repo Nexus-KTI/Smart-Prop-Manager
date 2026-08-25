@@ -4,7 +4,7 @@ const PHASES = [
   {
     href: "/os-explorer/phase-1",
     title: "Phase 1 · Unit money truth",
-    blurb: "Who paid, who owes, what was chased — per unit.",
+    blurb: "Who paid, who owes, what was chased, per unit.",
   },
   {
     href: "/os-explorer/phase-2",
@@ -34,7 +34,7 @@ export default function OsExplorerHubPage() {
       <p className="osx-meta">Wireframe · mock data · not production</p>
       <h1 className="page-title">Nexora</h1>
       <p className="page-subtitle">
-        Who paid. Who owes. What&apos;s next. — click through Phases 1–5 with
+        Who paid. Who owes. What&apos;s next., click through Phases 1–5 with
         mock data only.
       </p>
       <div className="osx-actions">

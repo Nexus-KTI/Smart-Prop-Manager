@@ -11,7 +11,7 @@ export default function Phase4HubPage() {
       <p className="osx-persona">Manager view · Funke</p>
       <h1 className="page-title">Who owes across owners</h1>
       <p className="page-subtitle">
-        Overdue units — send a reminder or open the unit.
+        Overdue units, send a reminder or open the unit.
       </p>
       <div className="osx-actions">
         <Link href="/os-explorer/phase-4/owners" className="btn-secondary">

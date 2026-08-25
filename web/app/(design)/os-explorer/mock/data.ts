@@ -67,7 +67,7 @@ export const mockReminders = [
     unit: "Flat 1A",
     channel: "WhatsApp",
     status: "failed",
-    detail: "Provider timeout — message not delivered",
+    detail: "Provider timeout, message not delivered",
     at: "2026-08-10 09:14",
   },
   {
@@ -133,7 +133,7 @@ export const mockVerification = [
     id: "v4",
     label: "Background check (optional)",
     done: false,
-    note: "External check when you use one — mock only",
+    note: "External check when you use one, mock only",
   },
 ];
 
@@ -184,13 +184,13 @@ export const mockAccessCodes = [
 export const mockInvites = [
   {
     id: "inv-1",
-    who: "Guest — Amaka",
+    who: "Guest, Amaka",
     window: "22 Aug 2026 · 14:00–18:00",
     status: "active",
   },
   {
     id: "inv-2",
-    who: "Contractor — PipeFix",
+    who: "Contractor, PipeFix",
     window: "18 Aug 2026 · 09:00–12:00",
     status: "expired",
   },

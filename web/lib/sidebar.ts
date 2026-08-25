@@ -1,4 +1,4 @@
-/** Persisted rail width toggle — CSS reads html[data-sidebar-collapsed="true"] (64px). */
+/** Persisted rail width toggle, CSS reads html[data-sidebar-collapsed="true"] (64px). */
 export const SIDEBAR_STORAGE_KEY = "spm-sidebar-collapsed";
 
 export function readSidebarCollapsed(): boolean {

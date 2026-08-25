@@ -17,7 +17,7 @@ const CAPABILITIES: Capability[] = [
     title: "Portfolio",
     items: [
       { label: "Properties & units", status: "LIVE" },
-      { label: "Staff roles", status: "LATER" },
+      { label: "Staff roles", status: "LIVE" },
       { label: "Multi-owner portfolios", status: "LATER" },
     ],
   },
@@ -35,44 +35,47 @@ const CAPABILITIES: Capability[] = [
       { label: "Rent", status: "LIVE" },
       { label: "Service charge & other bills", status: "LIVE" },
       { label: "Manual + Paystack", status: "LIVE" },
+      { label: "Expenses + rent roll", status: "LIVE" },
     ],
   },
   {
     title: "People",
     items: [
       { label: "Landlord account", status: "LIVE" },
-      { label: "Caretaker / PM roles", status: "LATER" },
-      { label: "Tenant login", status: "LATER" },
-      { label: "Artisans", status: "LATER" },
+      { label: "Caretaker / PM roles", status: "LIVE" },
+      { label: "Tenant login & portal", status: "LIVE" },
+      { label: "Artisans", status: "LIVE" },
     ],
   },
   {
     title: "Compliance",
     items: [
       { label: "Renewals on the unit", status: "LIVE" },
-      { label: "Docs & agreements", status: "LATER" },
-      { label: "Verification checklist", status: "LATER" },
+      { label: "Docs & acknowledge", status: "LIVE" },
+      { label: "Applications", status: "LIVE" },
       { label: "Background check (partner)", status: "LATER" },
     ],
   },
   {
     title: "Access",
     items: [
-      { label: "Gate codes & passes", status: "LATER" },
-      { label: "Estate invites", status: "LATER" },
+      { label: "Gate codes & passes", status: "LIVE" },
+      { label: "Estate invites", status: "LIVE" },
     ],
   },
   {
     title: "Ops",
     items: [
-      { label: "Work orders", status: "LATER" },
-      { label: "Artisan jobs", status: "LATER" },
+      { label: "Work orders", status: "LIVE" },
+      { label: "Artisan jobs", status: "LIVE" },
+      { label: "Tasks & calendar", status: "LIVE" },
     ],
   },
   {
     title: "Comms",
     items: [
       { label: "Send reminder (single / bulk / retry)", status: "LIVE" },
+      { label: "Messages hub (chat / bulletin / MR)", status: "LIVE" },
       { label: "One preferred channel", status: "LIVE" },
     ],
   },
@@ -80,7 +83,7 @@ const CAPABILITIES: Capability[] = [
     title: "Trust",
     items: [
       { label: "PDF receipts", status: "LIVE" },
-      { label: "Audit log & permissions", status: "LATER" },
+      { label: "Audit log & permissions", status: "LIVE" },
     ],
   },
 ];
@@ -101,20 +104,20 @@ const PHASES: Phase[] = [
   {
     phase: "3",
     title: "Docs & tenant pay",
-    blurb: "Agreements, checklist, then tenant can pay.",
-    status: "LATER",
+    blurb: "Agreements, checklist, tenant portal, messages.",
+    status: "LIVE",
   },
   {
     phase: "4",
     title: "Staff & portfolios",
     blurb: "Managers chase across owners; caretakers stay limited.",
-    status: "LATER",
+    status: "LIVE",
   },
   {
     phase: "5",
     title: "Access & artisans",
     blurb: "Gate codes, guest invites, repair jobs.",
-    status: "LATER",
+    status: "LIVE",
   },
 ];
 
@@ -126,7 +129,7 @@ function StatusPill({ status }: { status: RoadmapStatus }) {
   );
 }
 
-/** Public Estate OS vision — LIVE / NEXT / LATER honesty required. */
+/** Public Estate OS vision, LIVE / NEXT / LATER honesty required. */
 export function MarketingVisionSection() {
   return (
     <div className="marketing-vision">

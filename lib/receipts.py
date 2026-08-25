@@ -63,7 +63,7 @@ def _register_mono_font() -> str:
     return "Courier"
 
 
-def _text(value: Any, fallback: str = "—") -> str:
+def _text(value: Any, fallback: str = "-") -> str:
     if value is None:
         return fallback
     text = str(value).strip()
@@ -86,12 +86,12 @@ def _format_naira(amount: Any) -> str:
 
 def _format_date(value: Any) -> str:
     if value is None:
-        return "—"
+        return "-"
     if isinstance(value, datetime):
         return value.strftime("%d %b %Y %H:%M")
     text = str(value).strip()
     if not text:
-        return "—"
+        return "-"
     try:
         # Handle trailing Z
         normalized = text.replace("Z", "+00:00")

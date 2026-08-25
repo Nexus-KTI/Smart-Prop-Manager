@@ -99,7 +99,7 @@ def tenant_receipt(
     place = _place(property_name, unit_label)
     amount_str = format_naira(amount)
     issuer = (business_name or "").strip() or "your landlord"
-    subject = f"Payment receipt — {place}"
+    subject = f"Payment receipt: {place}"
     text = (
         f"Payment received from {issuer}.\n\n"
         f"Amount: {amount_str}\n"
@@ -134,7 +134,7 @@ def tenant_due(
     place = _place(property_name, unit_label)
     amount_str = format_naira(amount)
     issuer = (business_name or "").strip() or "your landlord"
-    subject = f"Rent reminder — {place}"
+    subject = f"Rent reminder: {place}"
     text = (
         f"Reminder from {issuer}: rent of {amount_str} for {place} is due. "
         "Please pay at your earliest convenience."
@@ -156,7 +156,7 @@ def tenant_due(
 
 
 def tenant_due_subject(property_name: str | None, unit_label: str | None) -> str:
-    return f"Rent reminder — {_place(property_name, unit_label)}"
+    return f"Rent reminder: {_place(property_name, unit_label)}"
 
 
 def landlord_renewal(
@@ -176,7 +176,7 @@ def landlord_renewal(
         if hasattr(term_end, "strftime"):
             end_str = term_end.strftime("%d %b %Y")
     except Exception:
-        end_str = str(term_end or "—")
+        end_str = str(term_end or "-")
 
     if days_left < 0:
         when = f"ended on {end_str}"
@@ -191,7 +191,7 @@ def landlord_renewal(
         heading = "Renewal coming up"
         eyebrow = "Renewal reminder"
 
-    subject = f"Renewal — {place}"
+    subject = f"Renewal: {place}"
     text = (
         f"Reminder: tenancy for {tenant} at {place} {when}. "
         f"Open the unit in {BRAND_NAME} to follow up."

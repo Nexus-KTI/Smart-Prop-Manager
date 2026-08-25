@@ -33,7 +33,7 @@ def sms_delivery_status(
     Look up the most recent Twilio outbound SMS to this number.
 
     Used by the login OTP UI when Supabase accepts the request but Twilio
-    fails silently (common on trial accounts — error 21608).
+    fails silently (common on trial accounts, error 21608).
     """
     account_sid = (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
     auth_token = (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
@@ -71,7 +71,7 @@ def sms_delivery_status(
                 "hint": (
                     "No SMS in the last 5 minutes on the API Twilio account "
                     f"({account_sid[:10]}…). Login OTP is sent by Supabase Auth "
-                    "Phone provider — update Twilio SID/token/From there to match "
+                    "Phone provider: update Twilio SID/token/From there to match "
                     ".env (rotating .env alone does not change OTP). Also verify "
                     "the phone under Twilio Verified Caller IDs if the account is Trial."
                 ),

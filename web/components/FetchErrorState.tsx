@@ -7,7 +7,7 @@ type Props = {
   retryLabel?: string;
 };
 
-/** Short title + muted reason + one Retry — no secondary CTAs. */
+/** Short title + muted reason + one Retry, no secondary CTAs. */
 export function FetchErrorState({
   title = "Something went wrong",
   message,

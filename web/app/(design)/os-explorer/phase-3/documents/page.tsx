@@ -12,7 +12,7 @@ export default function Phase3DocumentsPage() {
         <Link href="/os-explorer/phase-3">Phase 3</Link> · Documents · PRD F31
       </p>
       <h1 className="page-title">Documents</h1>
-      <p className="page-subtitle">ID, agreement, references — mock upload.</p>
+      <p className="page-subtitle">ID, agreement, references, mock upload.</p>
       <div className="osx-actions">
         <button type="button" className="btn-primary">
           Upload document

@@ -15,7 +15,7 @@ export default function Phase1HubPage() {
       </p>
       <h1 className="page-title">Today</h1>
       <p className="page-subtitle">
-        Scan who paid and who owes — then record or chase.
+        Scan who paid and who owes, then record or chase.
       </p>
       <div className="osx-actions">
         <Link href="/os-explorer/phase-1/payments" className="btn-primary">

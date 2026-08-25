@@ -88,7 +88,7 @@ export type DashboardRow = {
   serviceCharge?: number;
   dueDate: Date | null;
   status: UnitStatus;
-  /** Property exists but has no units — show Add unit CTA instead of payment status. */
+  /** Property exists but has no units, show Add unit CTA instead of payment status. */
   needsUnit?: boolean;
 };
 

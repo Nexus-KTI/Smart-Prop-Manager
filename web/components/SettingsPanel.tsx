@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChangePasswordForm } from "@/components/auth/ChangePasswordForm";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { FetchErrorState } from "@/components/FetchErrorState";
+import { ProfileAvatarEditor } from "@/components/ProfileAvatarEditor";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useToast } from "@/components/ToastProvider";
 import { fetchMe, updateMe } from "@/lib/api";
@@ -38,7 +39,7 @@ const CHANNEL_OPTIONS: {
     value: "whatsapp",
     label: "WhatsApp",
     description:
-      "Requires a production WhatsApp sender in Twilio — not the sandbox.",
+      "Requires a production WhatsApp sender in Twilio, not the sandbox.",
   },
   {
     value: "email",
@@ -101,6 +102,7 @@ export function SettingsPanel() {
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [canChangePassword, setCanChangePassword] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
@@ -139,6 +141,7 @@ export function SettingsPanel() {
         setBusinessName(me.business_name ?? "");
         setPhone(me.phone ?? formatPhoneDisplay(data.user?.phone) ?? "");
         setEmail(me.email ?? data.user?.email ?? "");
+        setAvatarUrl(me.avatar_url ?? null);
         setNotificationChannel(normalizeChannel(me.notification_channel));
         setCanChangePassword(
           hasEmailPasswordAuth(
@@ -291,6 +294,12 @@ export function SettingsPanel() {
         >
           {profileError ? <p className="form-error">{profileError}</p> : null}
 
+          <ProfileAvatarEditor
+            name={fullName || businessName}
+            avatarUrl={avatarUrl}
+            onUploaded={setAvatarUrl}
+          />
+
           <label className="form-field">
             <span className="form-label">Name</span>
             <input
@@ -394,8 +403,8 @@ export function SettingsPanel() {
           >
             <legend className="form-label">Reminder / receipt channel</legend>
             <p className="form-hint">
-              Every unit’s tenant contact must match this channel — phone for
-              SMS/WhatsApp, email address for Email — or reminders will fail.
+              Every unit’s tenant contact must match this channel (phone for
+              SMS/WhatsApp, email for Email) or reminders will fail.
             </p>
             {CHANNEL_OPTIONS.map((option) => (
               <label key={option.value} className="settings-pref">

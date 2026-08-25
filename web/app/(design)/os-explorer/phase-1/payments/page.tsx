@@ -50,7 +50,7 @@ export default function Phase1PaymentsPage() {
                       Open receipt
                     </button>
                   ) : (
-                    "—"
+                    "-"
                   )}
                 </td>
               </tr>
@@ -59,7 +59,7 @@ export default function Phase1PaymentsPage() {
         </table>
       </div>
       <p className="osx-muted" style={{ marginTop: 16 }}>
-        Wireframe: form success would append a PAID row and reset — mock only.
+        Wireframe: form success would append a PAID row and reset, mock only.
       </p>
     </>
   );

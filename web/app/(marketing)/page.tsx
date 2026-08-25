@@ -1,94 +1,57 @@
 import Link from "next/link";
-import {
-  Banknote,
-  CalendarClock,
-  FileText,
-  ListChecks,
-  Send,
-  Wallet,
-} from "lucide-react";
 
+import { MarketingAudiences } from "@/components/MarketingAudiences";
 import { MarketingCtaSection } from "@/components/MarketingCtaSection";
 import { MarketingFaq } from "@/components/MarketingFaq";
-import {
-  MarketingFeatureList,
-  type MarketingFeature,
-} from "@/components/MarketingFeatureList";
-import { MarketingHeroPreview } from "@/components/MarketingHeroPreview";
+import { MarketingFeatureBlocks } from "@/components/MarketingFeatureBlocks";
+import { MarketingHeroFrame } from "@/components/MarketingHeroFrame";
+import { MarketingPricingTeaser } from "@/components/MarketingPricingTeaser";
 import { MarketingSection } from "@/components/MarketingSection";
+import { MarketingTestimonials } from "@/components/MarketingTestimonials";
 import { MarketingTrustStrip } from "@/components/MarketingTrustStrip";
 import { MarketingVisionSection } from "@/components/MarketingVisionSection";
-import { ProductPreviewMedia } from "@/components/ProductPreviewMedia";
-import { BRAND_NAME, BRAND_STAMP, BRAND_TAGLINE } from "@/lib/brand";
+import {
+  BRAND_NAME,
+  BRAND_STAMP,
+  BRAND_TAGLINE,
+} from "@/lib/brand";
 import { inviteOnlySignup } from "@/lib/invite";
-
-const FEATURES: MarketingFeature[] = [
-  {
-    title: "Unit working list",
-    body: "Who paid, who owes, what was chased, without opening a spreadsheet.",
-    Icon: ListChecks,
-  },
-  {
-    title: "Record payment",
-    body: "Cash, transfer, or Paystack. Same history on the unit.",
-    Icon: Banknote,
-  },
-  {
-    title: "Service charge and other bills",
-    body: "Recurring charges beyond rent, on the same unit list and receipts.",
-    Icon: Wallet,
-  },
-  {
-    title: "Send reminder",
-    body: "Chase from the unit (single, bulk, or retry) and see what was sent.",
-    Icon: Send,
-  },
-  {
-    title: "Receipts on demand",
-    body: "Download a PDF when a tenant asks. No chat archaeology.",
-    Icon: FileText,
-  },
-  {
-    title: "Renewal in view",
-    body: "Set term end on the unit so renewal doesn’t live only in Excel.",
-    Icon: CalendarClock,
-  },
-];
 
 export default function MarketingPage() {
   const inviteOnly = inviteOnlySignup();
 
   const faqs = [
     {
-      question: "Who is this for?",
+      question: `What is ${BRAND_NAME}?`,
+      answer: `The landlord’s daily list for rent and chase, built for Nigerian cash, transfer, Paystack, and WhatsApp. Docs, messages, and estate tools grow from the same unit.`,
+    },
+    {
+      question: "Why not spreadsheets and chats?",
       answer:
-        "Landlords who live in WhatsApp and cash, and still track rent in a spreadsheet.",
+        "Private threads lose paid/overdue status. Nexora keeps the trail on one list so Friday chase doesn’t eat the night.",
     },
     {
-      question: "Is the full Estate OS available today?",
-      answer: `${BRAND_NAME} is building the full estate operating system: money through docs, staff, access, and artisans. What’s LIVE today is unit money truth: rent, service charge, renewals, reminders, and receipts. Later phases are on the map and labeled LATER, not in your account yet. Landlord-only for now.`,
+      question: "Who can use it?",
+      answer:
+        "Landlords and managers run the portfolio. Tenants, staff, and artisans enter by invite, each with the right door.",
     },
     {
-      question: "What does it cost?",
+      question: "How much does it cost?",
       answer: inviteOnly
-        ? "Free to first value once you’re invited. Request access below. No hard paywall on the product once you’re in."
-        : "Free to start. Add your first property and units without a paywall on first run.",
+        ? "Invite beta is free once approved. Paid plans come later. See Pricing."
+        : "Free to start with your first property. Paid plans come later. See Pricing.",
     },
     {
-      question: "Do I need to change how I collect rent?",
+      question: "Is everything live today?",
       answer:
-        "No. Keep cash and transfers. Use Paystack only if you want online payments.",
-    },
-    {
-      question: "Is there a tenant app?",
-      answer: `No. ${BRAND_NAME} is landlord-only. Tenants keep paying the way they already do.`,
+        "Money chase, tenant portal, messages, maintenance, access, expenses, and applications are live. Bank feeds and partner identity checks come later, see the Estate OS map.",
     },
     ...(inviteOnly
       ? [
           {
             question: "How do I get in?",
             answer:
-              "Signup is invite-only right now. Request access or a WhatsApp callback on this page. We send a signup link when you’re approved. Already invited? Use the link from your SMS.",
+              "Signup is invite-only. Request access or a WhatsApp callback below. Already invited? Use the link from your SMS.",
           },
         ]
       : []),
@@ -96,51 +59,58 @@ export default function MarketingPage() {
 
   return (
     <main className="marketing-main" id="main">
-      <section className="marketing-section marketing-hero section-spacing">
-        <div className="marketing-container">
-          <p className="marketing-brand marketing-hero-animate">
-            <span className="marketing-brand-name">{BRAND_NAME}</span>
-            <span className="marketing-brand-stamp">{BRAND_STAMP}</span>
-          </p>
-          <h1 className="marketing-title marketing-hero-animate marketing-hero-animate-delay">
-            An estate operating system that starts with who paid.
-          </h1>
-          <p className="marketing-lede marketing-hero-animate marketing-hero-animate-delay-2">
-            <span className="marketing-tagline">{BRAND_TAGLINE}</span>
-            {" "}
-            Built for Nigerian landlords. We ship in sequence; only what’s marked
-            LIVE is in product today.
-          </p>
-          <div className="marketing-hero-actions marketing-hero-animate marketing-hero-animate-delay-3">
-            {inviteOnly ? (
-              <>
-                <a href="#get-started" className="btn-primary">
-                  Request access
-                </a>
-                <a href="#estate-os" className="btn-secondary">
-                  See the full map
-                </a>
-              </>
-            ) : (
-              <>
-                <Link href="/signup" className="btn-primary">
-                  Get started free
-                </Link>
-                <a href="#estate-os" className="btn-secondary">
-                  See the full map
-                </a>
-              </>
-            )}
+      <section
+        className="marketing-hero marketing-hero-tc"
+        aria-labelledby="hero-heading"
+      >
+        <div className="marketing-hero-glow" aria-hidden />
+        <div className="marketing-container marketing-hero-grid">
+          <div className="marketing-hero-copy">
+            <p className="marketing-hero-brand marketing-hero-animate">
+              <span className="marketing-hero-brand-name">{BRAND_NAME}</span>
+              <span className="marketing-hero-brand-stamp">{BRAND_STAMP}</span>
+            </p>
+            <h1
+              id="hero-heading"
+              className="marketing-title marketing-hero-animate marketing-hero-animate-delay"
+            >
+              {BRAND_TAGLINE}
+            </h1>
+            <p className="marketing-lede marketing-hero-animate marketing-hero-animate-delay-2">
+              The landlord’s daily rent-and-chase list, cash, transfer,
+              Paystack, and WhatsApp, built for Nigeria.
+            </p>
+            <div className="marketing-hero-actions marketing-hero-animate marketing-hero-animate-delay-3">
+              {inviteOnly ? (
+                <>
+                  <a href="#get-started" className="btn-primary">
+                    Get started
+                  </a>
+                  <a href="#features" className="btn-secondary">
+                    See how it works
+                  </a>
+                </>
+              ) : (
+                <>
+                  <Link href="/signup" className="btn-primary">
+                    Get started
+                  </Link>
+                  <a href="#features" className="btn-secondary">
+                    See how it works
+                  </a>
+                </>
+              )}
+            </div>
           </div>
-          <div className="marketing-hero-animate marketing-hero-animate-delay-4">
-            <MarketingHeroPreview />
+          <div className="marketing-hero-media marketing-hero-animate marketing-hero-animate-delay-3">
+            <MarketingHeroFrame />
           </div>
         </div>
       </section>
 
       <section
         className="marketing-section marketing-trust-band"
-        aria-label="Today on Nexora"
+        aria-label="Why landlords choose Nexora"
       >
         <div className="marketing-container">
           <MarketingTrustStrip />
@@ -148,44 +118,95 @@ export default function MarketingPage() {
       </section>
 
       <MarketingSection
-        id="estate-os"
-        headingId="vision-heading"
-        title="The estate operating system"
-        lede="Full destination. Every module is labeled: LIVE is available now; LATER is on the roadmap, not in your account yet."
+        id="features"
+        headingId="features-heading"
+        title="Built around the money list"
+        lede="Rent first. Docs, books, and messages grow from the same unit."
+      >
+        <MarketingFeatureBlocks />
+      </MarketingSection>
+
+      <MarketingSection
+        id="stories"
+        headingId="stories-heading"
+        title="Hear from early landlords"
+        lede="What Friday feels like when the list is clear."
+      >
+        <MarketingTestimonials />
+      </MarketingSection>
+
+      <MarketingSection
+        id="audiences"
+        headingId="audiences-heading"
+        title="The right door for each role"
+        lede="Landlords run the list. Everyone else enters by invite."
         alt
       >
-        <MarketingVisionSection />
+        <MarketingAudiences />
       </MarketingSection>
 
       <MarketingSection
-        id="preview"
-        headingId="preview-heading"
-        title="What’s live today"
-        lede="Unit money truth on one list: rent, service charge, due day, paid or overdue. Add unit. Record payment. Send reminder."
+        id="pricing"
+        headingId="pricing-heading"
+        title="Plans & pricing"
+        lede="Start free. Upgrade when the portfolio asks for more."
       >
-        <div className="marketing-live-chapter">
-          <ProductPreviewMedia />
-          <MarketingFeatureList items={FEATURES} variant="grid" />
-        </div>
+        <MarketingPricingTeaser />
+        <p className="marketing-pricing-footnote">
+          <Link href="/pricing" className="table-link">
+            Compare plans →
+          </Link>
+        </p>
       </MarketingSection>
 
-      <MarketingSection
+      <section
         id="faq"
-        headingId="faq-heading"
-        title="FAQ"
-        lede="Straight answers before you request access."
+        className="marketing-section section-spacing section-bg-alt"
+        aria-labelledby="faq-heading"
       >
-        <MarketingFaq items={faqs} />
-      </MarketingSection>
+        <div className="marketing-container marketing-faq-split">
+          <div className="marketing-faq-intro">
+            <h2 id="faq-heading" className="marketing-h2">
+              FAQs
+            </h2>
+            <p className="marketing-section-lede">
+              Short answers before you start.
+            </p>
+          </div>
+          <MarketingFaq items={faqs} />
+        </div>
+      </section>
+
+      <section
+        id="estate-os"
+        className="marketing-section section-spacing marketing-map-demote"
+        aria-labelledby="vision-heading"
+      >
+        <div className="marketing-container">
+          <details className="marketing-map-details">
+            <summary id="vision-heading" className="marketing-map-summary">
+              <span className="marketing-h2 marketing-map-summary-title">
+                Estate OS map
+              </span>
+              <span className="marketing-map-summary-hint">
+                LIVE modules vs roadmap. Expand for the capability grid.
+              </span>
+            </summary>
+            <div className="marketing-map-body">
+              <MarketingVisionSection />
+            </div>
+          </details>
+        </div>
+      </section>
 
       <MarketingSection
-        id="request-access"
+        id="get-started"
         headingId="cta-heading"
-        title={inviteOnly ? "Request access" : "Start with your first property"}
+        title={inviteOnly ? "Request access" : "Start your free account"}
         lede={
           inviteOnly
-            ? "Closed beta right now. Tell us how to reach you on WhatsApp, or ask for a callback if you’d rather talk it through."
-            : "Free account in minutes, or ask us to reach you on WhatsApp if you’d rather talk it through."
+            ? "Closed beta. Tell us how to reach you on WhatsApp, or ask for a callback."
+            : "Create your landlord account in minutes, or ask us to reach you on WhatsApp."
         }
         className="marketing-cta"
       >

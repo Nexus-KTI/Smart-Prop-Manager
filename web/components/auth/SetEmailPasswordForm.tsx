@@ -2,6 +2,11 @@
 
 import { FormEvent, useState } from "react";
 
+import { PasswordFields } from "@/components/auth/PasswordFields";
+import {
+  formatPasswordAuthError,
+  validatePasswordPair,
+} from "@/lib/password";
 import { createClient } from "@/lib/supabase/client";
 
 type SetEmailPasswordFormProps = {
@@ -34,14 +39,11 @@ export function SetEmailPasswordForm({
       setError("Email is required.");
       return;
     }
-    if (password.length < 6) {
+
+    const check = validatePasswordPair(password, confirmPassword);
+    if (!check.ok) {
       setPending(false);
-      setError("Password must be at least 6 characters.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setPending(false);
-      setError("Passwords do not match.");
+      setError(check.message);
       return;
     }
 
@@ -54,7 +56,7 @@ export function SetEmailPasswordForm({
     setPending(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(formatPasswordAuthError(updateError.message));
       return;
     }
 
@@ -86,37 +88,13 @@ export function SetEmailPasswordForm({
         />
       </label>
 
-      <label className="form-field">
-        <span className="form-label">Password</span>
-        <input
-          className="form-input"
-          name="password"
-          type="password"
-          required
-          minLength={6}
-          autoComplete="new-password"
-          value={password}
-          disabled={pending}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="At least 6 characters"
-        />
-      </label>
-
-      <label className="form-field">
-        <span className="form-label">Confirm password</span>
-        <input
-          className="form-input"
-          name="confirm_password"
-          type="password"
-          required
-          minLength={6}
-          autoComplete="new-password"
-          value={confirmPassword}
-          disabled={pending}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          placeholder="Repeat password"
-        />
-      </label>
+      <PasswordFields
+        password={password}
+        confirm={confirmPassword}
+        onPasswordChange={setPassword}
+        onConfirmChange={setConfirmPassword}
+        disabled={pending}
+      />
 
       <div className="form-actions">
         <button className="btn-primary" type="submit" disabled={pending}>

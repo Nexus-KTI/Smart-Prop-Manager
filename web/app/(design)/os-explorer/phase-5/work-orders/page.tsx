@@ -12,7 +12,7 @@ export default function Phase5WorkOrdersPage() {
       </p>
       <p className="osx-persona">Landlord / caretaker</p>
       <h1 className="page-title">Repair jobs</h1>
-      <p className="page-subtitle">Jobs on a unit — invite an artisan when needed.</p>
+      <p className="page-subtitle">Jobs on a unit, invite an artisan when needed.</p>
       <div className="osx-actions">
         <button type="button" className="btn-primary">
           New repair job

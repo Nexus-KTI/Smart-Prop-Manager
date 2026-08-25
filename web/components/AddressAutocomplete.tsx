@@ -46,7 +46,7 @@ type PhotonFeature = {
 
 type StatusKind = "idle" | "loading" | "empty" | "slow" | "error";
 
-// Photon (Komoot) — free OSM geocoder, no API key / card required.
+// Photon (Komoot), free OSM geocoder, no API key / card required.
 const PHOTON_URL = "https://photon.komoot.io/api/";
 // Bias results toward Lagos without blocking other places.
 const BIAS_LAT = 6.5244;
@@ -57,9 +57,9 @@ const SEARCH_TIMEOUT_MS = 4000;
 
 const STATUS_COPY: Record<Exclude<StatusKind, "idle">, string> = {
   loading: "Searching… you can keep typing or save as typed.",
-  empty: "No matches — type the full address and save.",
-  slow: "Search is slow — type the address and save.",
-  error: "Suggestions unavailable — type the address and save.",
+  empty: "No matches. Type the full address and save.",
+  slow: "Search is slow. Type the address and save.",
+  error: "Suggestions unavailable. Type the address and save.",
 };
 
 function coordString(value?: number | null): string {
@@ -268,7 +268,7 @@ export function AddressAutocomplete({
             (error instanceof DOMException && error.name === "AbortError") ||
             controller.signal.aborted;
           if (aborted && !timedOut) {
-            // Superseded by a newer keystroke — ignore.
+            // Superseded by a newer keystroke, ignore.
             return;
           }
           setSuggestions([]);
@@ -357,7 +357,7 @@ export function AddressAutocomplete({
         }}
         onKeyDown={onKeyDown}
       />
-      {/* Optional coords — kept when a suggestion is picked; cleared on manual edit. */}
+      {/* Optional coords, kept when a suggestion is picked; cleared on manual edit. */}
       <input type="hidden" name="latitude" value={latitude} />
       <input type="hidden" name="longitude" value={longitude} />
 

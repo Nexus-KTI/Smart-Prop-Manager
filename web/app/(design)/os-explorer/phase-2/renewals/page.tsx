@@ -11,7 +11,7 @@ export default function Phase2RenewalsPage() {
       </p>
       <h1 className="page-title">Renewals</h1>
       <p className="page-subtitle">
-        Term end coming due — without tracking it in Excel.
+        Term end coming due, without tracking it in Excel.
       </p>
       <div className="osx-stack">
         {mockRenewals.map((r) => (

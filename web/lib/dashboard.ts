@@ -319,7 +319,7 @@ function appendPropertyRows(
       propertyId: property.id,
       unit: property.name?.trim() || "Untitled property",
       unitLabel: undefined,
-      tenant: "—",
+      tenant: "-",
       rent: 0,
       dueDate: null,
       status: "PENDING",

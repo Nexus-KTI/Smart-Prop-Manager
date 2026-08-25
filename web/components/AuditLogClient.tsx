@@ -82,7 +82,7 @@ export function AuditLogClient() {
                   <td>{row.actor_role}</td>
                   <td>{row.action}</td>
                   <td className="mono-data">
-                    {row.target_type || "—"}
+                    {row.target_type || "-"}
                     {row.target_id ? ` · ${row.target_id.slice(0, 8)}` : ""}
                   </td>
                 </tr>

@@ -11,7 +11,7 @@ export default function Phase4TeamPage() {
       <p className="osx-persona">Owner / Manager only · not caretaker admin</p>
       <h1 className="page-title">Team</h1>
       <p className="page-subtitle">
-        Invite managers or caretakers. Caretakers chase and log cash — they do
+        Invite managers or caretakers. Caretakers chase and log cash, they do
         not invite staff.
       </p>
       <div className="osx-actions">

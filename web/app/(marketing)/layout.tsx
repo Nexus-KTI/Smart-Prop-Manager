@@ -9,15 +9,15 @@ import {
 } from "@/lib/brand";
 import { inviteOnlySignup } from "@/lib/invite";
 
-/** Public homepage only: Estate OS destination framing (PRD §4 override). */
+/** Public marketing chrome, TenantCloud IA, Nexora NG truth. */
 export const metadata: Metadata = {
-  title: `${BRAND_FULL} · ${BRAND_TAGLINE}`,
+  title: `${BRAND_FULL} · Who paid. Who owes. What’s next.`,
   description:
-    "Nexora by KTI is an estate operating system for Nigerian landlords. It starts with unit money truth: who paid, who owes, what was chased. Docs, staff, access, and artisans ship in sequence. Only LIVE modules are available today.",
+    "Nexora by KTI: who paid, who owes, what’s next. Rent and chase for Nigerian landlords: cash, transfer, Paystack, and WhatsApp.",
   openGraph: {
-    title: `${BRAND_FULL} · ${BRAND_TAGLINE}`,
+    title: `${BRAND_FULL} · Who paid. Who owes. What’s next.`,
     description:
-      "Estate operating system that starts with who paid. Money truth live today; the full map labeled LIVE / LATER.",
+      "The landlord’s daily rent-and-chase list, built for Nigerian cash, transfer, Paystack, and WhatsApp.",
     type: "website",
   },
 };
@@ -30,7 +30,7 @@ export default function MarketingLayout({
   const inviteOnly = inviteOnlySignup();
 
   return (
-    <div className="marketing">
+    <div className="marketing marketing-tc">
       <a href="#main" className="marketing-skip">
         Skip to content
       </a>
@@ -41,33 +41,36 @@ export default function MarketingLayout({
             <span className="marketing-logo-stamp">{BRAND_STAMP}</span>
           </Link>
           <nav className="marketing-nav" aria-label="Marketing">
-            <a href="#estate-os" className="marketing-nav-link">
-              Estate OS
+            <a href="/#features" className="marketing-nav-link">
+              Features
             </a>
-            <a href="#preview" className="marketing-nav-link">
-              What’s live
+            <a href="/#audiences" className="marketing-nav-link">
+              Use cases
             </a>
-            <a href="#faq" className="marketing-nav-link">
+            <Link href="/pricing" className="marketing-nav-link">
+              Pricing
+            </Link>
+            <a href="/#faq" className="marketing-nav-link">
               FAQ
             </a>
-            <Link href="/login" className="marketing-nav-link">
-              Sign in
+            <Link href="/login" className="btn-secondary marketing-nav-login">
+              Log in
             </Link>
             {inviteOnly ? (
-              <a href="#get-started" className="btn-primary marketing-nav-cta">
-                Request access
+              <a href="/#get-started" className="btn-primary marketing-nav-cta">
+                Sign up
               </a>
             ) : (
               <Link href="/signup" className="btn-primary marketing-nav-cta">
-                Get started
+                Sign up
               </Link>
             )}
           </nav>
         </div>
       </header>
       {children}
-      <footer className="marketing-footer">
-        <div className="marketing-container marketing-footer-inner">
+      <footer className="marketing-footer marketing-footer-tc">
+        <div className="marketing-container marketing-footer-grid">
           <div className="marketing-footer-brand-block">
             <Link href="/" className="marketing-footer-brand">
               <span className="marketing-logo-name">{BRAND_NAME}</span>
@@ -75,19 +78,35 @@ export default function MarketingLayout({
             </Link>
             <p className="marketing-footer-tag">{BRAND_TAGLINE}</p>
           </div>
-          <nav className="marketing-footer-nav" aria-label="Footer">
-            <a href="#estate-os">Estate OS</a>
-            <a href="#preview">What’s live</a>
-            <a href="#faq">FAQ</a>
-            {inviteOnly ? (
-              <a href="#get-started">Request access</a>
-            ) : (
-              <Link href="/signup">Get started</Link>
-            )}
-            <Link href="/login">Sign in</Link>
-            <a href="#whatsapp-callback">WhatsApp</a>
+          <nav className="marketing-footer-col" aria-label="Features">
+            <p className="marketing-footer-col-title">Features</p>
+            <a href="/#rent">Rent collection</a>
+            <a href="/#leasing">Applications &amp; docs</a>
+            <a href="/#accounting">Accounting</a>
+            <a href="/#messages">Messages &amp; portal</a>
           </nav>
-          <p className="marketing-footer-copy">© 2026 {BRAND_FULL}</p>
+          <nav className="marketing-footer-col" aria-label="Use cases">
+            <p className="marketing-footer-col-title">Use cases</p>
+            <a href="/#features">Landlords</a>
+            <Link href="/staff/claim">Property managers</Link>
+            <Link href="/signup?role=tenant">Tenants</Link>
+            <Link href="/artisan/claim">Service pros</Link>
+          </nav>
+          <nav className="marketing-footer-col" aria-label="Company">
+            <p className="marketing-footer-col-title">Company</p>
+            <Link href="/pricing">Pricing</Link>
+            <a href="/#faq">FAQ</a>
+            <a href="/#estate-os">Estate OS map</a>
+            <a href="/#get-started">Get started</a>
+            <a href="/#whatsapp-callback">WhatsApp callback</a>
+            <Link href="/login">Log in</Link>
+          </nav>
+        </div>
+        <div className="marketing-container">
+          <p className="marketing-footer-copy">
+            © 2026 {BRAND_FULL}. Property management software for Nigerian
+            landlords.
+          </p>
         </div>
       </footer>
     </div>

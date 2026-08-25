@@ -11,7 +11,7 @@ type DemoRow = {
   status: DemoStatus;
 };
 
-/** Curated marketing portfolio — matches hero tone; not live account data. */
+/** Curated marketing portfolio, matches hero tone; not live account data. */
 const DEMO_ROWS: DemoRow[] = [
   {
     unit: "Cedar Town House · Flat 7",
@@ -49,10 +49,12 @@ const STATUS_LABEL: Record<DemoStatus, string> = {
   "due-soon": "DUE SOON",
 };
 
-type Variant = "hero" | "full";
+type Variant = "hero" | "full" | "story";
 
 type Props = {
   variant?: Variant;
+  /** Hide figcaption under story preview (feature blocks). */
+  showCaption?: boolean;
 };
 
 function demoStats(rows: DemoRow[]) {
@@ -70,17 +72,22 @@ function demoStats(rows: DemoRow[]) {
 }
 
 /**
- * In-page product chrome for marketing — Nexora brand + formatNaira.
+ * In-page product chrome for marketing, Nexora brand + formatNaira.
  * Replaces static PNGs that still showed “Smart Prop” / empty portfolio.
  */
-export function MarketingDashboardMock({ variant = "full" }: Props) {
-  const rows = variant === "hero" ? DEMO_ROWS.slice(0, 2) : DEMO_ROWS;
+export function MarketingDashboardMock({
+  variant = "full",
+  showCaption = true,
+}: Props) {
+  const rows =
+    variant === "hero" ? DEMO_ROWS.slice(0, 2) : DEMO_ROWS;
   const stats = demoStats(DEMO_ROWS);
+  const isStory = variant === "story" || variant === "hero";
 
-  if (variant === "hero") {
+  if (isStory) {
     return (
       <figure
-        className="marketing-preview marketing-hero-preview marketing-dash-mock"
+        className="marketing-preview marketing-story-preview marketing-dash-mock"
         aria-label="Sample unit list with rent and payment status"
       >
         <div className="data-table-wrap marketing-dash-mock-table">
@@ -92,32 +99,51 @@ export function MarketingDashboardMock({ variant = "full" }: Props) {
                 <th>Rent</th>
                 <th>Due Date</th>
                 <th>Status</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.unit}>
+              {rows.map((row, index) => (
+                <tr
+                  key={row.unit}
+                  className={
+                    index === 0 && row.status === "overdue"
+                      ? "marketing-relief-row"
+                      : undefined
+                  }
+                >
                   <td>{row.unit}</td>
                   <td>{row.tenant}</td>
                   <td className="mono-data">{formatNaira(row.rent)}</td>
                   <td className="mono-data">{formatDueDate(row.due)}</td>
                   <td>
-                    <span className={`status-badge ${row.status}`}>
-                      {STATUS_LABEL[row.status]}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="table-actions">
-                      <span className="table-link">Edit unit</span>
-                      <span className="table-link">Edit property</span>
-                    </div>
+                    {index === 0 && row.status === "overdue" ? (
+                      <span
+                        className="marketing-relief-badge"
+                        aria-label="Overdue, then paid"
+                      >
+                        <span className="marketing-relief-before status-badge overdue">
+                          OVERDUE
+                        </span>
+                        <span className="marketing-relief-after status-badge paid">
+                          PAID
+                        </span>
+                      </span>
+                    ) : (
+                      <span className={`status-badge ${row.status}`}>
+                        {STATUS_LABEL[row.status]}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {showCaption ? (
+          <figcaption className="marketing-story-caption">
+            Williams pays. The list exhales.
+          </figcaption>
+        ) : null}
       </figure>
     );
   }

@@ -8,6 +8,7 @@ import re
 import smtplib
 from email.message import EmailMessage
 from typing import Any, Literal
+from dataclasses import dataclass
 
 from twilio.rest import Client
 
@@ -83,6 +84,22 @@ def format_payment_amount(amount: Any) -> str:
 LandlordNotifyStatus = Literal["sent", "skipped", "failed"]
 
 
+@dataclass(frozen=True)
+class LandlordNotifyResult:
+    """Outcome of landlord money-in email; compares equal to status string for tests."""
+
+    status: LandlordNotifyStatus
+    detail: str | None = None
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return self.status == other
+        if isinstance(other, LandlordNotifyResult):
+            return self.status == other.status and self.detail == other.detail
+        return NotImplemented
+
+
+
 def mailgun_configured() -> bool:
     """True when Mailgun API key, domain, and a From address are present."""
     key = (os.getenv("MAILGUN_API_KEY") or "").strip()
@@ -127,7 +144,7 @@ def _email_from_header() -> str:
 
 
 def landlord_payment_notice_detail(status: LandlordNotifyStatus) -> str | None:
-    """Short UI/error_detail for a landlord notice outcome."""
+    """Short UI/error_detail for a landlord notice outcome (fallback if no richer detail)."""
     if status == "skipped":
         return "No email on landlord profile"
     if status == "failed":
@@ -145,14 +162,12 @@ def notify_landlord_payment_received(
     property_name: str | None,
     tenant_name: str | None = None,
     unit_id: str | None = None,
-) -> LandlordNotifyStatus:
+) -> LandlordNotifyResult:
     """
     Email the landlord that a payment was received.
 
-    Returns:
-      - sent: email delivered via Mailgun or SMTP
-      - skipped: no profile email (silent; does not raise)
-      - failed: send error (logged; does not raise)
+    Returns LandlordNotifyResult (status + detail). Compares equal to status
+    strings ("sent" | "skipped" | "failed") for backward-compatible tests.
 
     Never raises — payment marking must not be blocked.
     """
@@ -164,7 +179,7 @@ def notify_landlord_payment_received(
             "Landlord payment email skipped: no email on profile for owner %s",
             owner_id,
         )
-        return "skipped"
+        return LandlordNotifyResult("skipped", "No email on landlord profile")
 
     content = landlord_money_in(
         amount=amount,
@@ -181,12 +196,17 @@ def notify_landlord_payment_received(
             subject=content.subject,
             html=content.html,
         )
-        return "sent"
-    except Exception:
+        return LandlordNotifyResult("sent", None)
+    except Exception as exc:
         logger.exception(
             "Landlord payment email failed for owner %s (%s)", owner_id, email
         )
-        return "failed"
+        reason = str(exc).strip() or "Email send failed"
+        if len(reason) > 180:
+            reason = reason[:177] + "…"
+        if not email_transport_configured():
+            reason = "Email not configured (set MAILGUN_* or SMTP_HOST/SMTP_FROM)"
+        return LandlordNotifyResult("failed", reason)
 
 
 def looks_like_email(contact: str) -> bool:

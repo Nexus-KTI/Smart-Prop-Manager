@@ -10,7 +10,7 @@ export function getAuthOtpChannel(): AuthOtpChannel {
     : "sms";
 }
 
-/** Human label for UI copy — only place auth screens should get channel names. */
+/** Human label for UI copy, only place auth screens should get channel names. */
 export function authOtpChannelLabel(
   channel: AuthOtpChannel = getAuthOtpChannel(),
 ): string {
