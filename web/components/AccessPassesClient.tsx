@@ -26,6 +26,8 @@ export function AccessPassesClient() {
   const [propertyId, setPropertyId] = useState("");
   const [occupants, setOccupants] = useState<AccessOccupant[]>([]);
   const [items, setItems] = useState<AccessPass[]>([]);
+  const [listCapped, setListCapped] = useState(false);
+  const [listLoaded, setListLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -49,7 +51,10 @@ export function AccessPassesClient() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await fetchAccessPasses(propertyId || undefined));
+      const data = await fetchAccessPasses(propertyId || undefined);
+      setItems(data.items);
+      setListCapped(data.capped);
+      setListLoaded(data.loaded);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
     } finally {
@@ -97,7 +102,10 @@ export function AccessPassesClient() {
 
     if (type === "tenant") {
       if (!occupant) {
-        showToast("Pick a linked tenant so the code shows on their Access page");
+        showToast(
+          "Pick a linked tenant so the code shows on their Access page",
+          "error",
+        );
         return;
       }
       unit_id = occupant.unit_id;
@@ -127,13 +135,14 @@ export function AccessPassesClient() {
         subject_user_id
           ? "Gate code issued. Tenant can open Access"
           : "Gate code issued",
+        "success",
       );
       form.reset();
       setSubjectType("guest");
       setFormOpen(false);
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Issue failed");
+      showToast(err instanceof Error ? err.message : "Issue failed", "error");
     } finally {
       setSubmitting(false);
     }
@@ -142,10 +151,10 @@ export function AccessPassesClient() {
   async function onRevoke(id: string) {
     try {
       await revokeAccessPass(id);
-      showToast("Pass revoked");
+      showToast("Pass revoked", "success");
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Revoke failed");
+      showToast(err instanceof Error ? err.message : "Revoke failed", "error");
     }
   }
 
@@ -153,7 +162,6 @@ export function AccessPassesClient() {
     <section className="dashboard">
       <header className="dashboard-header dashboard-header-row">
         <div>
-          <p className="form-kicker">Phase 5</p>
           <h1 className="page-title">Gate codes</h1>
           <p className="page-subtitle">
             Software access passes for guests, tenants, and contractors. Link a
@@ -284,7 +292,30 @@ export function AccessPassesClient() {
 
       {loading ? <p className="page-subtitle">Loading…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
+      {listCapped && !loading ? (
+        <p className="page-subtitle" role="status">
+          Showing the {listLoaded} most recent codes. Older passes may not
+          appear here.
+        </p>
+      ) : null}
 
+      {!loading && items.length === 0 && !formOpen ? (
+        <div className="dashboard-empty" role="status" style={{ marginTop: 16 }}>
+          <p className="dashboard-empty-title mono-data">No gate codes yet.</p>
+          <p className="dashboard-empty-copy">
+            Issue a pass for a guest, tenant, or contractor.
+          </p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setFormOpen(true)}
+          >
+            Issue access code
+          </button>
+        </div>
+      ) : null}
+
+      {items.length > 0 || loading || formOpen ? (
       <div className="data-table-wrap" style={{ marginTop: 16 }}>
         <table className="data-table">
           <thead>
@@ -342,6 +373,7 @@ export function AccessPassesClient() {
           </tbody>
         </table>
       </div>
+      ) : null}
     </section>
   );
 }

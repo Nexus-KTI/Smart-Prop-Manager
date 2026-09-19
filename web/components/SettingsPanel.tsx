@@ -7,22 +7,34 @@ import { ChangePasswordForm } from "@/components/auth/ChangePasswordForm";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { FetchErrorState } from "@/components/FetchErrorState";
 import { ProfileAvatarEditor } from "@/components/ProfileAvatarEditor";
+import {
+  AccountSettingsChrome,
+  channelMismatchMessage,
+  type SettingsTabId,
+} from "@/components/settings/AccountSettingsChrome";
+import {
+  LocalePreferenceFields,
+  type DateFormatOption,
+} from "@/components/settings/LocalePreferenceFields";
+import {
+  NotificationPrefsMatrix,
+  normalizeNotificationPrefs,
+  type NotificationPrefs,
+} from "@/components/settings/NotificationPrefsMatrix";
+import { PaymentCardsPanel } from "@/components/settings/PaymentCardsPanel";
+import { SecurityMfaSessions } from "@/components/settings/SecurityMfaSessions";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useToast } from "@/components/ToastProvider";
 import { fetchMe, updateMe } from "@/lib/api";
 import { formatPhoneDisplay } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/client";
 
-type TabId = "profile" | "notifications" | "security";
 type SecurityView = "menu" | "phone";
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: "profile", label: "Profile" },
-  { id: "notifications", label: "Notifications" },
-  { id: "security", label: "Security" },
-];
-
 type NotificationChannel = "whatsapp" | "sms" | "email";
+
+const PAYSTACK_PUBLIC_KEY =
+  process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY ?? "";
 
 const CHANNEL_OPTIONS: {
   value: NotificationChannel;
@@ -61,7 +73,6 @@ function hasEmailPasswordAuth(
   const list = identities ?? [];
   if (list.some((item) => item.provider === "email")) return true;
   if (list.some((item) => item.provider === "phone")) return false;
-  // Legacy sessions without identity metadata
   return Boolean(email);
 }
 
@@ -96,17 +107,21 @@ function SettingsFormSkeleton({ label }: { label: string }) {
 
 export function SettingsPanel() {
   const { showToast } = useToast();
-  const [tab, setTab] = useState<TabId>("profile");
+  const [tab, setTab] = useState<SettingsTabId>("profile");
 
   const [fullName, setFullName] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [emailConfirmed, setEmailConfirmed] = useState(false);
+  const [timezone, setTimezone] = useState("Africa/Lagos");
+  const [dateFormat, setDateFormat] = useState<DateFormatOption>("dd/mm/yyyy");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [canChangePassword, setCanChangePassword] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
   const [profilePending, setProfilePending] = useState(false);
+  const [verifyPending, setVerifyPending] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const loadSeq = useRef(0);
@@ -116,6 +131,9 @@ export function SettingsPanel() {
 
   const [notificationChannel, setNotificationChannel] =
     useState<NotificationChannel>("sms");
+  const [notifyPrefs, setNotifyPrefs] = useState<NotificationPrefs>(
+    normalizeNotificationPrefs(null),
+  );
   const [notifyPending, setNotifyPending] = useState(false);
   const [notifyError, setNotifyError] = useState<string | null>(null);
 
@@ -141,8 +159,16 @@ export function SettingsPanel() {
         setBusinessName(me.business_name ?? "");
         setPhone(me.phone ?? formatPhoneDisplay(data.user?.phone) ?? "");
         setEmail(me.email ?? data.user?.email ?? "");
+        setEmailConfirmed(Boolean(me.email_confirmed));
+        setTimezone(me.timezone || "Africa/Lagos");
+        setDateFormat(
+          me.date_format === "mm/dd/yyyy" || me.date_format === "yyyy-mm-dd"
+            ? me.date_format
+            : "dd/mm/yyyy",
+        );
         setAvatarUrl(me.avatar_url ?? null);
         setNotificationChannel(normalizeChannel(me.notification_channel));
+        setNotifyPrefs(normalizeNotificationPrefs(me.notification_prefs));
         setCanChangePassword(
           hasEmailPasswordAuth(
             data.user?.identities,
@@ -157,11 +183,11 @@ export function SettingsPanel() {
         setBusinessName("");
         setPhone("");
         setEmail("");
+        setEmailConfirmed(false);
         setProfileError(
           err instanceof Error ? err.message : "Failed to load profile",
         );
       } finally {
-        // Always clear skeleton for the latest request (avoids stuck/empty flash).
         if (seq === loadSeq.current) {
           setProfileLoading(false);
         }
@@ -187,11 +213,20 @@ export function SettingsPanel() {
         name,
         business_name: businessName.trim() || null,
         email: email.trim() || null,
+        timezone,
+        date_format: dateFormat,
       });
       setFullName(me.name);
       setBusinessName(me.business_name ?? "");
       setPhone(me.phone ?? "");
       setEmail(me.email ?? "");
+      setEmailConfirmed(Boolean(me.email_confirmed));
+      setTimezone(me.timezone || "Africa/Lagos");
+      setDateFormat(
+        me.date_format === "mm/dd/yyyy" || me.date_format === "yyyy-mm-dd"
+          ? me.date_format
+          : "dd/mm/yyyy",
+      );
       showToast("Profile updated.");
     } catch (err) {
       setProfileError(
@@ -199,6 +234,31 @@ export function SettingsPanel() {
       );
     } finally {
       setProfilePending(false);
+    }
+  }
+
+  async function onResendVerification() {
+    const address = email.trim();
+    if (!address) {
+      showToast("Add an email on your profile first.", "error");
+      return;
+    }
+    setVerifyPending(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: address,
+      });
+      if (error) throw error;
+      showToast("Verification email sent.");
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Could not send verification email.",
+        "error",
+      );
+    } finally {
+      setVerifyPending(false);
     }
   }
 
@@ -224,10 +284,37 @@ export function SettingsPanel() {
     }
   }
 
+  async function onSaveNotifyPrefs() {
+    if (!profileReady || profileLoading) return;
+    setNotifyError(null);
+    setNotifyPending(true);
+    try {
+      const me = await updateMe({ notification_prefs: notifyPrefs });
+      setNotifyPrefs(normalizeNotificationPrefs(me.notification_prefs));
+      showToast("Event preferences saved.");
+    } catch (err) {
+      setNotifyError(
+        err instanceof Error
+          ? err.message
+          : "Could not save event preferences.",
+      );
+    } finally {
+      setNotifyPending(false);
+    }
+  }
+
   async function onPhoneChanged(nextPhone: string) {
     setPhone(formatPhoneDisplay(nextPhone));
     setSecurityView("menu");
     showToast("Phone number updated.");
+  }
+
+  function onTabChange(next: SettingsTabId) {
+    setTab(next);
+    if (next !== "security") {
+      setSecurityView("menu");
+      setShowPasswordForm(false);
+    }
   }
 
   const tabLabel =
@@ -235,15 +322,21 @@ export function SettingsPanel() {
       ? "Profile"
       : tab === "notifications"
         ? "Notifications"
-        : "Security";
+        : tab === "cards"
+          ? "Cards"
+          : "Security";
   const tabSubtitle =
     tab === "profile"
       ? "Your details for account views, receipts, and tenant messages."
       : tab === "notifications"
-        ? "Default channel for rent reminders and payment receipts sent to tenants."
-        : canChangePassword
-          ? "Update the phone number on this account, or change your password."
-          : "Update the phone number on this account.";
+        ? "Default channel and event matrix for reminders and receipts."
+        : tab === "cards"
+          ? "Saved cards for Paystack checkout."
+          : canChangePassword
+            ? "Phone, password, two-step authentication, and sessions."
+            : "Phone, two-step authentication, and sessions.";
+
+  const mismatch = channelMismatchMessage(notificationChannel, phone, email);
 
   if (!profileLoading && profileError && !profileReady) {
     return (
@@ -256,33 +349,14 @@ export function SettingsPanel() {
   }
 
   return (
-    <section className="settings-page">
-      <header className="dashboard-header">
-        <h1 className="page-title">Settings</h1>
-        <p className="page-subtitle">{tabSubtitle}</p>
-      </header>
-
-      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            className="settings-tab"
-            aria-selected={tab === item.id}
-            onClick={() => {
-              setTab(item.id);
-              if (item.id !== "security") {
-                setSecurityView("menu");
-                setShowPasswordForm(false);
-              }
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-
+    <AccountSettingsChrome
+      homeHref="/properties"
+      homeLabel="Properties"
+      settingsHref="/settings"
+      tab={tab}
+      onTabChange={onTabChange}
+      subtitle={tabSubtitle}
+    >
       {profileLoading ? <SettingsFormSkeleton label={tabLabel} /> : null}
 
       {!profileLoading && profileReady && tab === "profile" ? (
@@ -294,75 +368,117 @@ export function SettingsPanel() {
         >
           {profileError ? <p className="form-error">{profileError}</p> : null}
 
-          <ProfileAvatarEditor
-            name={fullName || businessName}
-            avatarUrl={avatarUrl}
-            onUploaded={setAvatarUrl}
+          <div className="settings-section">
+            <p className="settings-section-title">Profile details</p>
+            <p className="settings-section-lede">
+              Your profile is visible to connected tenants and staff on your
+              portfolio.
+            </p>
+
+            <ProfileAvatarEditor
+              name={fullName || businessName}
+              avatarUrl={avatarUrl}
+              onUploaded={setAvatarUrl}
+            />
+
+            <label className="form-field">
+              <span className="form-label">Name</span>
+              <input
+                className="form-input"
+                name="name"
+                type="text"
+                required
+                autoComplete="name"
+                disabled={profilePending}
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                placeholder="Your full name"
+              />
+            </label>
+
+            <label className="form-field">
+              <span className="form-label">Business / Agency name</span>
+              <input
+                className="form-input"
+                name="business_name"
+                type="text"
+                autoComplete="organization"
+                disabled={profilePending}
+                value={businessName}
+                onChange={(event) => setBusinessName(event.target.value)}
+                placeholder="Optional"
+              />
+              <span className="form-help">
+                Shown on receipts and reminders sent to tenants
+              </span>
+            </label>
+
+            <div className="form-field">
+              <span className="form-label">Phone number</span>
+              <input
+                className="form-input mono-data"
+                name="phone"
+                type="tel"
+                readOnly
+                disabled
+                value={phone}
+                placeholder="No phone on file"
+              />
+              <span className="form-help">
+                Change your number from the Security tab.
+              </span>
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <p className="settings-section-title">Email address</p>
+            <label className="form-field">
+              <span className="form-label">Email</span>
+              <input
+                className="form-input"
+                name="email"
+                type="email"
+                autoComplete="email"
+                disabled={profilePending}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="Optional"
+              />
+            </label>
+            {email.trim() ? (
+              <div className="settings-email-row">
+                <span
+                  className={`status-badge ${emailConfirmed ? "verified" : "unverified"}`}
+                >
+                  {emailConfirmed ? "Verified" : "Unverified"}
+                </span>
+                {!emailConfirmed ? (
+                  <div className="settings-email-actions">
+                    <button
+                      type="button"
+                      className="settings-inline-link"
+                      disabled={verifyPending || profilePending}
+                      onClick={() => void onResendVerification()}
+                    >
+                      {verifyPending ? "Sending…" : "Verify"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="settings-section">
+            <ThemeToggle />
+          </div>
+
+          <LocalePreferenceFields
+            timezone={timezone}
+            dateFormat={dateFormat}
+            disabled={profilePending}
+            onTimezoneChange={setTimezone}
+            onDateFormatChange={setDateFormat}
           />
-
-          <label className="form-field">
-            <span className="form-label">Name</span>
-            <input
-              className="form-input"
-              name="name"
-              type="text"
-              required
-              autoComplete="name"
-              disabled={profilePending}
-              value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-              placeholder="Your full name"
-            />
-          </label>
-
-          <label className="form-field">
-            <span className="form-label">Business / Agency name</span>
-            <input
-              className="form-input"
-              name="business_name"
-              type="text"
-              autoComplete="organization"
-              disabled={profilePending}
-              value={businessName}
-              onChange={(event) => setBusinessName(event.target.value)}
-              placeholder="Optional"
-            />
-            <span className="form-help">
-              Shown on receipts and reminders sent to tenants
-            </span>
-          </label>
-
-          <label className="form-field">
-            <span className="form-label">Phone number</span>
-            <input
-              className="form-input mono-data"
-              name="phone"
-              type="tel"
-              readOnly
-              disabled
-              value={phone}
-              placeholder="No phone on file"
-            />
-            <span className="form-help">
-              Change your number from the Security tab.
-            </span>
-          </label>
-
-          <label className="form-field">
-            <span className="form-label">Email</span>
-            <input
-              className="form-input"
-              name="email"
-              type="email"
-              autoComplete="email"
-              disabled={profilePending}
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="Optional"
-            />
-          </label>
-
-          <ThemeToggle />
 
           <div className="form-actions">
             <button
@@ -370,7 +486,7 @@ export function SettingsPanel() {
               type="submit"
               disabled={profilePending}
             >
-              {profilePending ? "Saving…" : "Save"}
+              {profilePending ? "Saving…" : "Update"}
             </button>
           </div>
           <p className="page-subtitle" style={{ marginTop: 16 }}>
@@ -396,6 +512,7 @@ export function SettingsPanel() {
           aria-label="Notifications"
         >
           {notifyError ? <p className="form-error">{notifyError}</p> : null}
+          {mismatch ? <p className="settings-callout">{mismatch}</p> : null}
 
           <fieldset
             className="settings-channel-fieldset"
@@ -403,8 +520,10 @@ export function SettingsPanel() {
           >
             <legend className="form-label">Reminder / receipt channel</legend>
             <p className="form-hint">
-              Every unit’s tenant contact must match this channel (phone for
-              SMS/WhatsApp, email for Email) or reminders will fail.
+              Outbound channel for rent chase and receipts. Every unit’s tenant
+              contact must match (phone for SMS/WhatsApp, email for Email) or
+              the send fails. Tenants can turn off rent reminders in their own
+              settings.
             </p>
             {CHANNEL_OPTIONS.map((option) => (
               <label key={option.value} className="settings-pref">
@@ -422,7 +541,31 @@ export function SettingsPanel() {
               </label>
             ))}
           </fieldset>
+
+          <NotificationPrefsMatrix
+            audience="landlord"
+            prefs={notifyPrefs}
+            disabled={notifyPending}
+            onChange={setNotifyPrefs}
+          />
+          <div className="form-actions">
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={notifyPending}
+              onClick={() => void onSaveNotifyPrefs()}
+            >
+              {notifyPending ? "Saving…" : "Save event preferences"}
+            </button>
+          </div>
         </div>
+      ) : null}
+
+      {!profileLoading && profileReady && tab === "cards" ? (
+        <PaymentCardsPanel
+          paystackPublicKey={PAYSTACK_PUBLIC_KEY}
+          onToast={showToast}
+        />
       ) : null}
 
       {!profileLoading && profileReady && tab === "security" ? (
@@ -482,10 +625,12 @@ export function SettingsPanel() {
                   )}
                 </div>
               ) : null}
+
+              <SecurityMfaSessions onToast={showToast} />
             </div>
           )}
         </div>
       ) : null}
-    </section>
+    </AccountSettingsChrome>
   );
 }

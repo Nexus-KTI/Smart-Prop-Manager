@@ -7,11 +7,11 @@ import secrets
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
-from lib.notify import send_notification
+from lib.rate_limit import client_ip, enforce_rate_limit
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -50,6 +50,21 @@ def _require_owned_unit(user: AuthedUser, unit_id: str) -> dict:
     return dict(rows[0])
 
 
+APPLICATIONS_PAGE_LIMIT = 100
+PENDING_DECISION_STATUSES = ("submitted",)
+
+
+def _exact_count(db, table: str, *, eq_filters: dict, in_filters: dict | None = None) -> int:
+    q = db.table(table).select("id", count="exact")
+    for key, value in eq_filters.items():
+        q = q.eq(key, value)
+    if in_filters:
+        for key, values in in_filters.items():
+            q = q.in_(key, list(values))
+    res = q.limit(1).execute()
+    return int(getattr(res, "count", None) or 0)
+
+
 @router.get("/")
 def list_applications(user: AuthedUser = Depends(get_current_user)):
     rows = (
@@ -57,12 +72,34 @@ def list_applications(user: AuthedUser = Depends(get_current_user)):
         .select("*")
         .eq("landlord_id", user.id)
         .order("created_at", desc=True)
-        .limit(100)
+        .limit(APPLICATIONS_PAGE_LIMIT)
         .execute()
         .data
         or []
     )
-    return {"items": rows}
+    pending_count = _exact_count(
+        user.db,
+        "rental_applications",
+        eq_filters={"landlord_id": user.id},
+        in_filters={"status": PENDING_DECISION_STATUSES},
+    )
+    return {
+        "items": rows,
+        "pending_count": pending_count,
+        "loaded": len(rows),
+        "capped": len(rows) >= APPLICATIONS_PAGE_LIMIT,
+    }
+
+
+@router.get("/pending-count")
+def applications_pending_count(user: AuthedUser = Depends(get_current_user)):
+    pending_count = _exact_count(
+        user.db,
+        "rental_applications",
+        eq_filters={"landlord_id": user.id},
+        in_filters={"status": PENDING_DECISION_STATUSES},
+    )
+    return {"pending_count": pending_count}
 
 
 @router.post("/unit/{unit_id}", status_code=status.HTTP_201_CREATED)
@@ -91,8 +128,14 @@ def open_application_invite(unit_id: str, user: AuthedUser = Depends(get_current
 
 
 @router.get("/token/{token}")
-def preview_application(token: str):
+def preview_application(token: str, request: Request):
     """Public preview for apply page (service role)."""
+    enforce_rate_limit(
+        f"app-preview:ip:{client_ip(request)}",
+        limit=30,
+        window_seconds=60,
+        detail="Too many invite lookups. Try again shortly.",
+    )
     try:
         svc = create_service_client()
     except RuntimeError as exc:
@@ -208,16 +251,21 @@ def connect_landlord(payload: dict, user: AuthedUser = Depends(get_current_user)
 
     signup = f"{_frontend_base()}/signup?role=landlord"
     try:
-        send_notification(
-            "email",
-            email,
-            (
+        from lib.delivery_outbox import enqueue_notification, flush_delivery_outbox
+
+        enqueue_notification(
+            user.db,
+            idempotency_key=f"connect-landlord:{created.get('id') or email}",
+            channel="email",
+            contact=email,
+            message=(
                 f"{name or 'A tenant'} asked you to manage their rent on Nexora.\n\n"
                 f"{message or ''}\n\n"
                 f"Create a landlord account: {signup}\n"
             ),
             email_subject="Your tenant invited you to Nexora",
         )
+        flush_delivery_outbox(db=user.db, batch_size=5)
         if created.get("id"):
             user.db.table("landlord_connect_requests").update({"status": "sent"}).eq(
                 "id", created["id"]

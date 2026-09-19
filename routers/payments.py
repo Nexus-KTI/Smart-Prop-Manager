@@ -1,5 +1,7 @@
 import json
+import hashlib
 import logging
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 from typing import Any
 
@@ -41,6 +43,51 @@ def _normalize_charge_fields(payload: dict) -> tuple[str, str | None]:
     if raw != "other":
         label = None
     return raw, label
+
+
+def _amount_kobo(value: Any) -> int:
+    try:
+        return int((Decimal(str(value)) * 100).quantize(Decimal("1")))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payment amount could not be reconciled",
+        ) from exc
+
+
+def _validate_paystack_binding(
+    data: dict[str, Any],
+    transaction: dict[str, Any],
+    *,
+    reference: str,
+    expected_purpose: str | None = None,
+) -> None:
+    """Bind provider success to the exact pending ledger operation."""
+    metadata = data.get("metadata") or {}
+    mismatches: list[str] = []
+    if str(data.get("reference") or "") != reference:
+        mismatches.append("reference")
+    stored_reference = str(transaction.get("payment_reference") or "")
+    if stored_reference and stored_reference != reference:
+        mismatches.append("stored_reference")
+    if str(data.get("currency") or "").upper() != "NGN":
+        mismatches.append("currency")
+    if int(data.get("amount") or 0) != _amount_kobo(transaction.get("amount")):
+        mismatches.append("amount")
+    if str(metadata.get("transaction_id") or "") != str(transaction.get("id")):
+        mismatches.append("transaction_id")
+    if str(metadata.get("unit_id") or "") != str(transaction.get("unit_id")):
+        mismatches.append("unit_id")
+    metadata_charge = str(metadata.get("charge_type") or "")
+    if metadata_charge and metadata_charge != str(transaction.get("charge_type") or "rent"):
+        mismatches.append("charge_type")
+    if expected_purpose and str(metadata.get("purpose") or "") != expected_purpose:
+        mismatches.append("purpose")
+    if mismatches:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Paystack payment does not match pending transaction: {', '.join(mismatches)}",
+        )
 
 
 def _first_row(data: Any) -> dict | None:
@@ -207,6 +254,34 @@ def _landlord_payment_notice_already_sent(
         return False
 
 
+def _tenant_receipt_notice_already_sent(
+    db, unit_id: str, paid_at: Any = None
+) -> bool:
+    """True if the tenant already received a receipt notice for this payment."""
+    table = getattr(db, "table", None)
+    if not callable(table):
+        return False
+    try:
+        q = (
+            db.table("reminders")
+            .select("id")
+            .eq("unit_id", unit_id)
+            .eq("kind", "receipt")
+            .in_("status", ["sent", "skipped"])
+            .order("sent_at", desc=True)
+            .limit(1)
+        )
+        if paid_at:
+            q = q.gte("sent_at", paid_at)
+        rows = q.execute().data or []
+        return bool(rows)
+    except Exception:
+        logger.exception(
+            "Could not check prior receipt notice for unit %s", unit_id
+        )
+        return False
+
+
 def _owner_id_for_unit(db, unit_id: str) -> str | None:
     rows = (
         db.table("units")
@@ -285,13 +360,20 @@ def _unit_access_role(user: AuthedUser, unit_id: str) -> str:
     raise HTTPException(status_code=404, detail="Unit not found")
 
 
-def deliver_payment_receipt(db, transaction: dict) -> str | None:
+def deliver_payment_receipt(
+    db,
+    transaction: dict,
+    *,
+    require_tenant_notify: bool = False,
+) -> str | None:
     """
     Generate + upload a PDF receipt, notify the tenant on the landlord's
     preferred channel, email the landlord a payment notice, and log a
     receipt reminder.
     Returns the public receipt URL, or None if delivery could not complete.
-    Payment success must not fail because of receipt/notify errors.
+    Payment success must not fail because of receipt/notify errors unless
+    require_tenant_notify=True (outbox worker), which retries incomplete steps.
+    Each step is idempotent so partial replays do not double-send.
     """
     txn_id = transaction.get("id")
     unit_id = transaction.get("unit_id")
@@ -299,6 +381,7 @@ def deliver_payment_receipt(db, transaction: dict) -> str | None:
         return None
 
     channel = "sms"
+    paid_at = transaction.get("paid_at")
 
     try:
         context = _load_unit_context(db, unit_id)
@@ -314,7 +397,7 @@ def deliver_payment_receipt(db, transaction: dict) -> str | None:
         # Skip re-send if a successful landlord_payment notice already logged
         # for this payment (Paystack confirm/webhook can re-enter after PDF fail).
         if _landlord_payment_notice_already_sent(
-            db, str(unit_id), transaction.get("paid_at")
+            db, str(unit_id), paid_at
         ):
             landlord_result_status = "sent"
             landlord_detail = None
@@ -349,15 +432,22 @@ def deliver_payment_receipt(db, transaction: dict) -> str | None:
                     "Failed to log landlord payment notice for unit %s", unit_id
                 )
 
-        receipt_payload = {
-            **transaction,
-            "tenant_name": unit.get("tenant_name"),
-            "unit_label": unit_label,
-            "property_name": property_name,
-            "business_name": business_name,
-        }
-        pdf_bytes = generate_receipt(receipt_payload)
-        receipt_url = upload_receipt(str(txn_id), pdf_bytes)
+        existing_url = (transaction.get("receipt_url") or "").strip()
+        if existing_url.startswith("http"):
+            receipt_url = existing_url
+        else:
+            receipt_payload = {
+                **transaction,
+                "tenant_name": unit.get("tenant_name"),
+                "unit_label": unit_label,
+                "property_name": property_name,
+                "business_name": business_name,
+            }
+            pdf_bytes = generate_receipt(receipt_payload)
+            receipt_url = upload_receipt(str(txn_id), pdf_bytes)
+
+        if _tenant_receipt_notice_already_sent(db, str(unit_id), paid_at):
+            return receipt_url
 
         contact = (unit.get("tenant_contact") or "").strip()
         reminder_status = "sent"
@@ -371,6 +461,7 @@ def deliver_payment_receipt(db, transaction: dict) -> str | None:
         else:
             try:
                 from lib.email_templates import tenant_receipt
+                from lib.notification_prefs import load_profile_notification_prefs
 
                 receipt_mail = tenant_receipt(
                     amount=transaction.get("amount"),
@@ -379,17 +470,32 @@ def deliver_payment_receipt(db, transaction: dict) -> str | None:
                     receipt_url=receipt_url,
                     business_name=business_name,
                 )
+                tenant_uid = unit.get("tenant_user_id")
                 channel = send_notification(
                     channel,
                     contact,
                     receipt_mail.text,
                     email_subject=receipt_mail.subject,
                     email_html=receipt_mail.html,
+                    event="payment_receipt",
+                    notification_prefs=load_profile_notification_prefs(
+                        db, tenant_uid
+                    ),
                 )
             except Exception as exc:
-                reminder_status = "failed"
-                receipt_error = str(exc).strip() or f"Failed to send {channel} receipt"
-                logger.exception("%s receipt send failed for %s", channel, txn_id)
+                from lib.notification_prefs import is_prefs_opt_out_error
+
+                if is_prefs_opt_out_error(exc):
+                    reminder_status = "skipped"
+                    receipt_error = (
+                        "Tenant turned off payment receipts for this channel"
+                    )
+                else:
+                    reminder_status = "failed"
+                    receipt_error = (
+                        str(exc).strip() or f"Failed to send {channel} receipt"
+                    )
+                    logger.exception("%s receipt send failed for %s", channel, txn_id)
 
         try:
             _log_receipt_reminder(
@@ -398,6 +504,8 @@ def deliver_payment_receipt(db, transaction: dict) -> str | None:
         except Exception:
             logger.exception("Failed to log receipt reminder for %s", txn_id)
 
+        if require_tenant_notify and reminder_status == "failed":
+            return None
         return receipt_url
     except Exception as exc:
         logger.exception("Receipt delivery failed for transaction %s", txn_id)
@@ -412,6 +520,20 @@ def deliver_payment_receipt(db, transaction: dict) -> str | None:
         except Exception:
             logger.exception("Failed to log failed receipt reminder for %s", txn_id)
         return None
+
+
+def _queue_paid_side_effects(db, transaction: dict) -> None:
+    """Durably queue receipt/notice/chat work without blocking ledger success."""
+    transaction_id = transaction.get("id")
+    if not transaction_id:
+        logger.error("Cannot queue payment receipt without transaction id")
+        return
+    try:
+        from lib.delivery_outbox import enqueue_payment_receipt
+
+        enqueue_payment_receipt(db, str(transaction_id))
+    except Exception:
+        logger.exception("Failed to queue payment receipt for %s", transaction_id)
 
 
 def _flatten_portfolio_payment(row: dict) -> dict:
@@ -536,7 +658,11 @@ def payment_history(
 
 
 @router.post("/manual")
-def record_manual_payment(payload: dict, user: AuthedUser = Depends(get_current_user)):
+def record_manual_payment(
+    payload: dict,
+    request: Request,
+    user: AuthedUser = Depends(get_current_user),
+):
     unit_id = payload.get("unit_id")
     amount = payload.get("amount")
     if not unit_id:
@@ -548,6 +674,17 @@ def record_manual_payment(payload: dict, user: AuthedUser = Depends(get_current_
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="amount is required",
+        )
+    if _amount_kobo(amount) <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="amount must be positive",
+        )
+    request_key = (request.headers.get("idempotency-key") or "").strip()
+    if len(request_key) < 8 or len(request_key) > 180:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid Idempotency-Key is required",
         )
 
     from lib.access import PERM_MONEY, require_unit_access
@@ -572,6 +709,7 @@ def record_manual_payment(payload: dict, user: AuthedUser = Depends(get_current_
         "charge_type": charge_type,
         "initiated_by": "landlord",
         "initiator_user_id": user.id,
+        "idempotency_key": f"manual:{user.id}:{request_key}",
     }
     if charge_label:
         row["charge_label"] = charge_label
@@ -579,26 +717,56 @@ def record_manual_payment(payload: dict, user: AuthedUser = Depends(get_current_
         row["payment_reference"] = reference
 
     db = user.db if ctx.role == "owner" else create_service_client()
-    inserted = db.table("transactions").insert(row).execute().data
-    txn = _first_row(inserted)
-    if txn and txn.get("status") == "paid":
-        receipt_url = deliver_payment_receipt(db, txn)
-        if receipt_url and isinstance(inserted, list) and inserted:
-            inserted[0]["receipt_url"] = receipt_url
-        _post_paid_to_chat(db, txn, receipt_url)
-    record_audit(
-        ctx,
-        action="payment.manual",
-        target_type="unit",
-        target_id=str(unit_id),
-        metadata={"amount": amount, "charge_type": charge_type},
+    inserted = (
+        db.table("transactions")
+        .upsert(
+            row,
+            on_conflict="idempotency_key",
+            ignore_duplicates=True,
+        )
+        .execute()
+        .data
     )
+    created = bool(inserted)
+    if not inserted:
+        inserted = (
+            db.table("transactions")
+            .select("*")
+            .eq("idempotency_key", row["idempotency_key"])
+            .eq("unit_id", unit_id)
+            .eq("initiator_user_id", user.id)
+            .limit(1)
+            .execute()
+            .data
+        )
+    txn = _first_row(inserted)
+    if not txn or (
+        _amount_kobo(txn.get("amount")) != _amount_kobo(amount)
+        or str(txn.get("charge_type") or "rent") != charge_type
+        or str(txn.get("payment_reference") or "") != reference
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Idempotency-Key was reused with different payment inputs",
+        )
+    if created and txn.get("status") == "paid":
+        _queue_paid_side_effects(db, txn)
+    if created:
+        record_audit(
+            ctx,
+            action="payment.manual",
+            target_type="unit",
+            target_id=str(unit_id),
+            metadata={"amount": amount, "charge_type": charge_type},
+        )
     return inserted
 
 
 @router.post("/paystack/pending")
 def create_pending_paystack_payment(
-    payload: dict, user: AuthedUser = Depends(get_current_user)
+    payload: dict,
+    request: Request,
+    user: AuthedUser = Depends(get_current_user),
 ):
     """Create a pending transaction before opening Paystack checkout."""
     unit_id = payload.get("unit_id")
@@ -613,9 +781,22 @@ def create_pending_paystack_payment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="amount is required",
         )
+    if _amount_kobo(amount) <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="amount must be positive",
+        )
 
     role = _unit_access_role(user, str(unit_id))
     charge_type, charge_label = _normalize_charge_fields(payload)
+    idempotency_key = (request.headers.get("idempotency-key") or "").strip()
+    if len(idempotency_key) < 8 or len(idempotency_key) > 180:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid Idempotency-Key is required",
+        )
+    operation_key = f"paystack-pending:{user.id}:{idempotency_key}"
+    digest = hashlib.sha256(operation_key.encode("utf-8")).hexdigest()[:24]
 
     insert_row = {
         "unit_id": unit_id,
@@ -625,10 +806,11 @@ def create_pending_paystack_payment(
         "charge_type": charge_type,
         "initiated_by": role,
         "initiator_user_id": user.id,
+        "idempotency_key": operation_key,
+        "payment_reference": f"nexora_in_{digest}",
     }
     if charge_label:
         insert_row["charge_label"] = charge_label
-
     from lib.access import PERM_MONEY, require_unit_access
     from lib.db import create_service_client
 
@@ -643,18 +825,25 @@ def create_pending_paystack_payment(
         except HTTPException:
             use_service = False
 
-    if use_service:
-        inserted = (
-            create_service_client()
-            .table("transactions")
-            .insert(insert_row)
-            .execute()
-            .data
+    db = create_service_client() if use_service else user.db
+    inserted = (
+        db.table("transactions")
+        .upsert(
+            insert_row,
+            on_conflict="idempotency_key",
+            ignore_duplicates=True,
         )
-    else:
+        .execute()
+        .data
+    )
+    if not inserted:
         inserted = (
-            user.db.table("transactions")
-            .insert(insert_row)
+            db.table("transactions")
+            .select("*")
+            .eq("idempotency_key", insert_row["idempotency_key"])
+            .eq("unit_id", unit_id)
+            .eq("initiator_user_id", user.id)
+            .limit(1)
             .execute()
             .data
         )
@@ -663,6 +852,16 @@ def create_pending_paystack_payment(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Could not create pending payment",
+        )
+    if (
+        _amount_kobo(txn.get("amount")) != _amount_kobo(amount)
+        or str(txn.get("charge_type") or "rent") != charge_type
+        or str(txn.get("payment_reference") or "")
+        != str(insert_row["payment_reference"])
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Idempotency-Key was reused with different payment inputs",
         )
     return inserted
 
@@ -680,16 +879,51 @@ def confirm_paystack_payment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="unit_id is required",
         )
+    if not reference or not transaction_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="reference and transaction_id are required",
+        )
 
     role = _unit_access_role(user, str(unit_id))
     from lib.db import create_service_client
 
     db = create_service_client() if role == "tenant" else user.db
+    existing = _first_row(
+        db.table("transactions")
+        .select("*")
+        .eq("unit_id", unit_id)
+        .eq("id", transaction_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No matching pending payment. Start the payment again.",
+        )
 
     data = verify_transaction(reference)
+    _validate_paystack_binding(data, existing, reference=reference)
     amount = (data.get("amount") or 0) / 100  # kobo -> naira
-    metadata = data.get("metadata") or {}
-    transaction_id = transaction_id or metadata.get("transaction_id")
+
+    referenced = _first_row(
+        db.table("transactions")
+        .select("id, unit_id, status, payment_reference")
+        .eq("payment_reference", reference)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if referenced and (
+        str(referenced.get("unit_id")) != str(unit_id)
+        or (transaction_id and str(referenced.get("id")) != str(transaction_id))
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payment reference is already linked to another transaction",
+        )
 
     update = {
         "status": "paid",
@@ -700,38 +934,42 @@ def confirm_paystack_payment(
     if reference:
         update["payment_reference"] = reference
 
-    txn: dict | None = None
-    result = None
-
-    if transaction_id:
-        result = (
-            db.table("transactions")
-            .update(update)
-            .eq("id", transaction_id)
-            .eq("unit_id", unit_id)
-            .execute()
-            .data
+    existing_reference = (existing.get("payment_reference") or "").strip()
+    if existing_reference and existing_reference != reference:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payment reference does not match the pending transaction",
         )
-        txn = _first_row(result)
+    if existing.get("status") == "paid":
+        _queue_paid_side_effects(db, existing)
+        return [existing]
+    if existing.get("status") != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payment transaction is not pending",
+        )
 
+    result = (
+        db.table("transactions")
+        .update(update)
+        .eq("id", existing["id"])
+        .eq("unit_id", unit_id)
+        .eq("status", "pending")
+        .execute()
+        .data
+    )
+    txn = _first_row(result)
     if not txn:
-        row = {
-            "unit_id": unit_id,
-            **update,
-            "initiated_by": role,
-            "initiator_user_id": user.id,
-        }
-        result = db.table("transactions").insert(row).execute().data
-        txn = _first_row(result)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payment could not be reconciled",
+        )
 
     if txn and txn.get("status") == "paid":
         existing_url = (txn.get("receipt_url") or "").strip()
-        receipt_url = existing_url if existing_url.startswith("http") else None
-        if not receipt_url:
-            receipt_url = deliver_payment_receipt(db, txn)
-            if receipt_url and isinstance(result, list) and result:
-                result[0]["receipt_url"] = receipt_url
-        _post_paid_to_chat(db, txn, receipt_url)
+        if existing_url.startswith("http") and isinstance(result, list) and result:
+            result[0]["receipt_url"] = existing_url
+        _queue_paid_side_effects(db, txn)
 
     return result
 
@@ -745,27 +983,17 @@ async def paystack_webhook(request: Request):
         data = event.get("data") or {}
         metadata = data.get("metadata") or {}
         transaction_id = metadata.get("transaction_id")
-        if transaction_id:
+        paystack_ref = (data.get("reference") or "").strip()
+        if transaction_id or paystack_ref:
             db = create_service_client()
-            paystack_ref = (data.get("reference") or "").strip()
-            update_row = {
-                "status": "paid",
-                "paid_at": data.get("paid_at")
-                or datetime.now(timezone.utc).isoformat(),
-                "method": "paystack",
-            }
+            target = db.table("transactions").select("*").limit(1)
             if paystack_ref:
-                update_row["payment_reference"] = paystack_ref
-            updated = (
-                db.table("transactions")
-                .update(update_row)
-                .eq("id", transaction_id)
-                .execute()
-                .data
-            )
-            txn = _first_row(updated)
-            if not txn:
-                fetched = (
+                target = target.eq("payment_reference", paystack_ref)
+            else:
+                target = target.eq("id", transaction_id)
+            target_row = _first_row(target.execute().data)
+            if not target_row and transaction_id:
+                target_row = _first_row(
                     db.table("transactions")
                     .select("*")
                     .eq("id", transaction_id)
@@ -773,12 +1001,397 @@ async def paystack_webhook(request: Request):
                     .execute()
                     .data
                 )
-                txn = _first_row(fetched)
+            if not target_row:
+                logger.warning("Unmatched Paystack webhook reference %s", paystack_ref)
+                return {"status": "ok"}
+            try:
+                _validate_paystack_binding(
+                    data,
+                    target_row,
+                    reference=paystack_ref,
+                )
+            except HTTPException:
+                logger.exception(
+                    "Conflicting Paystack webhook reference %s", paystack_ref
+                )
+                return {"status": "ok"}
+
+            txn = target_row
+            if target_row.get("status") != "paid":
+                updated = (
+                    db.table("transactions")
+                    .update(
+                        {
+                            "status": "paid",
+                            "paid_at": data.get("paid_at")
+                            or datetime.now(timezone.utc).isoformat(),
+                            "method": "paystack",
+                            "payment_reference": paystack_ref,
+                            "processing_lease_token": None,
+                            "processing_lease_expires_at": None,
+                        }
+                    )
+                    .eq("id", target_row["id"])
+                    .in_("status", ["pending", "failed"])
+                    .execute()
+                    .data
+                )
+                txn = _first_row(updated) or target_row
             if txn and txn.get("status") == "paid":
-                # Avoid duplicate receipt WhatsApps if confirm already delivered
-                existing_url = (txn.get("receipt_url") or "").strip()
-                receipt_url = existing_url if existing_url.startswith("http") else None
-                if not receipt_url:
-                    receipt_url = deliver_payment_receipt(db, txn)
-                _post_paid_to_chat(db, txn, receipt_url)
+                _queue_paid_side_effects(db, txn)
     return {"status": "ok"}
+
+
+def _serialize_card(row: dict) -> dict:
+    return {
+        "id": row.get("id"),
+        "last4": row.get("last4"),
+        "card_type": row.get("card_type"),
+        "exp_month": row.get("exp_month"),
+        "exp_year": row.get("exp_year"),
+        "bank": row.get("bank"),
+        "reusable": bool(row.get("reusable", True)),
+        "created_at": row.get("created_at"),
+    }
+
+
+@router.get("/cards")
+def list_saved_cards(user: AuthedUser = Depends(get_current_user)):
+    rows = (
+        user.db.table("payment_methods")
+        .select(
+            "id, last4, card_type, exp_month, exp_year, bank, reusable, created_at"
+        )
+        .eq("user_id", user.id)
+        .order("created_at", desc=True)
+        .limit(20)
+        .execute()
+        .data
+        or []
+    )
+    return {"items": [_serialize_card(dict(r)) for r in rows]}
+
+
+@router.post("/cards/confirm")
+def confirm_saved_card(payload: dict, user: AuthedUser = Depends(get_current_user)):
+    """Verify a Paystack card-save charge and store the authorization."""
+    reference = (payload.get("reference") or "").strip()
+    if not reference:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="reference is required",
+        )
+
+    data = verify_transaction(reference)
+    metadata = data.get("metadata") or {}
+    if (
+        str(data.get("currency") or "").upper() != "NGN"
+        or int(data.get("amount") or 0) != 10000
+        or str(metadata.get("purpose") or "") != "save_card"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Card verification payment does not match the save-card operation",
+        )
+    auth = data.get("authorization") or {}
+    code = (auth.get("authorization_code") or "").strip()
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No reusable card authorization on this payment",
+        )
+    if auth.get("reusable") is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This card cannot be saved for later charges",
+        )
+
+    customer = data.get("customer") or {}
+    insert_row = {
+        "user_id": user.id,
+        "provider": "paystack",
+        "authorization_code": code,
+        "last4": auth.get("last4"),
+        "card_type": auth.get("card_type") or auth.get("brand"),
+        "exp_month": str(auth.get("exp_month") or "") or None,
+        "exp_year": str(auth.get("exp_year") or "") or None,
+        "bank": auth.get("bank"),
+        "reusable": True,
+        "paystack_customer_code": customer.get("customer_code"),
+    }
+
+    from lib.db import create_service_client
+
+    db = create_service_client()
+    existing = (
+        db.table("payment_methods")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("authorization_code", code)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if existing:
+        row = (
+            db.table("payment_methods")
+            .select("*")
+            .eq("id", existing[0]["id"])
+            .limit(1)
+            .execute()
+            .data
+            or [existing[0]]
+        )[0]
+        return {"item": _serialize_card(dict(row))}
+
+    inserted = (
+        db.table("payment_methods")
+        .upsert(
+            insert_row,
+            on_conflict="user_id,authorization_code",
+            ignore_duplicates=True,
+        )
+        .execute()
+        .data
+    )
+    if not inserted:
+        inserted = (
+            db.table("payment_methods")
+            .select("*")
+            .eq("user_id", user.id)
+            .eq("authorization_code", code)
+            .limit(1)
+            .execute()
+            .data
+        )
+    row = _first_row(inserted)
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not save card",
+        )
+    return {"item": _serialize_card(dict(row))}
+
+
+@router.post("/cards/charge")
+def charge_saved_card(
+    payload: dict,
+    request: Request,
+    user: AuthedUser = Depends(get_current_user),
+):
+    """Tenant one-shot rent pay with a saved Paystack authorization."""
+    from lib.paystack import charge_authorization, verify_transaction
+
+    unit_id = (payload.get("unit_id") or "").strip()
+    method_id = (payload.get("payment_method_id") or "").strip()
+    amount = payload.get("amount")
+    if not unit_id or not method_id or amount is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="unit_id, payment_method_id, and amount are required",
+        )
+    try:
+        amount_f = float(amount)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid amount",
+        ) from exc
+    if amount_f <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="amount must be positive",
+        )
+
+    role = _unit_access_role(user, unit_id)
+    if role != "tenant":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only tenants can charge a saved card here",
+        )
+
+    db = create_service_client()
+    cards = (
+        db.table("payment_methods")
+        .select("*")
+        .eq("id", method_id)
+        .eq("user_id", user.id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not cards:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+    method = dict(cards[0])
+
+    email = (getattr(user, "email", None) or "").strip()
+    if not email:
+        # Fall back to auth admin
+        try:
+            result = db.auth.admin.get_user_by_id(user.id)
+            auth_user = getattr(result, "user", None) or result
+            email = (getattr(auth_user, "email", None) or "").strip()
+        except Exception:
+            email = ""
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Add an email on Profile before paying with a saved card",
+        )
+
+    charge_type, _charge_label = _normalize_charge_fields(payload)
+    if charge_type != "rent":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Saved-card one-shot payments currently support rent only",
+        )
+    request_key = (request.headers.get("idempotency-key") or "").strip()
+    if len(request_key) < 8 or len(request_key) > 180:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid Idempotency-Key is required",
+        )
+    idempotency_key = f"saved-card:{user.id}:{request_key}"
+    digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
+    reference = f"nexora_sc_{digest}"
+    claim = (
+        db.rpc(
+            "claim_autopay_transaction",
+            {
+                "p_idempotency_key": idempotency_key,
+                "p_unit_id": unit_id,
+                "p_amount": amount_f,
+                "p_tenant_user_id": user.id,
+                "p_payment_reference": reference,
+                "p_lease_seconds": 300,
+            },
+        )
+        .execute()
+        .data
+    )
+    if isinstance(claim, list):
+        claim = claim[0] if claim else None
+    txn = dict(claim.get("transaction") or {}) if isinstance(claim, dict) else {}
+    lease_token = claim.get("lease_token") if isinstance(claim, dict) else None
+    if txn.get("status") == "paid":
+        _queue_paid_side_effects(db, txn)
+        return {
+            "item": txn,
+            "receipt_url": (txn.get("receipt_url") or "").strip() or None,
+        }
+    if not txn or not claim.get("claimed") or not lease_token:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This saved-card payment is already processing",
+        )
+
+    try:
+        data = charge_authorization(
+            email=email,
+            amount_kobo=int(round(amount_f * 100)),
+            authorization_code=str(method["authorization_code"]),
+            reference=reference,
+            metadata={
+                "transaction_id": txn["id"],
+                "unit_id": unit_id,
+                "purpose": "saved_card_rent",
+            },
+        )
+    except Exception:
+        try:
+            data = verify_transaction(reference)
+        except Exception:
+            (
+                db.table("transactions")
+                .update(
+                    {
+                        "status": "failed",
+                        "processing_lease_token": None,
+                        "processing_lease_expires_at": None,
+                    }
+                )
+                .eq("id", txn["id"])
+                .eq("processing_lease_token", lease_token)
+                .execute()
+            )
+            raise
+    _validate_paystack_binding(
+        data,
+        txn,
+        reference=reference,
+        expected_purpose="saved_card_rent",
+    )
+    paid_at = data.get("paid_at") or datetime.now(timezone.utc).isoformat()
+    paystack_ref = (data.get("reference") or reference).strip()
+    updated = (
+        db.table("transactions")
+        .update(
+            {
+                "status": "paid",
+                "paid_at": paid_at,
+                "method": "paystack",
+                "payment_reference": paystack_ref,
+                "processing_lease_token": None,
+                "processing_lease_expires_at": None,
+            }
+        )
+        .eq("id", txn["id"])
+        .eq("processing_lease_token", lease_token)
+        .execute()
+        .data
+    )
+    paid = _first_row(updated)
+    if not paid:
+        current = _first_row(
+            db.table("transactions")
+            .select("*")
+            .eq("id", txn["id"])
+            .limit(1)
+            .execute()
+            .data
+        )
+        if not current or current.get("status") != "paid":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Saved-card payment could not be reconciled",
+            )
+        _validate_paystack_binding(
+            data,
+            current,
+            reference=reference,
+            expected_purpose="saved_card_rent",
+        )
+        paid = current
+    _queue_paid_side_effects(db, paid)
+    receipt_url = (paid.get("receipt_url") or "").strip() or None
+    return {"item": paid, "receipt_url": receipt_url}
+
+
+@router.delete("/cards/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_saved_card(card_id: str, user: AuthedUser = Depends(get_current_user)):
+    deleted = (
+        user.db.table("payment_methods")
+        .delete()
+        .eq("id", card_id)
+        .eq("user_id", user.id)
+        .execute()
+    )
+    rows = deleted.data or []
+    if not rows:
+        # Service role fallback if RLS client returns empty
+        from lib.db import create_service_client
+
+        deleted = (
+            create_service_client()
+            .table("payment_methods")
+            .delete()
+            .eq("id", card_id)
+            .eq("user_id", user.id)
+            .execute()
+        )
+        rows = deleted.data or []
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+    return None

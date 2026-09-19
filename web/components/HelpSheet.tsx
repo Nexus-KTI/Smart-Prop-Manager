@@ -69,14 +69,32 @@ const ARTICLES: Record<HelpAudience, HelpArticle[]> = {
     {
       id: "l-invite",
       title: "How do I invite a tenant?",
-      body: "Open the unit’s Payments page and send a Nexora invite (SMS/WhatsApp/link). The tenant claims it, then you activate occupancy on the tenancy.",
-      href: "/properties",
+      body: "On Properties, open a vacant unit → Start tenancy → send the claim invite (SMS/WhatsApp/link). The tenant claims it, then you activate occupancy on the tenancy.",
+      href: "/tenancies",
+    },
+    {
+      id: "l-tenancies",
+      title: "Where are my leases?",
+      body: "Tenancies lists every occupancy record. Filter Ending soon for renewals, open a row for the dossier, or jump to Payments for that unit’s rent.",
+      href: "/tenancies",
     },
     {
       id: "l-chase",
       title: "How do I chase overdue rent?",
-      body: "Use Chase ops for units past due, or Reminders to send a message. Paid vs owing stays on the Properties money list.",
-      href: "/ops",
+      body: "Open Action needed on the primary rail after Payments (alert icon, not the header bell) — filter Urgent, Overdue, Ending soon, or Failed, then remind selected. The red count lives on Action needed; the header bell is a short summary that deep-links here (message unread only on the bell badge). Paid vs owing stays on the Properties money list. Portfolio managers chasing across owners use Across owners from Action needed or Team.",
+      href: "/reminders",
+    },
+    {
+      id: "l-expenses",
+      title: "Where do I log money out?",
+      body: "Expenses is under More. Record repairs, utilities, agency fees, and other costs there. Money in stays on Payments; together they are your books for the week.",
+      href: "/expenses",
+    },
+    {
+      id: "l-reports",
+      title: "Where is my rent roll?",
+      body: "Reports (under More) shows occupied vs vacant, each unit’s rent, and this month’s expense total. Open a unit for Payments or Start tenancy when vacant.",
+      href: "/reports",
     },
     {
       id: "l-message",

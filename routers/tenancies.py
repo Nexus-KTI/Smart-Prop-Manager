@@ -12,6 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
+from lib.rate_limit import enforce_rate_limit
+from lib.auth import AuthedUser, get_current_user
+from lib.db import create_service_client
+from lib.invite_bind import require_invite_contact_match
+from lib.rate_limit import enforce_rate_limit
 from lib.tenancy import (
     CHECKLIST_LABELS,
     OPTIONAL_IDENTITY_KEY,
@@ -126,6 +131,7 @@ def docs_flag(user: AuthedUser = Depends(get_current_user)):
 @router.get("/")
 def list_portfolio_tenancies(user: AuthedUser = Depends(get_current_user)):
     """First-class tenancies/tenants list for landlord nav."""
+    TENANCIES_PAGE_LIMIT = 200
     rows = (
         user.db.table("tenancies")
         .select(
@@ -135,7 +141,7 @@ def list_portfolio_tenancies(user: AuthedUser = Depends(get_current_user)):
         )
         .eq("landlord_id", user.id)
         .order("created_at", desc=True)
-        .limit(200)
+        .limit(TENANCIES_PAGE_LIMIT)
         .execute()
         .data
         or []
@@ -149,7 +155,11 @@ def list_portfolio_tenancies(user: AuthedUser = Depends(get_current_user)):
         item["property_name"] = prop.get("name") if isinstance(prop, dict) else None
         item["property_id"] = unit.get("property_id") if isinstance(unit, dict) else None
         items.append(item)
-    return {"items": items}
+    return {
+        "items": items,
+        "loaded": len(items),
+        "capped": len(items) >= TENANCIES_PAGE_LIMIT,
+    }
 
 
 @router.get("/unit/{unit_id}")
@@ -243,6 +253,12 @@ def create_tenancy(unit_id: str, payload: dict, user: AuthedUser = Depends(get_c
 @router.post("/claim")
 def claim_tenancy(payload: dict, user: AuthedUser = Depends(get_current_user)):
     """Tenant claims invite after OTP login; sets tenant_user_id + profile role."""
+    enforce_rate_limit(
+        f"claim-tenancy:{user.id}",
+        limit=10,
+        window_seconds=60,
+        detail="Too many claim attempts. Try again shortly.",
+    )
     token = (payload.get("token") or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="token is required")
@@ -259,6 +275,11 @@ def claim_tenancy(payload: dict, user: AuthedUser = Depends(get_current_user)):
     if not rows:
         raise HTTPException(status_code=404, detail="Invite not found")
     tenancy = dict(rows[0])
+    require_invite_contact_match(
+        tenancy.get("tenant_contact"),
+        user.access_token,
+        detail="Sign in with the phone or email on this tenancy invite.",
+    )
     if tenancy.get("tenant_user_id") and tenancy["tenant_user_id"] != user.id:
         raise HTTPException(status_code=409, detail="Invite already claimed")
     now = datetime.now(timezone.utc).isoformat()
@@ -314,6 +335,93 @@ def my_tenancy(user: AuthedUser = Depends(get_current_user)):
     if not linked:
         return {"tenancy": None}
     return {"tenancy": _serialize(dict(linked[0]))}
+
+
+@router.patch("/me/autopay")
+def update_my_autopay(payload: dict, user: AuthedUser = Depends(get_current_user)):
+    """Tenant: enable/disable autopay with a saved card on the active tenancy."""
+    svc = create_service_client()
+    rows = (
+        svc.table("tenancies")
+        .select("*")
+        .eq("tenant_user_id", user.id)
+        .eq("status", "active")
+        .order("activated_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Active occupancy required for autopay",
+        )
+    tenancy = dict(rows[0])
+    enabled = bool(payload.get("enabled"))
+    method_id = (payload.get("payment_method_id") or "").strip() or None
+    try:
+        days_before = int(payload.get("days_before", tenancy.get("autopay_days_before") or 0))
+    except (TypeError, ValueError):
+        days_before = 0
+    days_before = max(0, min(7, days_before))
+
+    updates: dict[str, Any] = {
+        "autopay_enabled": enabled,
+        "autopay_days_before": days_before,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if enabled:
+        if not method_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="payment_method_id is required to enable autopay",
+            )
+        cards = (
+            svc.table("payment_methods")
+            .select("id")
+            .eq("id", method_id)
+            .eq("user_id", user.id)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if not cards:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Saved card not found",
+            )
+        updates["autopay_payment_method_id"] = method_id
+    else:
+        updates["autopay_payment_method_id"] = None
+
+    updated = (
+        svc.table("tenancies")
+        .update(updates)
+        .eq("id", tenancy["id"])
+        .eq("tenant_user_id", user.id)
+        .execute()
+        .data
+        or []
+    )
+    row = _first_row(updated) or {**tenancy, **updates}
+    # Re-fetch with unit join for client
+    refreshed = (
+        svc.table("tenancies")
+        .select(
+            "*, units(id, label, rent_amount, service_charge_amount, properties(name))"
+        )
+        .eq("id", tenancy["id"])
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if refreshed:
+        row = dict(refreshed[0])
+    return {"tenancy": _serialize(dict(row))}
 
 
 @router.get("/{tenancy_id}")
@@ -428,10 +536,10 @@ def invite_tenant(tenancy_id: str, user: AuthedUser = Depends(get_current_user))
     invite_channel: str | None = None
     invite_error: str | None = None
     try:
+        from lib.delivery_outbox import enqueue_notification, flush_delivery_outbox
         from lib.notify import (
             get_owner_notification_channel,
             normalize_e164,
-            send_notification,
         )
 
         channel = get_owner_notification_channel(user.db, user.id) or "sms"
@@ -440,14 +548,19 @@ def invite_tenant(tenancy_id: str, user: AuthedUser = Depends(get_current_user))
             if channel == "email"
             else normalize_e164(contact)
         )
-        invite_channel = send_notification(
-            channel,
-            notify_to,
-            (
+        queued = enqueue_notification(
+            user.db,
+            idempotency_key=f"tenancy-invite:{tenancy_id}:{token}",
+            channel=channel,
+            contact=notify_to,
+            message=(
                 "You're invited to view rent and pay on Nexora. "
                 f"Open this link, then sign in with this phone/email: {claim_url}"
             ),
+            email_subject="Nexora tenancy invite",
         )
+        flush_delivery_outbox(db=user.db, batch_size=5)
+        invite_channel = queued.get("channel") or channel
         invite_sent = True
     except Exception as exc:
         invite_error = str(exc) or "Could not send invite notification"

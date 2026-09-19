@@ -1,4 +1,4 @@
-export type UnitStatus = "PAID" | "OVERDUE" | "PENDING";
+export type UnitStatus = "PAID" | "OVERDUE" | "DUE SOON" | "PENDING";
 
 export const mockPortfolio = {
   properties: [
@@ -24,6 +24,15 @@ export const mockPortfolio = {
           dueDay: 5,
           status: "PAID" as UnitStatus,
         },
+        {
+          id: "unit-1c",
+          label: "Flat 1C",
+          tenant: "-",
+          phone: "",
+          rent: 750_000,
+          dueDay: 1,
+          status: "PENDING" as UnitStatus,
+        },
       ],
     },
     {
@@ -41,6 +50,37 @@ export const mockPortfolio = {
     },
   ],
 };
+
+/** Flat unit rows for portfolio / payments who-owes wireframes. */
+export function mockUnitRows() {
+  return mockPortfolio.properties.flatMap((p) =>
+    p.units.length === 0
+      ? [
+          {
+            id: `${p.id}-empty`,
+            propertyId: p.id,
+            property: p.name,
+            label: p.name,
+            tenant: "-",
+            rent: 0,
+            status: "PENDING" as UnitStatus,
+            needsUnit: true,
+            vacant: true,
+          },
+        ]
+      : p.units.map((u) => ({
+          id: u.id,
+          propertyId: p.id,
+          property: p.name,
+          label: u.label,
+          tenant: u.tenant,
+          rent: u.rent,
+          status: u.status,
+          needsUnit: false,
+          vacant: !u.tenant || u.tenant === "-",
+        })),
+  );
+}
 
 export const mockPayments = [
   {
@@ -60,6 +100,72 @@ export const mockPayments = [
     date: "2026-08-01",
   },
 ];
+
+/** Active leases for Tenancies wireframe (Ending soon = within 60d). */
+export const mockTenancies = [
+  {
+    id: "ten-1",
+    property: "12 Adeniran Ogunsanya",
+    unit: "Flat 1A",
+    tenant: "Chioma Okeke",
+    status: "active" as const,
+    termEnd: "2026-10-15",
+    endingSoon: true,
+  },
+  {
+    id: "ten-2",
+    property: "12 Adeniran Ogunsanya",
+    unit: "Flat 1B",
+    tenant: "Ibrahim Musa",
+    status: "active" as const,
+    termEnd: "2027-03-01",
+    endingSoon: false,
+  },
+];
+
+/** Empty by default so Expenses empty state matches Ada smoke. */
+export const mockExpenses: {
+  id: string;
+  category: string;
+  amount: number;
+  paidOn: string;
+  vendor: string;
+}[] = [];
+
+export const mockHelpTips = [
+  {
+    id: "leases",
+    title: "Where are my leases?",
+    body: "Tenancies lists every occupancy. Filter Ending soon for renewals.",
+    href: "/os-explorer/phase-1/tenancies",
+  },
+  {
+    id: "chase",
+    title: "How do I chase overdue rent?",
+    body: "Open Reminders (after Payments) to message tenants who owe.",
+    href: "/os-explorer/phase-1/reminders",
+  },
+  {
+    id: "expenses",
+    title: "Where do I log money out?",
+    body: "Expenses records repairs and costs. Money in stays on Payments.",
+    href: "/os-explorer/phase-1/expenses",
+  },
+  {
+    id: "reports",
+    title: "Where is my rent roll?",
+    body: "Reports shows occupied vs vacant, rent, and month expenses.",
+    href: "/os-explorer/phase-1/reports",
+  },
+];
+
+/** Mock signed-in landlord for explorer chrome (not real auth). */
+export const mockSessionUser = {
+  name: "Ada Okafor",
+  email: "ada@example.com",
+  role: "Landlord",
+  initials: "AO",
+};
 
 export const mockReminders = [
   {

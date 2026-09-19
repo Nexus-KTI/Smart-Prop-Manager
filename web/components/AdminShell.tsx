@@ -9,18 +9,14 @@ import {
   Inbox,
   LineChart,
 } from "lucide-react";
-import { useEffect, useState } from "react";
 
 import { HelpFab, HelpIconButton, HelpProvider } from "@/components/HelpSheet";
 import { ShellTopbar } from "@/components/ShellTopbar";
 import { ToastProvider } from "@/components/ToastProvider";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
-import { BRAND_NAME } from "@/lib/brand";
-import {
-  applySidebarCollapsed,
-  persistSidebarCollapsed,
-  readSidebarCollapsed,
-} from "@/lib/sidebar";
+import { BrandMark } from "@/components/BrandMark";
+import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
+import { useSidebarRail } from "@/lib/use-sidebar-rail";
 
 const NAV_ITEMS = [
   { href: "/admin/leads", label: "Access requests", icon: Inbox },
@@ -31,39 +27,44 @@ const NAV_ITEMS = [
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
-  const [peekLocked, setPeekLocked] = useState(false);
-
-  useEffect(() => {
-    const next = readSidebarCollapsed();
-    setCollapsed(next);
-    applySidebarCollapsed(next);
-  }, []);
-
-  function toggleCollapsed() {
-    const next = !collapsed;
-    setCollapsed(next);
-    persistSidebarCollapsed(next);
-    if (next) setPeekLocked(true);
-    else setPeekLocked(false);
-  }
+  const {
+    collapsed,
+    peekLocked,
+    toggleCollapsed,
+    closeDrawer,
+    unlockPeek,
+    drawerOpen,
+  } = useSidebarRail(pathname);
 
   return (
     <ToastProvider>
       <UserMenuProvider>
         <HelpProvider audience="admin">
           <div className="app-shell">
+            {drawerOpen ? (
+              <button
+                type="button"
+                className="sidebar-backdrop"
+                aria-label="Close menu"
+                onClick={closeDrawer}
+              />
+            ) : null}
             <aside
               className="sidebar"
               data-collapsed={collapsed}
               data-peek-locked={peekLocked ? "true" : undefined}
               aria-label="Admin"
-              onMouseLeave={() => setPeekLocked(false)}
+              onMouseLeave={unlockPeek}
             >
               <div className="sidebar-brand">
-                <span className="sidebar-brand-full">{BRAND_NAME} Admin</span>
-                <span className="sidebar-brand-mark" aria-hidden="true">
-                  N
+                <span className="sidebar-brand-lockup">
+                  <span className="sidebar-brand-mark" aria-hidden="true">
+                    <BrandMark size={22} />
+                  </span>
+                  <span className="sidebar-brand-text">
+                    <span className="sidebar-brand-name">{BRAND_NAME} Admin</span>
+                    <span className="sidebar-brand-stamp">{BRAND_STAMP}</span>
+                  </span>
                 </span>
               </div>
 

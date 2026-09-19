@@ -64,6 +64,41 @@ export function dueDateForUnit(
   return startOfDay(new Date(year, month, day));
 }
 
+/** Next cycle due date after the current period’s due. */
+export function nextDueDateForUnit(
+  dueDay: number | null | undefined,
+  frequency: Unit["frequency"] | null | undefined = "monthly",
+  now: Date = new Date(),
+  dueMonth: number | null | undefined = null,
+): Date | null {
+  const current = dueDateForUnit(dueDay, frequency, now, dueMonth);
+  if (!current || dueDay == null || dueDay < 1) return null;
+  const freq = frequency || "monthly";
+
+  if (freq === "daily") {
+    const d = new Date(current);
+    d.setDate(d.getDate() + 1);
+    return startOfDay(d);
+  }
+  if (freq === "weekly") {
+    const d = new Date(current);
+    d.setDate(d.getDate() + 7);
+    return startOfDay(d);
+  }
+  if (freq === "annual") {
+    const monthIndex = Math.min(11, Math.max(0, (dueMonth ?? 1) - 1));
+    const nextYear = current.getFullYear() + 1;
+    const day = clampDay(nextYear, monthIndex, dueDay);
+    return startOfDay(new Date(nextYear, monthIndex, day));
+  }
+
+  const nextMonth = current.getMonth() + 1;
+  const year = current.getFullYear() + (nextMonth > 11 ? 1 : 0);
+  const monthIndex = nextMonth % 12;
+  const day = clampDay(year, monthIndex, dueDay);
+  return startOfDay(new Date(year, monthIndex, day));
+}
+
 function periodStart(
   due: Date,
   frequency: Unit["frequency"] | null | undefined,

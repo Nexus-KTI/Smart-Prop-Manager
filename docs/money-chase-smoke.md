@@ -22,8 +22,10 @@
 
 ## Portfolio Payments
 1. `/payments` shows money-in for the **active portfolio** (staff with owner switch included)  
-2. If any units are overdue → header CTA **N overdue → Chase** → Reminders  
-3. Empty money-in with overdue still offers **Chase overdue**
+2. If any units are overdue → header CTA **N overdue → Chase** → `/reminders?filter=overdue` (full Action needed queue, not first units page)  
+3. If `summary.failed > 0` → status line **Retry on Action needed** → `/reminders?filter=failed`  
+4. Empty money-in with overdue still offers **Open overdue unit** / Chase  
+5. Segment **Money in / Overdue / Due soon** — Overdue & Due soon lists from `GET /reminders/actions` (complete portfolio), with Record payment + Remind  
 
 ## Automated
 - `pytest tests/test_access.py tests/test_bulk_reminders_mismatch.py tests/test_landlord_payment_email.py tests/test_portfolio_money_in.py` — visitor-pass permission live; bulk mismatch logged; landlord email detail; money-in shaping
@@ -35,4 +37,4 @@
 - Staff with chase permission can bulk / retry / open unit logs for the active portfolio  
 - Landlord notice failures are actionable; Paystack re-delivery does not duplicate email  
 - Receipt links say Open and open in a new tab  
-- Ops overdue: toast on send; empty state has a next action; no-contact units link to Edit  
+- Ops overdue: toast on send; empty → `/reminders?filter=overdue`; capped load shows honesty + Action needed link; no-contact units link to Edit  

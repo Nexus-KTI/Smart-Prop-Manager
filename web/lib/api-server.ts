@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 
 import type { Property, Reminder, Transaction, Unit } from "./types";
 
+export const API_SERVER_TIMEOUT_MS = 25_000;
+
 function apiBaseUrl(): string {
   return (
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ??
@@ -17,6 +19,32 @@ async function accessToken(): Promise<string | undefined> {
   return session?.access_token;
 }
 
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, API_SERVER_TIMEOUT_MS);
+  const onAbort = () => controller.abort(init.signal?.reason);
+  if (init.signal?.aborted) onAbort();
+  else init.signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error("Request timed out. Check your connection, then retry.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    init.signal?.removeEventListener("abort", onAbort);
+  }
+}
+
 async function apiFetch(
   path: string,
   init: RequestInit = {},
@@ -30,12 +58,21 @@ async function apiFetch(
   }
 
   try {
-    return await fetch(`${apiBaseUrl()}${path}`, {
+    return await fetchWithTimeout(`${apiBaseUrl()}${path}`, {
       ...init,
       headers,
       cache: "no-store",
     });
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.toLowerCase().includes("timed out")
+    ) {
+      return new Response(JSON.stringify({ error: "api_timeout" }), {
+        status: 504,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     return new Response(JSON.stringify({ error: "api_unreachable" }), {
       status: 503,
       headers: { "Content-Type": "application/json" },
@@ -166,6 +203,7 @@ export async function recordManualPayment(payload: {
 }): Promise<Transaction> {
   const res = await apiFetch("/payments/manual", {
     method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(payload),
   });
   return parseOne<Transaction>(res, "record payment");
@@ -174,6 +212,7 @@ export async function recordManualPayment(payload: {
 export async function confirmPaystackPayment(payload: {
   unit_id: string;
   reference: string;
+  transaction_id: string;
 }): Promise<Transaction> {
   const res = await apiFetch("/payments/paystack/confirm", {
     method: "POST",

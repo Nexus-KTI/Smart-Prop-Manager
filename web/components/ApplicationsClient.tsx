@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 import { useToast } from "@/components/ToastProvider";
 import {
@@ -13,6 +14,9 @@ import { APPLICATION_STATUS_LABELS, labelOrTitle } from "@/lib/labels";
 export function ApplicationsClient() {
   const { showToast } = useToast();
   const [items, setItems] = useState<RentalApplication[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [capped, setCapped] = useState(false);
+  const [loaded, setLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,7 +24,11 @@ export function ApplicationsClient() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await fetchApplications());
+      const data = await fetchApplications();
+      setItems(data.items);
+      setPendingCount(data.pending_count);
+      setCapped(data.capped);
+      setLoaded(data.loaded);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
     } finally {
@@ -38,7 +46,7 @@ export function ApplicationsClient() {
       showToast(status === "approved" ? "Approved. Draft tenancy if vacant" : status);
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Update failed");
+      showToast(err instanceof Error ? err.message : "Update failed", "error");
     }
   }
 
@@ -52,8 +60,31 @@ export function ApplicationsClient() {
       </header>
       {loading ? <p className="page-subtitle">Loading…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
+      {!loading && pendingCount > 0 ? (
+        <p className="page-subtitle" role="status">
+          {pendingCount === 1
+            ? "1 application awaiting decide."
+            : `${pendingCount} applications awaiting decide.`}
+        </p>
+      ) : null}
+      {capped && !loading ? (
+        <p className="page-subtitle" role="status">
+          Showing the {loaded} most recent invites. Older applications may not
+          appear in this list.
+        </p>
+      ) : null}
       {!loading && items.length === 0 ? (
-        <p className="table-muted">No application invites yet.</p>
+        <div className="dashboard-empty" role="status">
+          <p className="dashboard-empty-title mono-data">
+            No application invites yet.
+          </p>
+          <p className="dashboard-empty-copy">
+            From a vacant unit’s Payments page, share an apply link.
+          </p>
+          <Link href="/properties?occupancy=vacant" className="btn-primary">
+            Find vacant units
+          </Link>
+        </div>
       ) : (
         <ul className="stack-list">
           {items.map((app) => (

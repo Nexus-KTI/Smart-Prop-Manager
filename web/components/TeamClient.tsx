@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { FetchErrorState } from "@/components/FetchErrorState";
+import { useToast } from "@/components/ToastProvider";
 import {
   fetchStaffTeam,
   inviteStaff,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/labels";
 
 export function TeamClient() {
+  const { showToast } = useToast();
   const [items, setItems] = useState<StaffMembership[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,9 +52,17 @@ export function TeamClient() {
       const result = await inviteStaff({ role, contact: contact.trim() });
       setClaimPath(result.claim_path);
       setContact("");
+      if (result.notify?.sent) {
+        showToast("Staff invited — notify sent", "success");
+      } else if (result.notify?.error) {
+        showToast("Staff invited — could not notify contact", "success");
+      } else {
+        showToast("Staff invited", "success");
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invite failed");
+      showToast(err instanceof Error ? err.message : "Invite failed", "error");
     } finally {
       setBusy(false);
     }
@@ -73,7 +83,6 @@ export function TeamClient() {
     <section className="dashboard">
       <header className="dashboard-header dashboard-header-row">
         <div>
-          <p className="form-kicker">Owner / Manager</p>
           <h1 className="page-title">Team</h1>
           <p className="page-subtitle">
             Invite Managers and Caretakers. They claim via OTP, same path as
@@ -81,7 +90,7 @@ export function TeamClient() {
           </p>
         </div>
         <Link href="/ops" className="btn-secondary">
-          Chase ops
+          Across owners
         </Link>
       </header>
 

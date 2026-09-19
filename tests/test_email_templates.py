@@ -165,7 +165,8 @@ def test_mailgun_send_includes_html(monkeypatch):
         captured["data"] = data
         return _Resp()
 
-    monkeypatch.setattr("httpx.post", _fake_post)
+    fake_client = type("Client", (), {"post": staticmethod(_fake_post)})()
+    monkeypatch.setattr("lib.notify.get_http_client", lambda: fake_client)
     send_email(
         "tenant@example.com",
         "plain body",

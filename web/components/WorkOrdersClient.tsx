@@ -20,7 +20,13 @@ import {
 export function WorkOrdersClient() {
   const { showToast } = useToast();
   const [items, setItems] = useState<MaintenanceRequest[]>([]);
+  const [openCount, setOpenCount] = useState(0);
+  const [doneCount, setDoneCount] = useState(0);
+  const [capped, setCapped] = useState(false);
+  const [loaded, setLoaded] = useState(0);
   const [roster, setRoster] = useState<ArtisanRosterItem[]>([]);
+  const [rosterCapped, setRosterCapped] = useState(false);
+  const [rosterLoaded, setRosterLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -35,8 +41,14 @@ export function WorkOrdersClient() {
         fetchMaintenanceBoard(),
         fetchArtisanRoster(),
       ]);
-      setItems(board);
-      setRoster(artisans);
+      setItems(board.items);
+      setOpenCount(board.open_count);
+      setDoneCount(board.done_count);
+      setCapped(board.capped);
+      setLoaded(board.loaded);
+      setRoster(artisans.items);
+      setRosterCapped(artisans.capped);
+      setRosterLoaded(artisans.loaded);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
     } finally {
@@ -62,16 +74,39 @@ export function WorkOrdersClient() {
           ? `${window.location.origin}${path}`
           : path;
       setLastClaimPath(url);
+      let copied = false;
       try {
         await navigator.clipboard.writeText(url);
-        showToast("Invite created. Claim link copied");
+        copied = true;
       } catch {
-        showToast("Invite created. Copy the claim link below");
+        /* claim link still shown below */
+      }
+      if (res.notify?.sent) {
+        showToast(
+          copied
+            ? "Invite created — notify sent. Claim link copied"
+            : "Invite created — notify sent. Copy the claim link below",
+          "success",
+        );
+      } else if (res.notify?.error) {
+        showToast(
+          copied
+            ? "Invite created — could not notify. Claim link copied"
+            : "Invite created — could not notify. Copy the claim link below",
+          "success",
+        );
+      } else {
+        showToast(
+          copied
+            ? "Invite created. Claim link copied"
+            : "Invite created. Copy the claim link below",
+          "success",
+        );
       }
       form.reset();
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Invite failed");
+      showToast(err instanceof Error ? err.message : "Invite failed", "error");
     } finally {
       setSubmitting(false);
     }
@@ -88,7 +123,6 @@ export function WorkOrdersClient() {
     <section className="dashboard">
       <header className="dashboard-header dashboard-header-row">
         <div>
-          <p className="form-kicker">Phase 5</p>
           <h1 className="page-title">Work orders</h1>
           <p className="page-subtitle">
             Repair jobs across your portfolio. Assign artisans from unit Payments.
@@ -135,9 +169,28 @@ export function WorkOrdersClient() {
         <h2 className="page-title" style={{ fontSize: "1.05rem" }}>
           Artisan roster
         </h2>
-        {roster.length === 0 ? (
-          <p className="table-muted">No artisans invited yet.</p>
-        ) : (
+        {rosterCapped && !loading ? (
+          <p className="page-subtitle" role="status">
+            Showing the {rosterLoaded} most recent invites.
+          </p>
+        ) : null}
+        {roster.length === 0 && !loading && !inviteOpen ? (
+          <div className="dashboard-empty" role="status">
+            <p className="dashboard-empty-title mono-data">
+              No artisans invited yet.
+            </p>
+            <p className="dashboard-empty-copy">
+              Invite a contact so you can assign jobs from unit Payments.
+            </p>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => setInviteOpen(true)}
+            >
+              Invite artisan
+            </button>
+          </div>
+        ) : roster.length > 0 ? (
           <ul className="dashboard-checklist-list">
             {roster.map((r) => (
               <li key={r.id} className="dashboard-checklist-item">
@@ -148,14 +201,22 @@ export function WorkOrdersClient() {
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </div>
 
       {loading ? <p className="page-subtitle">Loading…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
+      {capped && !loading ? (
+        <p className="page-subtitle" role="status">
+          Showing the {loaded} most recent jobs. Portfolio open:{" "}
+          <span className="mono-data">{openCount}</span>
+          {" · "}
+          done: <span className="mono-data">{doneCount}</span>.
+        </p>
+      ) : null}
 
       <h2 className="dashboard-checklist-title" style={{ marginTop: 24 }}>
-        Open
+        Open ({openCount})
       </h2>
       <div className="data-table-wrap">
         <table className="data-table">
@@ -171,7 +232,9 @@ export function WorkOrdersClient() {
             {open.length === 0 && !loading ? (
               <tr>
                 <td colSpan={4} className="table-muted">
-                  No open jobs. Create from unit Payments or wait for tenant requests.
+                  {openCount > 0
+                    ? `No open jobs in this loaded page, but ${openCount} open across the portfolio (newer done jobs may fill the list). Open a unit from Payments to find them.`
+                    : "No open jobs. Create from unit Payments or wait for tenant requests."}
                 </td>
               </tr>
             ) : (
@@ -203,7 +266,7 @@ export function WorkOrdersClient() {
       </div>
 
       <h2 className="dashboard-checklist-title" style={{ marginTop: 24 }}>
-        Done
+        Done ({doneCount})
       </h2>
       <div className="data-table-wrap">
         <table className="data-table">
@@ -218,7 +281,9 @@ export function WorkOrdersClient() {
             {done.length === 0 ? (
               <tr>
                 <td colSpan={3} className="table-muted">
-                  No completed jobs yet.
+                  {doneCount > 0
+                    ? `No completed jobs in this loaded page (${doneCount} done across the portfolio).`
+                    : "No completed jobs yet."}
                 </td>
               </tr>
             ) : (

@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { MarketingReveal } from "@/components/MarketingReveal";
+
 type Props = {
   id?: string;
   headingId: string;
@@ -32,10 +34,12 @@ export function MarketingSection({
   return (
     <section id={id} className={sectionClass} aria-labelledby={headingId}>
       <div className="marketing-container">
-        <h2 id={headingId} className="marketing-h2">
-          {title}
-        </h2>
-        {lede ? <p className="marketing-section-lede">{lede}</p> : null}
+        <MarketingReveal>
+          <h2 id={headingId} className="marketing-h2">
+            {title}
+          </h2>
+          {lede ? <p className="marketing-section-lede">{lede}</p> : null}
+        </MarketingReveal>
         {children}
       </div>
     </section>

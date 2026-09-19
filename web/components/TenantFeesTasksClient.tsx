@@ -22,6 +22,8 @@ import {
 
 export function TenantFeesClient() {
   const [items, setItems] = useState<ScheduledFee[]>([]);
+  const [listCapped, setListCapped] = useState(false);
+  const [listLoaded, setListLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,8 +31,12 @@ export function TenantFeesClient() {
     let cancelled = false;
     (async () => {
       try {
-        const rows = await fetchMyFees();
-        if (!cancelled) setItems(rows);
+        const data = await fetchMyFees();
+        if (!cancelled) {
+          setItems(data.items);
+          setListCapped(data.capped);
+          setListLoaded(data.loaded);
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not load");
       } finally {
@@ -48,6 +54,11 @@ export function TenantFeesClient() {
         <>
           {loading ? <p className="page-subtitle">Loading…</p> : null}
           {error ? <p className="form-error">{error}</p> : null}
+          {!loading && listCapped ? (
+            <p className="page-subtitle" role="status">
+              Showing the {listLoaded} most recent fees (list capped).
+            </p>
+          ) : null}
           <ul className="stack-list">
             {items.map((f) => (
               <li key={f.id} className="form-card">
@@ -101,7 +112,7 @@ export function TenantTasksClient() {
 
   return (
     <TenantLeaseGate
-      title="Tasks"
+      title="To-dos"
       subtitle="Items your landlord assigned, plus upcoming dates."
     >
       {() => (
@@ -123,7 +134,7 @@ export function TenantTasksClient() {
             <p className="table-muted">Nothing upcoming.</p>
           ) : null}
           <h2 className="page-title" style={{ fontSize: "1.1rem" }}>
-            Your tasks
+            Your to-dos
           </h2>
           <ul className="stack-list">
             {tasks.map((t) => (
@@ -135,6 +146,7 @@ export function TenantTasksClient() {
                     {t.due_on ? ` · due ${t.due_on}` : ""}
                   </span>
                 </p>
+                {t.details ? <p className="page-subtitle">{t.details}</p> : null}
                 {t.status === "open" ? (
                   <button
                     type="button"
@@ -143,7 +155,7 @@ export function TenantTasksClient() {
                       void updateTaskStatus(t.id, "done")
                         .then(load)
                         .catch((err) =>
-                          showToast(err instanceof Error ? err.message : "Update failed"),
+                          showToast(err instanceof Error ? err.message : "Update failed", "error"),
                         )
                     }
                   >
@@ -154,7 +166,7 @@ export function TenantTasksClient() {
             ))}
           </ul>
           {!loading && tasks.length === 0 ? (
-            <p className="table-muted">No landlord tasks yet.</p>
+            <p className="table-muted">No to-dos from your landlord yet.</p>
           ) : null}
         </>
       )}

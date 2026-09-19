@@ -25,7 +25,8 @@ alter table public.product_events enable row level security;
 drop policy if exists product_events_no_direct on public.product_events;
 
 -- Active landlords = property owners with ≥1 unit.
-create or replace view public.phase2_active_landlords as
+create or replace view public.phase2_active_landlords
+with (security_invoker = true) as
 select distinct p.owner_id as landlord_id
 from public.properties p
 inner join public.units u on u.property_id = p.id
@@ -35,7 +36,8 @@ comment on view public.phase2_active_landlords is
   'Owners with at least one unit (Phase 2 exit denominator for metric 1).';
 
 -- Occupied units = tenant_contact set.
-create or replace view public.phase2_occupied_units as
+create or replace view public.phase2_occupied_units
+with (security_invoker = true) as
 select
   u.id as unit_id,
   p.owner_id as landlord_id,

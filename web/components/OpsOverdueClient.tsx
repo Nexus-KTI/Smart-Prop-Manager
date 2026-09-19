@@ -20,6 +20,8 @@ type OpsRow = {
 export function OpsOverdueClient() {
   const { showToast } = useToast();
   const [rows, setRows] = useState<OpsRow[]>([]);
+  const [capped, setCapped] = useState(false);
+  const [loaded, setLoaded] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -38,6 +40,8 @@ export function OpsOverdueClient() {
           },
         })),
       );
+      setLoaded(data.loaded ?? data.items.length);
+      setCapped(Boolean(data.capped));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load ops");
     } finally {
@@ -72,9 +76,13 @@ export function OpsOverdueClient() {
         contact,
         message: `Rent reminder for ${row.property_name} · ${row.unit.label}`,
       });
-      showToast(`Reminder sent for ${row.unit.label}`);
+      showToast(`Reminder sent for ${row.unit.label}`, "success");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Reminder failed");
+      showToast(
+        err instanceof Error ? err.message : "Reminder failed",
+        "error",
+      );
     } finally {
       setBusyId(null);
     }
@@ -84,7 +92,7 @@ export function OpsOverdueClient() {
   if (error && rows.length === 0) {
     return (
       <FetchErrorState
-        title="Couldn’t load chase ops"
+        title="Couldn’t load Across owners"
         message={error}
         onRetry={() => void load()}
       />
@@ -95,14 +103,16 @@ export function OpsOverdueClient() {
     <section className="dashboard">
       <header className="dashboard-header dashboard-header-row">
         <div>
-          <p className="form-kicker">Manager view</p>
-          <h1 className="page-title">Who owes across owners</h1>
+          <h1 className="page-title">Across owners</h1>
           <p className="page-subtitle">
-            Overdue units in the active portfolio, send a reminder or open the
-            unit.
+            Overdue units in the active portfolio for managers chasing more than
+            one owner. Your own chase list stays on Reminders.
           </p>
         </div>
         <div className="dashboard-header-actions">
+          <Link href="/reminders?filter=overdue" className="btn-secondary">
+            Action needed
+          </Link>
           <Link href="/portfolios" className="btn-secondary">
             Switch owner
           </Link>
@@ -112,24 +122,29 @@ export function OpsOverdueClient() {
         </div>
       </header>
       {error ? <p className="form-error">{error}</p> : null}
-      <div className="osx-stack" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {capped ? (
+        <p className="page-subtitle" role="status">
+          Showing overdue among the {loaded} most recent units loaded. Full
+          owner chase list:{" "}
+          <Link href="/reminders?filter=overdue" className="table-link">
+            Action needed
+          </Link>
+          .
+        </p>
+      ) : null}
+      <div
+        className="osx-stack"
+        style={{ display: "flex", flexDirection: "column", gap: 12 }}
+      >
         {overdue.length === 0 ? (
-          <div className="dashboard-empty">
-            <p className="page-title" style={{ fontSize: "1.15rem" }}>
-              No overdue units
+          <div className="dashboard-empty" role="status">
+            <p className="dashboard-empty-title mono-data">No overdue units.</p>
+            <p className="dashboard-empty-copy">
+              When rent is past due here, chase from Action needed.
             </p>
-            <p className="page-subtitle">
-              When rent is past due in this portfolio, chase from here or
-              Reminders.
-            </p>
-            <div className="dashboard-header-actions">
-              <Link href="/reminders" className="btn-primary">
-                Open reminders
-              </Link>
-              <Link href="/properties" className="btn-secondary">
-                Properties
-              </Link>
-            </div>
+            <Link href="/reminders?filter=overdue" className="btn-primary">
+              Open Action needed
+            </Link>
           </div>
         ) : (
           overdue.map((row) => {

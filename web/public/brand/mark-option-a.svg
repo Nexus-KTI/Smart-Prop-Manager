@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+  <!-- Archived Option A baseline (two slanted bars). -->
+  <g fill="currentColor">
+    <rect x="4.5" y="5" width="7.5" height="22" rx="2.5" transform="rotate(-18 8.25 16)"/>
+    <rect x="17" y="5" width="7.5" height="22" rx="2.5" transform="rotate(-18 20.75 16)"/>
+  </g>
+</svg>

@@ -7,10 +7,9 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   fetchMyPublications,
   fetchMyTasks,
-  fetchOpsOverdue,
+  fetchUrgentActionsSummary,
 } from "@/lib/api";
-import { resolveUnitStatus } from "@/lib/dashboard";
-import type { Transaction, Unit } from "@/lib/types";
+import { onDataInvalidated } from "@/lib/data-invalidation";
 import {
   formatUnreadBadge,
   useMessageUnreadCount,
@@ -45,33 +44,45 @@ export function NotificationsBell({
 
       if (audience === "landlord") {
         try {
-          const ops = await fetchOpsOverdue();
-          const n = (ops.items ?? []).filter((row) => {
-            const unit = {
-              ...row.unit,
-              transactions: row.transactions,
-            } as Unit;
-            return (
-              resolveUnitStatus(
-                unit,
-                (row.transactions || []) as Transaction[],
-              ) === "OVERDUE"
-            );
-          }).length;
-          if (n > 0) {
+          const summary = await fetchUrgentActionsSummary();
+          if (summary.overdue > 0) {
             next.push({
               id: "chase",
-              label: "Units overdue",
+              label: "Overdue to chase",
               detail:
-                n === 1
-                  ? "1 unit is past due on the chase list"
-                  : `${n} units are past due on the chase list`,
-              href: "/ops",
-              count: n,
+                summary.overdue === 1
+                  ? "1 unit is past due - open Action needed"
+                  : `${summary.overdue} units are past due - open Action needed`,
+              href: "/reminders?filter=overdue",
+              count: summary.overdue,
+            });
+          }
+          if (summary.lease_ending > 0) {
+            next.push({
+              id: "leases",
+              label: "Leases ending soon",
+              detail:
+                summary.lease_ending === 1
+                  ? "1 lease ends within 60 days"
+                  : `${summary.lease_ending} leases end within 60 days`,
+              href: "/reminders?filter=ending_soon",
+              count: summary.lease_ending,
+            });
+          }
+          if (summary.failed > 0) {
+            next.push({
+              id: "failed",
+              label: "Failed sends",
+              detail:
+                summary.failed === 1
+                  ? "1 chase failed - retry on Action needed"
+                  : `${summary.failed} chases failed - retry on Action needed`,
+              href: "/reminders?filter=failed",
+              count: summary.failed,
             });
           }
         } catch {
-          /* owner without ops grant, skip */
+          /* actions load failed, skip */
         }
       } else {
         try {
@@ -93,17 +104,18 @@ export function NotificationsBell({
         }
         try {
           const tasks = await fetchMyTasks();
-          const openTasks = tasks.filter(
-            (t) => t.status !== "done" && t.status !== "cancelled",
-          ).length;
+          const openTasks = tasks.filter((t) => {
+            const s = (t.status || "").toLowerCase();
+            return s !== "done" && s !== "canceled" && s !== "cancelled";
+          }).length;
           if (openTasks > 0) {
             next.push({
               id: "tasks",
-              label: "Open tasks",
+              label: "Open to-dos",
               detail:
                 openTasks === 1
-                  ? "1 task waiting on you"
-                  : `${openTasks} tasks waiting on you`,
+                  ? "1 to-do waiting on you"
+                  : `${openTasks} to-dos waiting on you`,
               href: "/tenant/tasks",
               count: openTasks,
             });
@@ -120,10 +132,19 @@ export function NotificationsBell({
   }, [audience]);
 
   useEffect(() => {
-    void loadExtras();
+    const initialTimer = window.setTimeout(() => void loadExtras(), 0);
     const id = window.setInterval(() => void loadExtras({ quiet: true }), 60_000);
-    return () => window.clearInterval(id);
-  }, [loadExtras]);
+    const refresh = () => void loadExtras({ quiet: true });
+    const stopInvalidation = onDataInvalidated(
+      audience === "landlord" ? "urgent-actions" : "notification-extras",
+      refresh,
+    );
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(id);
+      stopInvalidation();
+    };
+  }, [audience, loadExtras]);
 
   useEffect(() => {
     if (!open) return;
@@ -161,8 +182,13 @@ export function NotificationsBell({
   }
   items.push(...extraItems);
 
-  const total = items.reduce((sum, item) => sum + (item.count ?? 1), 0);
-  const badge = formatUnreadBadge(total);
+  // Landlord: Action needed rail owns chase urgency counts. Header badge is
+  // only for interrupts the rail does not own (unread messages). Tenant keeps
+  // a combined badge (no Action needed rail).
+  const badgeTotal =
+    audience === "landlord" ? messageUnread : items.reduce((sum, item) => sum + (item.count ?? 1), 0);
+  const badge = formatUnreadBadge(badgeTotal);
+  const hasMenuItems = items.length > 0;
 
   return (
     <div className="shell-notifications" ref={rootRef}>
@@ -173,9 +199,15 @@ export function NotificationsBell({
         aria-expanded={open}
         aria-controls={menuId}
         aria-label={
-          total > 0
-            ? `Notifications, ${total} unread`
-            : "Notifications"
+          audience === "landlord"
+            ? badgeTotal > 0
+              ? `Notifications, ${badgeTotal} unread messages`
+              : hasMenuItems
+                ? "Notifications, open for chase summary"
+                : "Notifications"
+            : badgeTotal > 0
+              ? `Notifications, ${badgeTotal} unread`
+              : "Notifications"
         }
         title="Notifications"
         onClick={() => {
@@ -200,6 +232,15 @@ export function NotificationsBell({
         >
           <div className="shell-notifications-head">
             <p className="shell-notifications-title">Needs attention</p>
+            {audience === "landlord" ? (
+              <p className="shell-notifications-hint table-muted">
+                Clears when you chase or reply in Messages — not mark as read.
+              </p>
+            ) : (
+              <p className="shell-notifications-hint table-muted">
+                Opens clear when you read notices or finish to-dos.
+              </p>
+            )}
           </div>
 
           {loading && items.length === 0 ? (
@@ -208,7 +249,9 @@ export function NotificationsBell({
 
           {!loading && items.length === 0 ? (
             <p className="shell-notifications-empty table-muted">
-              You’re caught up.
+              {audience === "landlord"
+                ? "Nothing to chase or reply to right now."
+                : "You’re caught up."}
             </p>
           ) : null}
 
@@ -248,11 +291,11 @@ export function NotificationsBell({
                   Messages
                 </Link>
                 <Link
-                  href="/ops"
+                  href="/reminders?filter=urgent"
                   className="shell-notifications-link"
                   onClick={() => setOpen(false)}
                 >
-                  Chase ops
+                  Action needed
                 </Link>
               </>
             ) : (

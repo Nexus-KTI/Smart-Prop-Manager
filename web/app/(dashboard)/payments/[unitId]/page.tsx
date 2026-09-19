@@ -14,8 +14,6 @@ import {
 } from "@/lib/api";
 import type { Transaction } from "@/lib/types";
 
-const LOAD_TIMEOUT_MS = 12_000;
-
 function UnitPaymentsSkeleton() {
   return (
     <section className="dashboard" aria-busy="true" aria-label="Loading payments">
@@ -61,29 +59,6 @@ const UnitPaymentsClient = dynamic(
   { ssr: false, loading: () => <UnitPaymentsSkeleton /> },
 );
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(
-        new DOMException(
-          "Loading timed out. Check that the API is running, then retry.",
-          "AbortError",
-        ),
-      );
-    }, ms);
-    promise.then(
-      (value) => {
-        window.clearTimeout(timer);
-        resolve(value);
-      },
-      (err: unknown) => {
-        window.clearTimeout(timer);
-        reject(err);
-      },
-    );
-  });
-}
-
 export default function UnitPaymentsPage() {
   const params = useParams<{ unitId: string }>();
   const unitId = typeof params?.unitId === "string" ? params.unitId : "";
@@ -120,10 +95,7 @@ export default function UnitPaymentsPage() {
 
     (async () => {
       try {
-        const unitContext = await withTimeout(
-          fetchUnitContext(unitId),
-          LOAD_TIMEOUT_MS,
-        );
+        const unitContext = await fetchUnitContext(unitId);
         if (seq !== requestSeq.current) return;
 
         if (!unitContext) {
@@ -134,10 +106,7 @@ export default function UnitPaymentsPage() {
           return;
         }
 
-        const history = await withTimeout(
-          fetchPaymentHistoryPage(unitId),
-          LOAD_TIMEOUT_MS,
-        );
+        const history = await fetchPaymentHistoryPage(unitId);
         if (seq !== requestSeq.current) return;
 
         // Empty history is success, show the client with the empty-table copy.

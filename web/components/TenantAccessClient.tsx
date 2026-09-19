@@ -8,6 +8,8 @@ import { fetchMyAccessPasses, type AccessPass } from "@/lib/api";
 
 export function TenantAccessClient() {
   const [items, setItems] = useState<AccessPass[]>([]);
+  const [listCapped, setListCapped] = useState(false);
+  const [listLoaded, setListLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,7 +17,10 @@ export function TenantAccessClient() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await fetchMyAccessPasses());
+      const data = await fetchMyAccessPasses();
+      setItems(data.items);
+      setListCapped(data.capped);
+      setListLoaded(data.loaded);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
     } finally {
@@ -42,10 +47,16 @@ export function TenantAccessClient() {
 
   return (
     <section className="dashboard">
-      <h1 className="page-title">Access</h1>
+      <h1 className="page-title">Gate codes</h1>
       <p className="page-subtitle">
         Gate codes your landlord issued for you. Show the code at the estate gate.
       </p>
+      {listCapped ? (
+        <p className="page-subtitle" role="status">
+          Showing the {listLoaded} most recent codes. Older passes may not
+          appear here.
+        </p>
+      ) : null}
 
       {active.length === 0 ? (
         <div className="tenant-module-banner" data-tone="wait" role="status">

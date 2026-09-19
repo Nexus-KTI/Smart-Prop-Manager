@@ -2,12 +2,18 @@
 
 import { FormEvent, useState } from "react";
 
-import { createClient } from "@/lib/supabase/client";
+import {
+  AuthCaptcha,
+  captchaRequired,
+  requireCaptchaToken,
+} from "@/components/auth/AuthCaptcha";
+import { submitPublicLead } from "@/lib/public-leads";
 
 export function MarketingCallbackForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,22 +30,30 @@ export function MarketingCallbackForm() {
       return;
     }
 
-    const supabase = createClient();
-    const { error: insertError } = await supabase.from("leads").insert({
-      name,
-      whatsapp,
-      unit_count: null,
-      source: "callback",
-    });
-
-    setPending(false);
-
-    if (insertError) {
-      setError("Could not submit. Please try again.");
+    let captcha: string | null = null;
+    try {
+      captcha = requireCaptchaToken(captchaToken);
+    } catch (err) {
+      setPending(false);
+      setError(err instanceof Error ? err.message : "Complete the captcha.");
       return;
     }
 
-    setSubmitted(true);
+    try {
+      await submitPublicLead({
+        name,
+        whatsapp,
+        unit_count: null,
+        source: "callback",
+        captcha_token: captcha,
+      });
+      setCaptchaToken(null);
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not submit.");
+    } finally {
+      setPending(false);
+    }
   }
 
   if (submitted) {
@@ -80,6 +94,10 @@ export function MarketingCallbackForm() {
           placeholder="+234…"
         />
       </label>
+
+      {captchaRequired() ? (
+        <AuthCaptcha token={captchaToken} onToken={setCaptchaToken} />
+      ) : null}
 
       <button className="btn-primary" type="submit" disabled={pending}>
         {pending ? "Submitting…" : "Request callback"}

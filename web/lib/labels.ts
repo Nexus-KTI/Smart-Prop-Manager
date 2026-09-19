@@ -186,3 +186,28 @@ export const PROPERTY_TYPE_LABELS: Record<string, string> = {
   rental: "Rental",
   estate: "Estate",
 };
+
+export const DOCUMENT_REQUEST_STATUS_LABELS: Record<string, string> = {
+  open: "Awaiting upload",
+  submitted: "Ready for review",
+  changes_requested: "Changes requested",
+  accepted: "Accepted",
+  cancelled: "Cancelled",
+};
+
+export const DOCUMENT_REVIEW_REASON_LABELS: Record<string, string> = {
+  incorrect_document: "Wrong document",
+  incomplete: "Incomplete",
+  illegible: "Hard to read",
+  expired: "Expired",
+  other: "Other",
+};
+
+export const PRIVACY_REQUEST_STATUS_LABELS: Record<string, string> = {
+  received: "Received",
+  identity_check: "Identity check",
+  in_review: "In review",
+  restricted: "Processing restricted",
+  completed: "Completed",
+  refused: "Refused after review",
+};

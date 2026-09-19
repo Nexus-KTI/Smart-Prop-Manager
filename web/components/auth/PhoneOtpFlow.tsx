@@ -5,14 +5,20 @@ import { FormEvent, ReactNode, useState } from "react";
 import { OtpCodeField } from "@/components/auth/OtpCodeField";
 import { PhoneInput } from "@/components/auth/PhoneInput";
 import {
+  AuthCaptcha,
+  requireCaptchaToken,
+} from "@/components/auth/AuthCaptcha";
+import {
   authOtpChannelCodeSentHelp,
   authOtpChannelEnterCodeHelp,
+  authOtpChannelLabel,
   authOtpChannelProviderError,
   authOtpChannelSendHelp,
   getAuthOtpChannel,
 } from "@/lib/auth-otp-channel";
 import { createClient } from "@/lib/supabase/client";
 import { checkSmsDelivery } from "@/lib/api";
+import { getPendingMfaFactorId, verifyMfaCode } from "@/lib/mfa";
 import { isValidMobileE164, splitE164, toE164 } from "@/lib/phone";
 
 export type PhoneOtpPurpose = "signup" | "signin" | "change";
@@ -34,7 +40,7 @@ type PhoneOtpFlowProps = {
   footer?: ReactNode;
 };
 
-type Step = "details" | "otp";
+type Step = "details" | "otp" | "mfa";
 
 function formatAuthError(error: {
   message?: string;
@@ -76,6 +82,9 @@ export function PhoneOtpFlow({
   const [localPhone, setLocalPhone] = useState(prefilled?.localPhone ?? "");
   const [e164Phone, setE164Phone] = useState("");
   const [otp, setOtp] = useState("");
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -101,6 +110,15 @@ export function PhoneOtpFlow({
     }
 
     const supabase = createClient();
+    let captcha: string | null = null;
+    try {
+      captcha = requireCaptchaToken(captchaToken);
+    } catch (err) {
+      setPending(false);
+      setError(err instanceof Error ? err.message : "Complete the captcha.");
+      return;
+    }
+
     let otpError: { message?: string; code?: string; status?: number } | null =
       null;
 
@@ -124,16 +142,21 @@ export function PhoneOtpFlow({
           options: {
             channel: otpChannel,
             data: meta,
+            ...(captcha ? { captchaToken: captcha } : {}),
           },
         });
         otpError = error;
       } else {
         const { error } = await supabase.auth.signInWithOtp({
           phone,
-          options: { channel: otpChannel },
+          options: {
+            channel: otpChannel,
+            ...(captcha ? { captchaToken: captcha } : {}),
+          },
         });
         otpError = error;
       }
+      setCaptchaToken(null);
     } catch (err) {
       setPending(false);
       setError(
@@ -172,7 +195,7 @@ export function PhoneOtpFlow({
             setError(
               delivery.hint ||
                 delivery.error_message ||
-                "SMS was not delivered. Check Supabase Auth Phone Twilio settings and trial verified numbers.",
+                `${authOtpChannelLabel(otpChannel)} was not delivered. Check Supabase Auth Phone Twilio settings and trial verified numbers.`,
             );
           }
         } catch {
@@ -231,6 +254,20 @@ export function PhoneOtpFlow({
       }
     }
 
+    if (purpose === "signin" || purpose === "signup") {
+      try {
+        const factorId = await getPendingMfaFactorId();
+        if (factorId) {
+          setMfaFactorId(factorId);
+          setStep("mfa");
+          setPending(false);
+          return;
+        }
+      } catch {
+        /* continue without MFA step if AAL check fails */
+      }
+    }
+
     try {
       await onSuccess(e164Phone);
     } catch (err) {
@@ -240,6 +277,64 @@ export function PhoneOtpFlow({
     }
 
     setPending(false);
+  }
+
+  async function onMfaSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!mfaFactorId) return;
+    setError(null);
+    setPending(true);
+    try {
+      await verifyMfaCode(mfaFactorId, mfaCode);
+      await onSuccess(e164Phone);
+      setPending(false);
+    } catch (err) {
+      setPending(false);
+      setError(err instanceof Error ? err.message : "Invalid authentication code");
+    }
+  }
+
+  if (step === "mfa") {
+    return (
+      <form className={className} onSubmit={(e) => void onMfaSubmit(e)}>
+        <p className="form-hint">
+          Enter the 6-digit code from your authenticator app.
+        </p>
+        {error ? <p className="form-error">{error}</p> : null}
+        <label className="form-field">
+          <span className="form-label">Authentication code</span>
+          <input
+            className="form-input"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={8}
+            required
+            value={mfaCode}
+            onChange={(e) => setMfaCode(e.target.value)}
+            disabled={pending}
+          />
+        </label>
+        <div className="form-actions auth-actions">
+          <button className="btn-primary" type="submit" disabled={pending}>
+            {pending ? "Verifying…" : "Verify and continue"}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={pending}
+            onClick={() => {
+              setMfaFactorId(null);
+              setMfaCode("");
+              setStep("details");
+              void createClient().auth.signOut();
+            }}
+          >
+            Back
+          </button>
+        </div>
+        {footer}
+      </form>
+    );
   }
 
   if (step === "otp") {
@@ -324,6 +419,8 @@ export function PhoneOtpFlow({
         />
         <span className="form-help">{authOtpChannelSendHelp(otpChannel)}</span>
       </label>
+
+      <AuthCaptcha onToken={setCaptchaToken} />
 
       <div
         className={

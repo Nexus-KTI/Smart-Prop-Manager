@@ -27,7 +27,7 @@ type Props = {
 
 function statusTone(status: string): string {
   if (status === "sent") return "paid";
-  if (status === "skipped") return "pending";
+  if (status === "skipped" || status === "queued") return "pending";
   return "overdue";
 }
 
@@ -109,6 +109,7 @@ export function UnitRemindersClient({
     } catch (err) {
       showToast(
         err instanceof Error ? err.message : "Could not load more reminders.",
+        "error",
       );
     } finally {
       setLoadingMore(false);
@@ -121,7 +122,7 @@ export function UnitRemindersClient({
     try {
       await retryReminder(reminder.id);
       await refreshLog();
-      showToast("Notice resent");
+      showToast("Notice resent", "success");
     } catch (err) {
       try {
         await refreshLog();
@@ -131,6 +132,7 @@ export function UnitRemindersClient({
       // Keep recovery on the row, toast only, not a full-page empty.
       showToast(
         err instanceof Error ? err.message : "Could not retry notice.",
+        "error",
       );
     } finally {
       setRetryingId(null);
@@ -152,7 +154,7 @@ export function UnitRemindersClient({
       await sendReminder({ unit_id: unitId, contact, message });
       await refreshLog();
       setFormOpen(false);
-      showToast("Reminder sent");
+      showToast("Reminder queued", "success");
     } catch (err) {
       try {
         await refreshLog();
@@ -172,14 +174,14 @@ export function UnitRemindersClient({
       <header className="dashboard-header dashboard-header-row">
         <div>
           <p className="form-kicker">
-            <Link href="/reminders">Reminders</Link>
-            <span aria-hidden> / </span>
+            <Link href="/reminders">Action needed</Link>
+            {" · "}
             {propertyName} · {unitLabel}
           </p>
           <h1 className="page-title">Reminders</h1>
           <p className="page-subtitle">
-            {tenantName ? `${tenantName} · ` : ""}
-            Reminders, receipts, and landlord notices for this unit.
+            Reminder log, receipts, and landlord notices for this unit
+            {tenantName ? ` · ${tenantName}` : ""}.
           </p>
         </div>
         {!isEmpty && !formOpen ? (

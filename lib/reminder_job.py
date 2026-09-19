@@ -152,7 +152,6 @@ def run_due_reminders(*, today: date | None = None) -> dict[str, int]:
         DEFAULT_CHANNEL,
         contact_matches_channel,
         get_owner_notification_channel,
-        send_notification,
     )
 
     day = _today_lagos(today)
@@ -176,6 +175,7 @@ def run_due_reminders(*, today: date | None = None) -> dict[str, int]:
         "checked": len(due_rows),
         "candidates": len(rows),
         "sent": 0,
+        "queued": 0,
         "failed": 0,
         "skipped": 0,
     }
@@ -234,39 +234,47 @@ def run_due_reminders(*, today: date | None = None) -> dict[str, int]:
         )
         message = due_mail.text
 
-        error_detail = None
         try:
-            used = send_notification(
-                channel,
-                contact,
-                message,
+            from lib.delivery_outbox import enqueue_notification
+            from lib.notification_prefs import load_profile_notification_prefs
+
+            enqueue_notification(
+                db,
+                idempotency_key=f"due-reminder:{unit_id}:{day.isoformat()}",
+                channel=channel,
+                contact=contact,
+                message=message,
                 email_subject=due_mail.subject,
                 email_html=due_mail.html,
+                event="rent_due",
+                notification_prefs=load_profile_notification_prefs(
+                    db, unit.get("tenant_user_id")
+                ),
+                reminder_log={
+                    "unit_id": unit_id,
+                    "channel": channel,
+                    "kind": "due",
+                },
             )
-            status = "sent"
-            stats["sent"] += 1
+            stats["queued"] += 1
         except Exception as exc:
-            logger.exception("Due reminder failed for unit %s", unit_id)
-            used = channel
-            status = "failed"
+            logger.exception("Due reminder enqueue failed for unit %s", unit_id)
             stats["failed"] += 1
             reason = str(getattr(exc, "msg", None) or exc).strip()
             if len(reason) > 180:
                 reason = reason[:179] + "…"
-            error_detail = reason or f"Failed to send {channel} reminder"
-
-        try:
-            row = {
-                "unit_id": unit_id,
-                "channel": used,
-                "kind": "due",
-                "status": status,
-            }
-            if error_detail:
-                row["error_detail"] = error_detail
-            db.table("reminders").insert(row).execute()
-        except Exception:
-            logger.exception("Failed to log due reminder for unit %s", unit_id)
+            try:
+                db.table("reminders").insert(
+                    {
+                        "unit_id": unit_id,
+                        "channel": channel,
+                        "kind": "due",
+                        "status": "failed",
+                        "error_detail": reason or "Failed to queue reminder",
+                    }
+                ).execute()
+            except Exception:
+                logger.exception("Failed to log due enqueue for unit %s", unit_id)
 
     return stats
 
@@ -278,7 +286,7 @@ def run_renewal_reminders(*, today: date | None = None) -> dict[str, int]:
     """
     from lib.db import create_service_client
     from lib.email_templates import landlord_renewal
-    from lib.notify import get_owner_email, send_email
+    from lib.notify import get_owner_email
 
     day = _today_lagos(today)
     db = create_service_client()
@@ -301,6 +309,7 @@ def run_renewal_reminders(*, today: date | None = None) -> dict[str, int]:
         "checked": len(due_rows),
         "candidates": len(rows),
         "sent": 0,
+        "queued": 0,
         "failed": 0,
         "skipped": 0,
     }
@@ -352,46 +361,54 @@ def run_renewal_reminders(*, today: date | None = None) -> dict[str, int]:
             stats["skipped"] += 1
             continue
 
-        error_detail = None
         try:
-            send_email(
-                email,
-                content.text,
-                subject=content.subject,
-                html=content.html,
+            from lib.delivery_outbox import enqueue_notification
+
+            enqueue_notification(
+                db,
+                idempotency_key=f"renewal-reminder:{unit_id}:{day.isoformat()}",
+                channel="email",
+                contact=email,
+                message=content.text,
+                email_subject=content.subject,
+                email_html=content.html,
+                reminder_log={
+                    "unit_id": unit_id,
+                    "channel": "email",
+                    "kind": "renewal",
+                },
             )
-            status = "sent"
-            stats["sent"] += 1
+            stats["queued"] += 1
         except Exception as exc:
-            logger.exception("Renewal reminder failed for unit %s", unit_id)
-            status = "failed"
+            logger.exception("Renewal reminder enqueue failed for unit %s", unit_id)
             stats["failed"] += 1
             reason = str(exc).strip()
             if len(reason) > 180:
                 reason = reason[:179] + "…"
-            error_detail = reason or "Failed to send renewal email"
-
-        try:
-            row = {
-                "unit_id": unit_id,
-                "channel": "email",
-                "kind": "renewal",
-                "status": status,
-            }
-            if error_detail:
-                row["error_detail"] = error_detail
-            db.table("reminders").insert(row).execute()
-        except Exception:
-            logger.exception("Failed to log renewal reminder for unit %s", unit_id)
+            try:
+                db.table("reminders").insert(
+                    {
+                        "unit_id": unit_id,
+                        "channel": "email",
+                        "kind": "renewal",
+                        "status": "failed",
+                        "error_detail": reason or "Failed to queue renewal",
+                    }
+                ).execute()
+            except Exception:
+                logger.exception("Failed to log renewal enqueue for unit %s", unit_id)
 
     return stats
 
 
 def run_reminder_jobs(*, today: date | None = None) -> dict[str, Any]:
-    """Run due + renewal jobs (same Render cron / HTTP job route)."""
+    """Run due + renewal + autopay jobs (same Render cron / HTTP job route)."""
+    from lib.autopay_job import run_autopay_charges
+
     return {
         "due": run_due_reminders(today=today),
         "renewal": run_renewal_reminders(today=today),
+        "autopay": run_autopay_charges(today=today),
     }
 
 

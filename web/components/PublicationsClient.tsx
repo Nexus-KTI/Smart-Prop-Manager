@@ -17,12 +17,17 @@ export function PublicationsClient() {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [listCapped, setListCapped] = useState(false);
+  const [listLoaded, setListLoaded] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setItems(await fetchPublications());
+      const data = await fetchPublications();
+      setItems(data.items);
+      setListCapped(data.capped);
+      setListLoaded(data.loaded);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
     } finally {
@@ -48,7 +53,7 @@ export function PublicationsClient() {
       setOpen(false);
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Publish failed");
+      showToast(err instanceof Error ? err.message : "Publish failed", "error");
     } finally {
       setPending(false);
     }
@@ -69,12 +74,12 @@ export function PublicationsClient() {
       </header>
       {open ? (
         <form className="form-card" onSubmit={onSubmit}>
-          <label className="form-label">
-            Title
+          <label className="form-field">
+            <span className="form-label">Title</span>
             <input name="title" required className="form-input" maxLength={160} />
           </label>
-          <label className="form-label">
-            Body
+          <label className="form-field">
+            <span className="form-label">Body</span>
             <textarea name="body" required className="form-input" rows={5} />
           </label>
           <button type="submit" className="btn-primary" disabled={pending}>
@@ -84,6 +89,13 @@ export function PublicationsClient() {
       ) : null}
       {loading ? <p className="page-subtitle">Loading…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
+      {listCapped && !loading ? (
+        <p className="page-subtitle" role="status">
+          Showing the {listLoaded} most recent posts. Older bulletin items may
+          not appear here.
+        </p>
+      ) : null}
+      {items.length > 0 ? (
       <ul className="stack-list">
         {items.map((p) => (
           <li key={p.id} className="form-card">
@@ -98,7 +110,7 @@ export function PublicationsClient() {
                 void archivePublication(p.id)
                   .then(load)
                   .catch((err) =>
-                    showToast(err instanceof Error ? err.message : "Archive failed"),
+                    showToast(err instanceof Error ? err.message : "Archive failed", "error"),
                   )
               }
             >
@@ -107,8 +119,21 @@ export function PublicationsClient() {
           </li>
         ))}
       </ul>
-      {!loading && items.length === 0 ? (
-        <p className="table-muted">No posts yet.</p>
+      ) : null}
+      {!loading && items.length === 0 && !open ? (
+        <div className="dashboard-empty" role="status">
+          <p className="dashboard-empty-title mono-data">No posts yet.</p>
+          <p className="dashboard-empty-copy">
+            Publish an estate notice so tenants see it under Notices.
+          </p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setOpen(true)}
+          >
+            New post
+          </button>
+        </div>
       ) : null}
     </section>
   );

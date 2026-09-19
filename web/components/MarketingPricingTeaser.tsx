@@ -2,14 +2,22 @@ import Link from "next/link";
 
 import { inviteOnlySignup } from "@/lib/invite";
 
-/** TenantCloud-style pricing cards, honest NG ₦0 today / paid later. */
-export function MarketingPricingTeaser() {
+type Props = {
+  /** Override primary CTA label (matches homepage). */
+  primaryLabel?: string;
+};
+
+/** Honest NG pricing: ₦0 Estate OS today, Growth/Pro labeled Later. */
+export function MarketingPricingTeaser({ primaryLabel }: Props = {}) {
   const inviteOnly = inviteOnlySignup();
+  const ctaLabel =
+    primaryLabel ?? (inviteOnly ? "Request access" : "Start free");
+  const primaryHref = inviteOnly ? "#get-started" : "/signup";
 
   return (
     <div className="marketing-pricing-teaser">
       <div className="marketing-pricing-card" data-emphasis="true">
-        <p className="marketing-pricing-badge">Most popular</p>
+        <p className="marketing-pricing-badge">Live today</p>
         <h3 className="marketing-pricing-name">
           {inviteOnly ? "Invite beta" : "Starter"}
         </h3>
@@ -18,42 +26,42 @@ export function MarketingPricingTeaser() {
         </p>
         <p className="marketing-pricing-meta">
           {inviteOnly
-            ? "Invite beta, rent and chase with no hard paywall."
-            : "First property free, rent and chase with no hard paywall."}
+            ? "Full Estate OS once approved - no hard paywall."
+            : "First property free. Full Estate OS - no hard paywall."}
         </p>
         <ul className="marketing-pricing-list">
-          <li>Online + manual rent payments</li>
-          <li>Maintenance management</li>
-          <li>Applications & tenant portal</li>
-          <li>Messages hub</li>
+          <li>Money &amp; chase (cash, transfer, card)</li>
+          <li>Occupancy: applications, docs, renewals</li>
+          <li>Portal, messages, work orders &amp; artisans</li>
+          <li>Access passes, staff scopes, expenses &amp; rent roll</li>
         </ul>
-        {inviteOnly ? (
-          <a href="#get-started" className="btn-primary">
-            Start free
+        {primaryHref.startsWith("#") ? (
+          <a href={primaryHref} className="btn-primary">
+            {ctaLabel}
           </a>
         ) : (
-          <Link href="/signup" className="btn-primary">
-            Start free
+          <Link href={primaryHref} className="btn-primary">
+            {ctaLabel}
           </Link>
         )}
       </div>
       <div className="marketing-pricing-card">
         <p className="marketing-pricing-badge">Later</p>
-        <h3 className="marketing-pricing-name">Growth & Pro</h3>
+        <h3 className="marketing-pricing-name">Growth &amp; Pro</h3>
         <p className="marketing-pricing-price">TBD</p>
         <p className="marketing-pricing-meta">
-          Advanced tools when we open public billing, team seats, deeper books,
-          partner identity checks.
+          When we open public billing - team seats, deeper books, partner
+          identity checks. Labeled Later, not sold as live.
         </p>
         <ul className="marketing-pricing-list">
-          <li>Everything in Starter</li>
-          <li>Team seats & scopes</li>
-          <li>Deeper accounting & bank feeds</li>
+          <li>Everything in {inviteOnly ? "Invite beta" : "Starter"}</li>
+          <li>Team seats &amp; deeper scopes</li>
+          <li>Bank feeds / statement reconciliation</li>
           <li>Partner identity verify (NIN/BVN)</li>
         </ul>
-        <Link href="/#get-started" className="btn-secondary">
+        <a href="#get-started" className="btn-secondary">
           Talk to us
-        </Link>
+        </a>
       </div>
     </div>
   );

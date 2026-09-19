@@ -1,0 +1,71 @@
+{
+  "base": "http://localhost:3000",
+  "at": "2026-09-16T12:40:34.182Z",
+  "results": [
+    {
+      "area": "Properties",
+      "status": "pass",
+      "detail": "portfolio title and both filter bands"
+    },
+    {
+      "area": "Chrome badges",
+      "status": "pass",
+      "detail": "Action needed=3; bell=none"
+    },
+    {
+      "area": "Bell",
+      "status": "pass",
+      "detail": "live-summary honesty and Action needed link"
+    },
+    {
+      "area": "Payments",
+      "status": "pass",
+      "detail": "money-in, overdue, and due-soon segments"
+    },
+    {
+      "area": "Payments CTA",
+      "status": "pass",
+      "detail": "btn-secondary"
+    },
+    {
+      "area": "Action needed",
+      "status": "pass",
+      "detail": "urgent-ranked filters"
+    },
+    {
+      "area": "Tenancies",
+      "status": "pass",
+      "detail": "/tenancies"
+    },
+    {
+      "area": "Expenses",
+      "status": "pass",
+      "detail": "/expenses"
+    },
+    {
+      "area": "Reports",
+      "status": "pass",
+      "detail": "/reports"
+    },
+    {
+      "area": "Work orders",
+      "status": "pass",
+      "detail": "/work-orders"
+    },
+    {
+      "area": "Applications",
+      "status": "pass",
+      "detail": "/applications"
+    },
+    {
+      "area": "Help",
+      "status": "pass",
+      "detail": "landlord guidance opens"
+    },
+    {
+      "area": "Console",
+      "status": "pass",
+      "detail": "no captured console errors"
+    }
+  ]
+}

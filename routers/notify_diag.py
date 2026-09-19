@@ -1,4 +1,4 @@
-"""Public notify diagnostics (OTP delivery checks)."""
+"""Notify diagnostics (OTP delivery checks) — secret + rate limited."""
 
 from __future__ import annotations
 
@@ -7,7 +7,9 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, status
+
+from lib.rate_limit import client_ip, enforce_rate_limit
 
 router = APIRouter(prefix="/notify", tags=["notify"])
 logger = logging.getLogger(__name__)
@@ -25,16 +27,48 @@ def _normalize_phone(raw: str) -> str:
     return value
 
 
+def _require_diag_secret(secret: str | None) -> None:
+    expected = (os.getenv("NOTIFY_DIAG_SECRET") or "").strip()
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="SMS delivery diagnostics are disabled",
+        )
+    if not secret or secret.strip() != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+        )
+
+
 @router.get("/sms-delivery")
 def sms_delivery_status(
+    request: Request,
     phone: str = Query(..., min_length=8, description="E.164 phone that should have received SMS"),
+    x_notify_diag_secret: str | None = Header(default=None, alias="X-Notify-Diag-Secret"),
 ):
     """
     Look up the most recent Twilio outbound SMS to this number.
 
-    Used by the login OTP UI when Supabase accepts the request but Twilio
-    fails silently (common on trial accounts, error 21608).
+    Requires NOTIFY_DIAG_SECRET (server-side Next proxy only). Rate-limited.
+    Used when Supabase accepts OTP send but Twilio fails silently.
     """
+    _require_diag_secret(x_notify_diag_secret)
+    to = _normalize_phone(phone)
+    ip = client_ip(request)
+    enforce_rate_limit(
+        f"sms-diag:ip:{ip}",
+        limit=10,
+        window_seconds=60,
+        detail="Too many SMS delivery checks. Try again shortly.",
+    )
+    enforce_rate_limit(
+        f"sms-diag:phone:{to}",
+        limit=5,
+        window_seconds=60,
+        detail="Too many SMS delivery checks for this number.",
+    )
+
     account_sid = (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
     auth_token = (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
     if not account_sid or not auth_token:
@@ -43,7 +77,6 @@ def sms_delivery_status(
             detail="Twilio is not configured on the API",
         )
 
-    to = _normalize_phone(phone)
     if len(re.sub(r"\D", "", to)) < 10:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -56,6 +89,7 @@ def sms_delivery_status(
         client = Client(account_sid, auth_token)
         account = client.api.accounts(account_sid).fetch()
         account_type = (getattr(account, "type", None) or "").strip() or None
+        is_trial = (account_type or "").lower() == "trial"
 
         since = datetime.now(timezone.utc) - timedelta(minutes=5)
         messages = client.messages.list(to=to, date_sent_after=since, limit=5)
@@ -64,16 +98,15 @@ def sms_delivery_status(
             return {
                 "phone": to,
                 "found": False,
-                "account_type": account_type,
+                "account_type": "trial" if is_trial else "live",
                 "status": None,
                 "error_code": None,
                 "error_message": None,
                 "hint": (
-                    "No SMS in the last 5 minutes on the API Twilio account "
-                    f"({account_sid[:10]}…). Login OTP is sent by Supabase Auth "
-                    "Phone provider: update Twilio SID/token/From there to match "
-                    ".env (rotating .env alone does not change OTP). Also verify "
-                    "the phone under Twilio Verified Caller IDs if the account is Trial."
+                    "No SMS in the last 5 minutes on the API Twilio account. "
+                    "Login OTP is sent by Supabase Auth Phone provider: update "
+                    "Twilio SID/token/From there to match .env. Also verify the "
+                    "phone under Twilio Verified Caller IDs if the account is Trial."
                 ),
             }
 
@@ -90,29 +123,24 @@ def sms_delivery_status(
                 "the Twilio account."
             )
         elif msg_status in {"failed", "undelivered"}:
-            hint = err_msg or f"Twilio SMS status={msg_status} (code {err_code})."
+            hint = err_msg or f"Twilio SMS status={msg_status}."
         elif msg_status in {"queued", "sending", "sent", "delivered", "receiving", "received"}:
             hint = None
 
         return {
             "phone": to,
             "found": True,
-            "account_type": account_type,
+            "account_type": "trial" if is_trial else "live",
             "status": msg_status,
             "error_code": err_code,
             "error_message": err_msg,
             "hint": hint,
-            "account_sid_prefix": account_sid[:10],
-            "from": getattr(latest, "from_", None),
-            "date_created": (
-                latest.date_created.isoformat()
-                if getattr(latest, "date_created", None)
-                else None
-            ),
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("sms-delivery lookup failed for %s", to)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc).strip() or "Could not query Twilio",
+            detail="Could not query Twilio",
         ) from exc

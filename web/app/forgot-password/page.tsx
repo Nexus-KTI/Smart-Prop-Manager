@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 
+import { BrandMark } from "@/components/BrandMark";
 import { AuthLoadingGate } from "@/components/auth/AuthLoadingGate";
 import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
 import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
@@ -14,8 +15,13 @@ export default function ForgotPasswordPage() {
       <div className="auth-panel">
         <header className="auth-header">
           <p className="auth-brand">
-            {BRAND_NAME}{" "}
-            <span className="marketing-brand-stamp">{BRAND_STAMP}</span>
+            <span className="auth-brand-mark" aria-hidden="true">
+              <BrandMark size={22} />
+            </span>
+            <span className="auth-brand-text">
+              {BRAND_NAME}{" "}
+              <span className="marketing-brand-stamp">{BRAND_STAMP}</span>
+            </span>
           </p>
           <h1 className="page-title">Reset password</h1>
           <p className="page-subtitle">

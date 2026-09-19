@@ -77,38 +77,16 @@ export default function UnitRemindersPage() {
     setError(null);
     setMissing(false);
 
-    const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
-      new Promise<T>((resolve, reject) => {
-        const timer = window.setTimeout(() => {
-          reject(
-            new DOMException(
-              "Loading timed out. Check that the API is running, then retry.",
-              "AbortError",
-            ),
-          );
-        }, ms);
-        promise.then(
-          (value) => {
-            window.clearTimeout(timer);
-            resolve(value);
-          },
-          (err: unknown) => {
-            window.clearTimeout(timer);
-            reject(err);
-          },
-        );
-      });
-
     (async () => {
       try {
-        const unitContext = await withTimeout(fetchUnitContext(unitId), 25_000);
+        const unitContext = await fetchUnitContext(unitId);
         if (!active) return;
         if (!unitContext) {
           setMissing(true);
           setContext(null);
           return;
         }
-        const log = await withTimeout(fetchReminderLogPage(unitId), 25_000);
+        const log = await fetchReminderLogPage(unitId);
         if (!active) return;
         setContext(unitContext);
         setReminders(log.items);

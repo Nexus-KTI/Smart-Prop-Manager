@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import os
-from functools import lru_cache
+import threading
+import time
 
 from lib.db import create_anon_client, create_service_client
+
+_CACHE_TTL_SECONDS = 60.0
+_cache_lock = threading.Lock()
+_cached_admin_emails: tuple[float, set[str]] | None = None
 
 
 def admin_emails_from_env() -> set[str]:
@@ -13,22 +18,30 @@ def admin_emails_from_env() -> set[str]:
     return {part.strip().lower() for part in raw.split(",") if part.strip()}
 
 
-@lru_cache(maxsize=1)
 def admin_emails_from_db() -> set[str]:
-    """Load allowlist emails from Supabase (service role preferred)."""
+    """Load a short-lived allowlist cache; failures safely grant nobody."""
+    global _cached_admin_emails
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _cached_admin_emails
+    if cached and now - cached[0] < _CACHE_TTL_SECONDS:
+        return set(cached[1])
     try:
         try:
             client = create_service_client()
         except RuntimeError:
             client = create_anon_client()
         rows = client.table("admin_allowlist").select("email").execute().data or []
-        return {
+        emails = {
             str(row.get("email") or "").strip().lower()
             for row in rows
             if row.get("email")
         }
     except Exception:
-        return set()
+        emails = set()
+    with _cache_lock:
+        _cached_admin_emails = (now, emails)
+    return set(emails)
 
 
 def admin_emails() -> set[str]:
@@ -42,4 +55,6 @@ def is_admin_email(email: str | None) -> bool:
 
 
 def clear_admin_email_cache() -> None:
-    admin_emails_from_db.cache_clear()
+    global _cached_admin_emails
+    with _cache_lock:
+        _cached_admin_emails = None

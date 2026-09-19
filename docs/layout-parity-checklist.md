@@ -93,7 +93,7 @@ Rentora landlord demo sidebar (stable): Overview · Tasks · Properties · Tenan
 | # | Check | Apply with our tokens / classes |
 |---|--------|----------------------------------|
 | 3.1 | One persistent primary nav; destinations do not reshuffle per page | `.sidebar` + `.sidebar-nav` on `--surface` / `--border` |
-| 3.2 | Group by landlord jobs we actually ship — not Rentora’s full taxonomy | Current: Properties · Payments · Reminders · Settings (`.nav-item`) |
+| 3.2 | Group by landlord jobs we actually ship — not Rentora’s full taxonomy | Primary hubs + More rail (Properties · Payments · Reminders · Tenancies · …; More for secondary) |
 | 3.3 | Active item is obvious via accent treatment, not a second visual system | `.nav-item` active → `--accent` (existing) |
 | 3.4 | Account / theme live in **one** chrome place (header user menu), not sidebar + topbar duplicates | `.shell-topbar` + user menu; Settings route for prefs |
 | 3.5 | Logout / collapse affordances sit at the bottom of the rail, separated from primary links | Existing sidebar footer pattern |
@@ -179,13 +179,15 @@ Rentora landlord demo: overview = calendar + checklist (not a dense spreadsheet)
 
 Use on Properties, Payments (list + unit), Reminders (list + unit), Settings, Onboarding, Auth:
 
-- [ ] Spacing: `32px` content inset; `28px` under header; no random gaps  
-- [ ] Surfaces: forms/tables/empties/checklist on `--surface` + `--border`, radius `6px`  
-- [ ] Nav: four primary items stable; account once in topbar  
-- [ ] Empty: short muted copy + one CTA **or** checklist lines with check/link  
-- [ ] CTAs: one primary job; secondary for alternate; table links tertiary  
-- [ ] Density: stats ≤ 3; table columns scannable; money in `.mono-data`  
-- [ ] No Rentora blue, Nunito/Noto, or logo borrowed into app chrome  
+- [x] Spacing: `32px` content inset; `28px` under header; no random gaps  
+- [x] Surfaces: forms/tables/empties/checklist on `--surface` + `--border`, radius `6px`  
+- [x] Nav: primary destinations + More rail stable; account once in topbar  
+- [x] Empty: short muted copy + one CTA **or** checklist lines with check/link  
+- [x] CTAs: one primary job; secondary for alternate; table links tertiary  
+- [x] Density: stats ≤ 3; table columns scannable; money in `.mono-data`  
+- [x] No Rentora blue, Nunito/Noto, or logo borrowed into app chrome  
+
+**Quick batch 2026-09-15:** Payments list Chase + Record payment aligned to `.btn-secondary` / `.btn-secondary.btn-table-cta`; other Quick review surfaces already matched stamped §1–8.
 
 ---
 

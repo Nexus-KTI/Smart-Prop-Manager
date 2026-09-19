@@ -24,17 +24,22 @@ def _first_row(data: Any) -> dict | None:
 
 @router.get("/")
 def list_landlord_tasks(user: AuthedUser = Depends(get_current_user)):
+    TASKS_PAGE_LIMIT = 100
     rows = (
         user.db.table("ops_tasks")
         .select("*")
         .eq("landlord_id", user.id)
         .order("due_on")
-        .limit(100)
+        .limit(TASKS_PAGE_LIMIT)
         .execute()
         .data
         or []
     )
-    return {"items": rows}
+    return {
+        "items": rows,
+        "loaded": len(rows),
+        "capped": len(rows) >= TASKS_PAGE_LIMIT,
+    }
 
 
 @router.get("/me")
@@ -134,7 +139,14 @@ def calendar_feed(user: AuthedUser = Depends(get_current_user)):
         )
 
     events.sort(key=lambda e: e.get("date") or "")
-    return {"items": events, "from": today.isoformat(), "to": horizon.isoformat()}
+    capped = len(tasks) >= 100 or len(tenancies) >= 100 or len(fees) >= 100
+    return {
+        "items": events,
+        "from": today.isoformat(),
+        "to": horizon.isoformat(),
+        "loaded": len(events),
+        "capped": capped,
+    }
 
 
 @router.get("/calendar/me")
@@ -268,7 +280,20 @@ def create_task(payload: dict, user: AuthedUser = Depends(get_current_user)):
     created = _first_row(inserted)
     if not created:
         raise HTTPException(status_code=500, detail="Could not create task")
-    return {"item": created}
+
+    notify: dict[str, Any] | None = None
+    if audience == "tenant":
+        from lib.tasks_notify import notify_tenant_task_assigned
+
+        notify = notify_tenant_task_assigned(
+            user.db,
+            landlord_id=user.id,
+            tenancy_id=tenancy_id,
+            title=row["title"],
+            due_on=row.get("due_on"),
+            idempotency_key=f"task-assigned:{created['id']}",
+        )
+    return {"item": created, "notify": notify}
 
 
 @router.patch("/{task_id}")

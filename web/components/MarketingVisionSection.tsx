@@ -34,7 +34,7 @@ const CAPABILITIES: Capability[] = [
     items: [
       { label: "Rent", status: "LIVE" },
       { label: "Service charge & other bills", status: "LIVE" },
-      { label: "Manual + Paystack", status: "LIVE" },
+      { label: "Manual + card", status: "LIVE" },
       { label: "Expenses + rent roll", status: "LIVE" },
     ],
   },

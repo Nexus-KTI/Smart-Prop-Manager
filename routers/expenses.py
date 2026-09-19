@@ -55,17 +55,22 @@ def _require_owned_unit(user: AuthedUser, unit_id: str) -> dict:
 
 @router.get("/expenses")
 def list_expenses(user: AuthedUser = Depends(get_current_user)):
+    EXPENSES_PAGE_LIMIT = 200
     rows = (
         user.db.table("expenses")
         .select("*")
         .eq("landlord_id", user.id)
         .order("paid_on", desc=True)
-        .limit(200)
+        .limit(EXPENSES_PAGE_LIMIT)
         .execute()
         .data
         or []
     )
-    return {"items": rows}
+    return {
+        "items": rows,
+        "loaded": len(rows),
+        "capped": len(rows) >= EXPENSES_PAGE_LIMIT,
+    }
 
 
 @router.post("/expenses", status_code=status.HTTP_201_CREATED)
@@ -124,6 +129,7 @@ def delete_expense(expense_id: str, user: AuthedUser = Depends(get_current_user)
 
 @router.get("/fees/unit/{unit_id}")
 def list_unit_fees(unit_id: str, user: AuthedUser = Depends(get_current_user)):
+    FEES_PAGE_LIMIT = 100
     _require_owned_unit(user, unit_id)
     rows = (
         user.db.table("scheduled_fees")
@@ -131,12 +137,16 @@ def list_unit_fees(unit_id: str, user: AuthedUser = Depends(get_current_user)):
         .eq("unit_id", unit_id)
         .eq("landlord_id", user.id)
         .order("due_on", desc=True)
-        .limit(100)
+        .limit(FEES_PAGE_LIMIT)
         .execute()
         .data
         or []
     )
-    return {"items": rows}
+    return {
+        "items": rows,
+        "loaded": len(rows),
+        "capped": len(rows) >= FEES_PAGE_LIMIT,
+    }
 
 
 @router.post("/fees/unit/{unit_id}", status_code=status.HTTP_201_CREATED)
@@ -203,6 +213,7 @@ def update_fee(fee_id: str, payload: dict, user: AuthedUser = Depends(get_curren
 
 @router.get("/fees/me")
 def list_my_fees(user: AuthedUser = Depends(get_current_user)):
+    FEES_PAGE_LIMIT = 100
     tenancies = (
         user.db.table("tenancies")
         .select("unit_id")
@@ -215,24 +226,29 @@ def list_my_fees(user: AuthedUser = Depends(get_current_user)):
     )
     unit_ids = [t["unit_id"] for t in tenancies if t.get("unit_id")]
     if not unit_ids:
-        return {"items": []}
+        return {"items": [], "loaded": 0, "capped": False}
     rows = (
         user.db.table("scheduled_fees")
         .select("*")
         .in_("unit_id", unit_ids)
         .in_("status", ["due", "paid"])
         .order("due_on")
-        .limit(100)
+        .limit(FEES_PAGE_LIMIT)
         .execute()
         .data
         or []
     )
-    return {"items": rows}
+    return {
+        "items": rows,
+        "loaded": len(rows),
+        "capped": len(rows) >= FEES_PAGE_LIMIT,
+    }
 
 
 @router.get("/reports/rent-roll")
 def rent_roll(user: AuthedUser = Depends(get_current_user)):
     """Simple rent roll: units + active/pending tenancy + last payment."""
+    RENT_ROLL_LIMIT = 500
     units = (
         user.db.table("units")
         .select(
@@ -241,13 +257,15 @@ def rent_roll(user: AuthedUser = Depends(get_current_user)):
         )
         .eq("properties.owner_id", user.id)
         .order("label")
-        .limit(500)
+        .limit(RENT_ROLL_LIMIT)
         .execute()
         .data
         or []
     )
+    units_capped = len(units) >= RENT_ROLL_LIMIT
     unit_ids = [u["id"] for u in units]
     tenancy_by_unit: dict[str, dict] = {}
+    tenancies_capped = False
     if unit_ids:
         tenancies = (
             user.db.table("tenancies")
@@ -257,11 +275,12 @@ def rent_roll(user: AuthedUser = Depends(get_current_user)):
             .eq("landlord_id", user.id)
             .in_("status", ["active", "pending_verification", "draft"])
             .in_("unit_id", unit_ids)
-            .limit(500)
+            .limit(RENT_ROLL_LIMIT)
             .execute()
             .data
             or []
         )
+        tenancies_capped = len(tenancies) >= RENT_ROLL_LIMIT
         for t in tenancies:
             uid = t.get("unit_id")
             if uid and uid not in tenancy_by_unit:
@@ -277,6 +296,7 @@ def rent_roll(user: AuthedUser = Depends(get_current_user)):
             {
                 "unit_id": u["id"],
                 "unit_label": u.get("label"),
+                "property_id": u.get("property_id"),
                 "property_name": prop.get("name") if isinstance(prop, dict) else None,
                 "rent_amount": u.get("rent_amount"),
                 "currency": "NGN",
@@ -294,11 +314,12 @@ def rent_roll(user: AuthedUser = Depends(get_current_user)):
         .select("amount")
         .eq("landlord_id", user.id)
         .gte("paid_on", date.today().replace(day=1).isoformat())
-        .limit(500)
+        .limit(RENT_ROLL_LIMIT)
         .execute()
         .data
         or []
     )
+    expenses_capped = len(expenses) >= RENT_ROLL_LIMIT
     for e in expenses:
         try:
             expense_sum += float(e.get("amount") or 0)
@@ -311,4 +332,7 @@ def rent_roll(user: AuthedUser = Depends(get_current_user)):
         "month_expenses_total": round(expense_sum, 2),
         "occupied": sum(1 for r in rows_out if r.get("tenancy_status") == "active"),
         "vacant": sum(1 for r in rows_out if not r.get("tenancy_status")),
+        "loaded": len(rows_out),
+        "capped": units_capped or tenancies_capped,
+        "expenses_capped": expenses_capped,
     }

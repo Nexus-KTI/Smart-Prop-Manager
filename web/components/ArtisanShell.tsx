@@ -7,55 +7,56 @@ import {
   ChevronRight,
   ListChecks,
 } from "lucide-react";
-import { useEffect, useState } from "react";
 
 import { HelpFab, HelpIconButton, HelpProvider } from "@/components/HelpSheet";
 import { ShellTopbar } from "@/components/ShellTopbar";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
 import { ToastProvider } from "@/components/ToastProvider";
-import { BRAND_NAME } from "@/lib/brand";
-import {
-  applySidebarCollapsed,
-  persistSidebarCollapsed,
-  readSidebarCollapsed,
-} from "@/lib/sidebar";
+import { BrandMark } from "@/components/BrandMark";
+import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
+import { useSidebarRail } from "@/lib/use-sidebar-rail";
 
 export function ArtisanShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
-  const [peekLocked, setPeekLocked] = useState(false);
+  const {
+    collapsed,
+    peekLocked,
+    toggleCollapsed,
+    closeDrawer,
+    unlockPeek,
+    drawerOpen,
+  } = useSidebarRail(pathname);
   const jobsActive = pathname === "/artisan" || pathname.startsWith("/artisan/");
-
-  useEffect(() => {
-    const next = readSidebarCollapsed();
-    setCollapsed(next);
-    applySidebarCollapsed(next);
-  }, []);
-
-  function toggleCollapsed() {
-    const next = !collapsed;
-    setCollapsed(next);
-    persistSidebarCollapsed(next);
-    if (next) setPeekLocked(true);
-    else setPeekLocked(false);
-  }
 
   return (
     <ToastProvider>
       <UserMenuProvider>
         <HelpProvider audience="artisan">
           <div className="app-shell">
+            {drawerOpen ? (
+              <button
+                type="button"
+                className="sidebar-backdrop"
+                aria-label="Close menu"
+                onClick={closeDrawer}
+              />
+            ) : null}
             <aside
               className="sidebar"
               data-collapsed={collapsed}
               data-peek-locked={peekLocked ? "true" : undefined}
               aria-label="Artisan"
-              onMouseLeave={() => setPeekLocked(false)}
+              onMouseLeave={unlockPeek}
             >
               <div className="sidebar-brand">
-                <span className="sidebar-brand-full">{BRAND_NAME}</span>
-                <span className="sidebar-brand-mark" aria-hidden="true">
-                  N
+                <span className="sidebar-brand-lockup">
+                  <span className="sidebar-brand-mark" aria-hidden="true">
+                    <BrandMark size={22} />
+                  </span>
+                  <span className="sidebar-brand-text">
+                    <span className="sidebar-brand-name">{BRAND_NAME}</span>
+                    <span className="sidebar-brand-stamp">{BRAND_STAMP}</span>
+                  </span>
                 </span>
               </div>
               <nav className="sidebar-nav" aria-label="Artisan">

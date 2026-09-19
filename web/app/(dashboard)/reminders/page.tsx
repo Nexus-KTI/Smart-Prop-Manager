@@ -1,50 +1,122 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { FetchErrorState } from "@/components/FetchErrorState";
-import { LoadMoreButton } from "@/components/LoadMoreButton";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { useToast } from "@/components/ToastProvider";
-import { resolveUnitStatus } from "@/lib/dashboard";
-import { fetchPortfolioUnitsPage, sendBulkReminders } from "@/lib/api";
-import type { PortfolioUnit, UnitStatus } from "@/lib/types";
+import {
+  fetchUrgentActions,
+  retryReminder,
+  sendBulkReminders,
+  type UrgentActionItem,
+  type UrgentActionsSummary,
+} from "@/lib/api";
 
-type UnitRow = {
-  id: string;
-  label: string;
-  tenant: string;
-  contact: string;
-  status: UnitStatus;
-};
+type ListFilter = "urgent" | "overdue" | "ending_soon" | "failed";
 
-function portfolioToRows(items: PortfolioUnit[]): UnitRow[] {
-  return items.map((item) => ({
-    id: item.unit.id,
-    label: `${item.property_name} · ${item.unit.label}`,
-    tenant: item.unit.tenant_name?.trim() || "-",
-    contact: item.unit.tenant_contact?.trim() || "-",
-    status: resolveUnitStatus(item.unit, item.unit.transactions ?? []),
-  }));
+const FILTERS: ListFilter[] = ["urgent", "overdue", "ending_soon", "failed"];
+
+function parseFilter(raw: string | null): ListFilter {
+  if (raw && FILTERS.includes(raw as ListFilter)) return raw as ListFilter;
+  return "urgent";
 }
 
-function overdueSelection(rows: UnitRow[]): Record<string, boolean> {
+function isOverdueKind(kind: string): boolean {
+  return kind === "overdue_chase" || kind === "overdue_no_contact";
+}
+
+function matchesFilter(item: UrgentActionItem, filter: ListFilter): boolean {
+  if (filter === "urgent") return true;
+  if (filter === "overdue") return isOverdueKind(item.kind);
+  if (filter === "ending_soon") return item.kind === "lease_ending";
+  return item.kind === "chase_failed";
+}
+
+function kindLabel(kind: string): string {
+  switch (kind) {
+    case "overdue_chase":
+    case "overdue_no_contact":
+      return "OVERDUE";
+    case "due_soon":
+      return "DUE SOON";
+    case "lease_ending":
+      return "ENDING SOON";
+    case "chase_failed":
+      return "FAILED";
+    default:
+      return kind.replace(/_/g, " ").toUpperCase();
+  }
+}
+
+function kindTone(kind: string): string {
+  switch (kind) {
+    case "overdue_chase":
+    case "overdue_no_contact":
+    case "chase_failed":
+      return "overdue";
+    case "due_soon":
+      return "due-soon";
+    case "lease_ending":
+      return "pending";
+    default:
+      return "pending";
+  }
+}
+
+function canBulkSelect(item: UrgentActionItem): boolean {
+  return item.kind === "overdue_chase" && Boolean(item.tenant_contact?.trim());
+}
+
+function chaseSelection(items: UrgentActionItem[]): Record<string, boolean> {
   return Object.fromEntries(
-    rows
-      .filter((row) => row.status === "OVERDUE" && row.contact !== "-")
-      .map((row) => [row.id, true]),
+    items.filter(canBulkSelect).map((item) => [item.unit_id, true]),
   );
 }
 
+function unitLine(item: UrgentActionItem): string {
+  const prop = (item.property_name || "").trim();
+  const label = (item.unit_label || "Unit").trim();
+  return prop ? `${prop} · ${label}` : label;
+}
+
 export default function RemindersPage() {
+  return (
+    <Suspense
+      fallback={
+        <section className="dashboard">
+          <header className="dashboard-header">
+            <h1 className="page-title">Action needed</h1>
+            <p className="page-subtitle">Loading…</p>
+          </header>
+        </section>
+      }
+    >
+      <RemindersPageInner />
+    </Suspense>
+  );
+}
+
+function RemindersPageInner() {
   const { showToast } = useToast();
-  const [units, setUnits] = useState<UnitRow[]>([]);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const listFilter = parseFilter(searchParams.get("filter"));
+
+  const [items, setItems] = useState<UrgentActionItem[]>([]);
+  const [summary, setSummary] = useState<UrgentActionsSummary>({
+    urgent: 0,
+    overdue: 0,
+    lease_ending: 0,
+    failed: 0,
+    due_soon: 0,
+  });
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [pending, setPending] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -52,24 +124,31 @@ export default function RemindersPage() {
     setReloadKey((key) => key + 1);
   }, []);
 
+  function setFilter(next: ListFilter) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "urgent") params.delete("filter");
+    else params.set("filter", next);
+    const q = params.toString();
+    router.replace(q ? `/reminders?${q}` : "/reminders", { scroll: false });
+  }
+
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
-    (async () => {
+    void (async () => {
+      setLoading(true);
+      setError(null);
       try {
-        const page = await fetchPortfolioUnitsPage(null);
+        const data = await fetchUrgentActions();
         if (!active) return;
-        const rows = portfolioToRows(page.items);
-        setUnits(rows);
-        setSelected(overdueSelection(rows));
-        setNextCursor(page.next_cursor);
+        setItems(data.items);
+        setSummary(data.summary);
+        setSelected(chaseSelection(data.items));
       } catch (err) {
         if (active) {
           setError(
-            err instanceof Error ? err.message : "Failed to load reminders",
+            err instanceof Error ? err.message : "Failed to load action needed",
           );
-          setUnits([]);
+          setItems([]);
         }
       } finally {
         if (active) setLoading(false);
@@ -85,34 +164,15 @@ export default function RemindersPage() {
     [selected],
   );
 
-  const overdueCount = units.filter((u) => u.status === "OVERDUE").length;
+  const visible = useMemo(
+    () => items.filter((item) => matchesFilter(item, listFilter)),
+    [items, listFilter],
+  );
 
-  async function onLoadMore() {
-    if (!nextCursor || loadingMore) return;
-    setLoadingMore(true);
-    setError(null);
-    try {
-      const page = await fetchPortfolioUnitsPage(nextCursor);
-      setUnits((current) => {
-        const newRows = portfolioToRows(page.items);
-        const existing = new Set(current.map((row) => row.id));
-        const appended = newRows.filter((row) => !existing.has(row.id));
-        const combined = [...current, ...appended];
-        setSelected((prev) => ({
-          ...prev,
-          ...overdueSelection(appended),
-        }));
-        return combined;
-      });
-      setNextCursor(page.next_cursor);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load more reminders",
-      );
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+  const chaseableVisible = useMemo(
+    () => visible.filter(canBulkSelect),
+    [visible],
+  );
 
   async function onBulkRemind() {
     if (selectedIds.length === 0) return;
@@ -123,15 +183,17 @@ export default function RemindersPage() {
       const channel = result.channel ? ` via ${result.channel}` : "";
       const errBits = (result.errors ?? [])
         .slice(0, 2)
-        .map((e) =>
-          e.label ? `${e.label}: ${e.detail}` : e.detail,
-        )
+        .map((e) => (e.label ? `${e.label}: ${e.detail}` : e.detail))
         .filter(Boolean);
       const errSuffix = errBits.length ? `, ${errBits.join("; ")}` : "";
       showToast(
         `Reminders: ${result.sent} sent, ${result.failed} failed, ${result.skipped} skipped${channel}${errSuffix}.`,
+        result.failed > 0 && result.sent === 0
+          ? "error"
+          : result.failed > 0
+            ? "neutral"
+            : "success",
       );
-      // Keep failed units selected so landlord can open those logs / fix contact.
       const failedIds = new Set(
         [
           ...(result.failed_unit_ids ?? []),
@@ -145,36 +207,62 @@ export default function RemindersPage() {
       } else if (result.failed === 0) {
         setSelected({});
       }
+      setReloadKey((k) => k + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send reminders");
+      showToast(
+        err instanceof Error ? err.message : "Could not send reminders",
+        "error",
+      );
     } finally {
       setPending(false);
     }
   }
 
-  if (!loading && error && units.length === 0) {
+  async function onRetryFailed(item: UrgentActionItem) {
+    if (!item.reminder_id || retryingId) return;
+    setRetryingId(item.id);
+    try {
+      await retryReminder(item.reminder_id);
+      showToast("Notice resent", "success");
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Could not retry notice.",
+        "error",
+      );
+    } finally {
+      setRetryingId(null);
+    }
+  }
+
+  if (!loading && error && items.length === 0) {
     return (
       <FetchErrorState
-        title="Couldn’t load reminders"
+        title="Couldn’t load Action needed"
         message={error}
         onRetry={retry}
       />
     );
   }
 
+  const subtitle =
+    summary.overdue > 0
+      ? `${summary.overdue} overdue unit${summary.overdue === 1 ? "" : "s"} ready to chase. Open a unit for the full log.`
+      : "Chase rent, fix failed sends, renewals ending soon.";
+
   return (
     <section className="dashboard">
       <header className="dashboard-header dashboard-header-row">
         <div>
-          <h1 className="page-title">Reminders</h1>
-          <p className="page-subtitle">
-            {overdueCount > 0
-              ? `${overdueCount} overdue unit${overdueCount === 1 ? "" : "s"} pre-selected. Open a unit for the full log.`
-              : "Chase overdue rent, or open a unit for the full log."}
-          </p>
+          <h1 className="page-title">Action needed</h1>
+          <p className="page-subtitle">{subtitle}</p>
         </div>
-        {!loading && units.length > 0 ? (
-          <div className="dashboard-header-actions">
+        <div className="dashboard-header-actions">
+          <Link href="/ops" className="btn-secondary">
+            Across owners
+          </Link>
+          {!loading && chaseableVisible.length > 0 ? (
             <button
               type="button"
               className="btn-primary"
@@ -185,8 +273,8 @@ export default function RemindersPage() {
                 ? "Sending…"
                 : `Remind selected (${selectedIds.length})`}
             </button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </header>
 
       {error ? <p className="form-error">{error}</p> : null}
@@ -201,92 +289,162 @@ export default function RemindersPage() {
                 </th>
                 <th>Unit</th>
                 <th>Tenant</th>
-                <th>Contact</th>
-                <th>Status</th>
+                <th>Why</th>
+                <th>Type</th>
+                <th>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              <TableSkeleton columns={5} rows={6} />
+              <TableSkeleton columns={6} rows={6} />
             </tbody>
           </table>
         </div>
-      ) : units.length === 0 ? (
+      ) : items.length === 0 ? (
         <div className="dashboard-empty" role="status">
-          <p className="dashboard-empty-title mono-data">No units yet.</p>
+          <p className="dashboard-empty-title mono-data">You’re caught up.</p>
           <p className="dashboard-empty-copy">
-            Add a property and unit first.
+            No overdue chase, ending leases, or failed sends right now.
           </p>
-          <Link href="/properties/new" className="btn-primary">
-            Add a property
+          <Link href="/properties" className="btn-primary">
+            Open properties
           </Link>
         </div>
       ) : (
-        <div className="data-table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>
-                  <span className="sr-only">Select</span>
-                </th>
-                <th>Unit</th>
-                <th>Tenant</th>
-                <th>Contact</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {units.map((unit) => (
-                <tr key={unit.id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selected[unit.id])}
-                      disabled={unit.contact === "-"}
-                      onChange={(event) =>
-                        setSelected((current) => ({
-                          ...current,
-                          [unit.id]: event.target.checked,
-                        }))
-                      }
-                      aria-label={`Select ${unit.label}`}
-                    />
-                  </td>
-                  <td>
-                    <Link href={`/reminders/${unit.id}`} className="table-link">
-                      {unit.label}
-                    </Link>
-                  </td>
-                  <td>{unit.tenant}</td>
-                  <td className="mono-data">{unit.contact}</td>
-                  <td>
-                    <span
-                      className={`status-badge ${
-                        unit.status === "PAID"
-                          ? "paid"
-                          : unit.status === "OVERDUE"
-                            ? "overdue"
-                            : unit.status === "DUE SOON"
-                              ? "due-soon"
-                              : "pending"
-                      }`}
-                    >
-                      {unit.status}
-                    </span>
-                  </td>
-                </tr>
+        <>
+          <div className="portfolio-occupancy-bar">
+            <p className="form-label" id="reminders-status-label">
+              Show
+            </p>
+            <div
+              className="theme-segment"
+              role="group"
+              aria-labelledby="reminders-status-label"
+            >
+              {(
+                [
+                  ["urgent", "Urgent", summary.urgent],
+                  ["overdue", "Overdue", summary.overdue],
+                  ["ending_soon", "Ending soon", summary.lease_ending],
+                  ["failed", "Failed", summary.failed],
+                ] as const
+              ).map(([id, label, count]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className="theme-segment-btn"
+                  data-active={listFilter === id ? "true" : "false"}
+                  aria-pressed={listFilter === id}
+                  onClick={() => setFilter(id)}
+                >
+                  {label} ({count})
+                </button>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </div>
+          </div>
 
-      {!loading && units.length > 0 ? (
-        <LoadMoreButton
-          hasMore={Boolean(nextCursor)}
-          loading={loadingMore}
-          onLoadMore={() => void onLoadMore()}
-        />
-      ) : null}
+          <div className="data-table-wrap data-table-wrap--stack">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>
+                    <span className="sr-only">Select</span>
+                  </th>
+                  <th>Unit</th>
+                  <th>Tenant</th>
+                  <th>Why</th>
+                  <th>Type</th>
+                  <th>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="table-empty">
+                      Nothing in this filter. Switch to Urgent.
+                    </td>
+                  </tr>
+                ) : null}
+                {visible.map((item) => {
+                  const selectable = canBulkSelect(item);
+                  const line = unitLine(item);
+                  return (
+                    <tr key={item.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(selected[item.unit_id])}
+                          disabled={!selectable}
+                          onChange={(event) =>
+                            setSelected((current) => ({
+                              ...current,
+                              [item.unit_id]: event.target.checked,
+                            }))
+                          }
+                          aria-label={`Select ${line}`}
+                        />
+                      </td>
+                      <td>
+                        <Link
+                          href={`/reminders/${item.unit_id}`}
+                          className="table-link"
+                        >
+                          {line}
+                        </Link>
+                      </td>
+                      <td>{item.tenant_name?.trim() || "-"}</td>
+                      <td>{item.detail || "-"}</td>
+                      <td>
+                        <span
+                          className={`status-badge ${kindTone(item.kind)}`}
+                        >
+                          {kindLabel(item.kind)}
+                        </span>
+                      </td>
+                      <td>
+                        {item.kind === "overdue_no_contact" ? (
+                          <Link
+                            href={`/properties/units/${item.unit_id}/edit`}
+                            className="table-link"
+                          >
+                            Add contact
+                          </Link>
+                        ) : item.kind === "chase_failed" && item.reminder_id ? (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={retryingId === item.id}
+                            onClick={() => void onRetryFailed(item)}
+                          >
+                            {retryingId === item.id ? "Retrying…" : "Retry"}
+                          </button>
+                        ) : item.kind === "lease_ending" ? (
+                          <Link
+                            href="/tenancies?filter=ending_soon"
+                            className="table-link"
+                          >
+                            Tenancies
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/reminders/${item.unit_id}`}
+                            className="table-link"
+                          >
+                            Log
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </section>
   );
 }

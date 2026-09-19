@@ -27,10 +27,16 @@ function scrollToPanel(panel: Exclude<Panel, null>) {
 
 type Props = {
   inviteOnly?: boolean;
+  primaryLabel?: string;
 };
 
-export function MarketingCtaSection({ inviteOnly = false }: Props) {
+export function MarketingCtaSection({
+  inviteOnly = false,
+  primaryLabel,
+}: Props) {
   const [panel, setPanel] = useState<Panel>(null);
+  const ctaLabel =
+    primaryLabel ?? (inviteOnly ? "Request access" : "Start free");
 
   useEffect(() => {
     function syncFromHash() {
@@ -75,40 +81,35 @@ export function MarketingCtaSection({ inviteOnly = false }: Props) {
             type="button"
             className="btn-primary"
             aria-expanded={panel === "access"}
-            aria-controls="get-started"
+            aria-controls="get-started-form"
             onClick={openAccess}
           >
-            Request access
+            {ctaLabel}
           </button>
         ) : (
           <Link href="/signup" className="btn-primary">
-            Create free account
+            {ctaLabel}
           </Link>
         )}
+      </div>
+      <p className="marketing-cta-secondary-links">
         <button
           type="button"
-          className="btn-secondary"
+          className="marketing-cta-text-btn"
           aria-expanded={panel === "callback"}
           aria-controls="whatsapp-callback"
           onClick={openCallback}
         >
-          Request a WhatsApp callback
+          Prefer a WhatsApp callback
         </button>
-      </div>
-      <p className="marketing-cta-secondary-links">
         {inviteOnly ? (
-          <Link href="/signup">Have an invite? Sign up</Link>
-        ) : (
-          <button
-            type="button"
-            className="marketing-cta-text-btn"
-            aria-expanded={panel === "access"}
-            aria-controls="get-started"
-            onClick={openAccess}
-          >
-            Prefer we message you first
-          </button>
-        )}
+          <>
+            <span className="marketing-cta-sep" aria-hidden>
+              ·
+            </span>
+            <Link href="/signup">Have an invite? Sign up</Link>
+          </>
+        ) : null}
       </p>
 
       {panel === "callback" ? (
@@ -123,7 +124,7 @@ export function MarketingCtaSection({ inviteOnly = false }: Props) {
 
       {panel === "access" ? (
         <div
-          id="get-started"
+          id="get-started-form"
           className="marketing-cta-card"
           aria-label="Access request form"
         >

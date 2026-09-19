@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from lib.auth import AuthedUser, get_current_user
 
@@ -86,6 +86,36 @@ def list_my_requests(user: AuthedUser = Depends(get_current_user)):
         or []
     )
     return {"items": rows}
+
+
+@router.post("/me/photo")
+async def upload_my_request_photo(
+    file: UploadFile = File(...),
+    user: AuthedUser = Depends(get_current_user),
+):
+    """Upload a repair photo; returns a public URL to attach on create."""
+    _require_active_tenancy_for_tenant(user)
+    from lib.maintenance_photos import upload_maintenance_photo
+
+    raw = await file.read()
+    content_type = (file.content_type or "").strip() or "image/jpeg"
+    try:
+        url = upload_maintenance_photo(
+            user_id=user.id,
+            content_type=content_type,
+            file_bytes=raw,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not upload photo",
+        ) from exc
+    return {"photo_url": url}
 
 
 @router.post("/me", status_code=status.HTTP_201_CREATED)
@@ -303,17 +333,38 @@ def create_unit_work_order(
 
 @router.get("/artisan/me")
 def list_artisan_jobs(user: AuthedUser = Depends(get_current_user)):
+    ARTISAN_JOBS_LIMIT = 50
     rows = (
         user.db.table("maintenance_requests")
         .select("*, access_passes(*)")
         .eq("artisan_user_id", user.id)
         .order("created_at", desc=True)
-        .limit(50)
+        .limit(ARTISAN_JOBS_LIMIT)
         .execute()
         .data
         or []
     )
-    return {"items": rows}
+    return {
+        "items": rows,
+        "loaded": len(rows),
+        "capped": len(rows) >= ARTISAN_JOBS_LIMIT,
+    }
+
+
+BOARD_PAGE_LIMIT = 100
+OPEN_STATUSES = ("new", "in_progress")
+DONE_STATUSES = ("resolved", "canceled")
+
+
+def _exact_count(db, table: str, *, eq_filters: dict, in_filters: dict | None = None) -> int:
+    q = db.table(table).select("id", count="exact")
+    for key, value in eq_filters.items():
+        q = q.eq(key, value)
+    if in_filters:
+        for key, values in in_filters.items():
+            q = q.in_(key, list(values))
+    res = q.limit(1).execute()
+    return int(getattr(res, "count", None) or 0)
 
 
 @router.get("/board")
@@ -323,12 +374,41 @@ def list_landlord_board(user: AuthedUser = Depends(get_current_user)):
         .select("*")
         .eq("landlord_id", user.id)
         .order("created_at", desc=True)
-        .limit(100)
+        .limit(BOARD_PAGE_LIMIT)
         .execute()
         .data
         or []
     )
-    return {"items": rows}
+    open_count = _exact_count(
+        user.db,
+        "maintenance_requests",
+        eq_filters={"landlord_id": user.id},
+        in_filters={"status": OPEN_STATUSES},
+    )
+    done_count = _exact_count(
+        user.db,
+        "maintenance_requests",
+        eq_filters={"landlord_id": user.id},
+        in_filters={"status": DONE_STATUSES},
+    )
+    return {
+        "items": rows,
+        "open_count": open_count,
+        "done_count": done_count,
+        "loaded": len(rows),
+        "capped": len(rows) >= BOARD_PAGE_LIMIT,
+    }
+
+
+@router.get("/open-count")
+def maintenance_open_count(user: AuthedUser = Depends(get_current_user)):
+    open_count = _exact_count(
+        user.db,
+        "maintenance_requests",
+        eq_filters={"landlord_id": user.id},
+        in_filters={"status": OPEN_STATUSES},
+    )
+    return {"open_count": open_count}
 
 
 @router.post("/{request_id}/assign")
@@ -432,7 +512,16 @@ def assign_artisan(
         .data
     )
     row = _first_row(updated) or {**current, **patch}
-    return {"item": row}
+    from lib.maintenance_notify import notify_artisan_assigned
+
+    notify = notify_artisan_assigned(
+        user.db,
+        landlord_id=user.id,
+        artisan_user_id=artisan_user_id,
+        title=str(current.get("title") or "Repair"),
+        idempotency_key=f"artisan-assigned:{request_id}:{artisan_user_id}",
+    )
+    return {"item": row, "notify": notify}
 
 
 @router.post("/{request_id}/complete")

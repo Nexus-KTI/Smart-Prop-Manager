@@ -1,0 +1,17 @@
+---
+description: Nexora monorepo always-on constraints (brand, stack, process)
+alwaysApply: true
+---
+
+# Nexora always-on
+
+- Product: Nexora by KTI — Nigerian landlord rent-and-chase. Brand strings from `web/lib/brand.ts`.
+- Stack: FastAPI + Next.js `web/` + Supabase. Do not rewrite to another framework.
+- Spec-first for multi-file work: read `plans/spec.md` / `plans/backlog.md` when present.
+- Tokens only: `--accent` forest (actions), `--brand` KTI orange (stamps/marks), `--surface`, `--border`, `--ink`, `--muted`, `--background`, `--alert`.
+- Geist Sans + `.mono-data` for money/dates. No Rentora blue / Inter-as-brand / purple AI chrome.
+- Product UI: no decorative box-shadows. Prefer flat marketing over glow stacks. Motion via `--motion-*` tokens; marketing reveal = `MarketingReveal` only; no Framer/AOS on dashboard.
+- SQL: add ordered files under `sql/`; inspect remote before re-applying.
+- Estate OS explorer (`web/app/(design)/os-explorer/**`) is isolated — use `os-*` agents only there.
+- Do not commit/push unless the user asks. Do not invent TenantCloud US features in copy.
+- Before claiming done: run relevant tests (`scripts/check-green.ps1` or targeted pytest/lint).

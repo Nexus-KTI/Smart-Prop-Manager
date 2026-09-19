@@ -10,13 +10,18 @@ Restart FastAPI after pulling so new routers mount (`applications`, `expenses`, 
 ## Landlord
 
 1. **Applications** — Unit Payments → *Invite to apply* → copy `/apply/{token}` → open as applicant (sign in) → submit → Applications nav → Approve/Reject.
-2. **Expenses** — `/expenses` → Add expense → appears in list; month total feeds Reports.
-3. **Reports** — `/reports` rent roll: units, tenants, vacant/occupied, month expenses.
+2. **Expenses** — `/expenses` → empty **Add expense** if none; Add expense → appears; month total on Reports links back.
+3. **Reports** — `/reports` rent roll: units, vacant/occupied badges, Payments + Tenancy/Start tenancy actions, month expenses → `/expenses`.
 4. **Fees** — Unit Payments → Add fee → tenant sees under `/tenant/fees`.
 5. **Bulletin** — `/publications` → New post → tenant Notices shows under “From your landlord”.
 6. **Tasks / calendar** — `/tasks` → create landlord or tenant task (tenant needs tenancy id) → Upcoming shows term ends + fees.
-7. **Tenancies** — `/tenancies` portfolio list → Open dossier.
-8. **Docs ack** — Upload on tenancy dossier with “requires acknowledgment” (API `requires_ack`) + optional `expires_on` → tenant Documents → *I acknowledge*.
+7. **Tenancies** — `/tenancies` All / Active / Ending soon → Open dossier / Payments; empty → Find vacant units.
+8. **Docs ack (awaiting legal approval)** — Confirm landlord and tenant see
+   honest disabled states. Do not enable upload or run a document flow in
+   production; use the staged gate in
+   [`tenancy-docs-launch-gate.md`](tenancy-docs-launch-gate.md).
+
+Ada money/chase loop detail: [`landlord-ada-loop-smoke.md`](landlord-ada-loop-smoke.md).
 
 ## Tenant
 

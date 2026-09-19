@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 
-import { RevealItem } from "@/components/RevealItem";
+import { MarketingReveal } from "@/components/MarketingReveal";
 
 export type MarketingFeature = {
   title: string;
@@ -51,8 +51,9 @@ export function MarketingFeatureList({
       {items.map((entry, index) => {
         const Icon = entry.Icon;
         return (
-          <RevealItem
+          <MarketingReveal
             key={entry.title}
+            as="li"
             className={item}
             delayMs={index * 80}
           >
@@ -75,7 +76,7 @@ export function MarketingFeatureList({
                 <p className="marketing-reassure">{entry.reassure}</p>
               ) : null}
             </div>
-          </RevealItem>
+          </MarketingReveal>
         );
       })}
     </ListTag>

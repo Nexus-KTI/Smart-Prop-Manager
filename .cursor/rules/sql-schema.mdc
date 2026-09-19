@@ -1,0 +1,12 @@
+---
+description: SQL migrations and Supabase schema safety
+globs: "sql/**/*.sql"
+alwaysApply: false
+---
+
+# SQL / schema
+
+- New changes = new numbered file in `sql/` (do not silently rewrite applied history).
+- Prefer additive migrations; document RLS intent in comments.
+- Public INSERT policies are sensitive — prefer API/service-role paths for abuse surfaces.
+- After schema work: note apply status in PR/summary; use Supabase advisors when available.

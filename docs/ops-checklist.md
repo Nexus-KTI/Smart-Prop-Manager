@@ -55,13 +55,40 @@ Web (`web/.env`):
 - `NEXT_PUBLIC_AUTH_OTP_CHANNEL=sms`  
 - `NEXT_PUBLIC_INVITE_ONLY_SIGNUP` as intended  
 
+Tenancy documents remain off until
+[`tenancy-docs-launch-gate.md`](tenancy-docs-launch-gate.md) is approved:
+Operational rights, hold, incident and rollback steps are in
+[`tenancy-docs-privacy-ops.md`](tenancy-docs-privacy-ops.md).
+
+- API: `DOCS_READ_ENABLED=false`, `DOCS_UPLOAD_ENABLED=false`,
+  `DOC_REQUESTS_ENABLED=false`, `TENANT_DOC_SUBMISSIONS_ENABLED=false`,
+  `DOC_REVIEW_ENABLED=false`, `PRIVACY_CASES_ENABLED=false`, and
+  `DOCS_RETENTION_PURGE_ENABLED=false`; leave `DOCS_ACK_TEXT_VERSION` blank.
+- Do not add a `NEXT_PUBLIC_*` document flag.
+- Staging sequence: reconcile 028 drift → apply 029 on a Supabase branch →
+  private bucket + ClamAV → no-PII exercise → legal/security sign-off →
+  monitored production flags.
+- Hold and privacy-case operator actions require an allowlisted explicit AAL2
+  session. Review admin access quarterly and after every personnel change.
+- Keep the approved subprocessor/location/transfer register, backup/restore
+  evidence, key-rotation log, DSAR owner and incident escalation contacts with
+  the launch evidence pack.
+
 ---
 
 ## 3. Paystack webhook
 
 - Dashboard URL: `https://<api-host>/payments/webhook/paystack`
 - Secret matches `PAYSTACK_SECRET_KEY`
-- Confirm a test charge → transaction `paid` + receipt row
+- Confirm a test charge → one transaction becomes `paid` and one
+  `payment-receipt:<transaction_id>` outbox row is created.
+- Replaying confirm/webhook must reuse the same transaction and outbox row.
+- Confirm rejects any Paystack amount, currency, transaction ID, unit, charge
+  type, purpose, or stored reference that does not match the pending row.
+- Autopay uses `autopay:<tenancy_id>:<due_date>`; a `failed` row with a provider
+  reference must be verified at Paystack before any manual retry.
+- Manual, pending-checkout, and saved-card POST retries must preserve their
+  original `Idempotency-Key`; reusing a key with changed inputs is a conflict.
 
 ---
 
@@ -69,24 +96,71 @@ Web (`web/.env`):
 
 - Render cron `smart-prop-due-reminders` schedule `0 8 * * *` → `python -m lib.reminder_job`
 - Or `POST /reminders/jobs/due` with `Authorization: Bearer $CRON_SECRET`
-- After run: `reminders` rows `kind=due` with `sent` or clear `error_detail`
+- After run: due/renewal messages are queued; the delivery cron writes
+  `reminders` rows with `sent` or a clear terminal `error_detail`.
 
 ---
 
-## 5. SQL / schema
+## 5. Delivery outbox and rate-limit cleanup
+
+- Render cron `smart-prop-delivery-outbox` runs every five minutes with
+  `python -m scripts.delivery_outbox`.
+- Healthy: ready work is normally drained within 10 minutes:
+
+```sql
+select status, count(*), min(created_at) as oldest
+from public.delivery_outbox
+group by status
+order by status;
+```
+
+- Investigate any `pending`/`retry` row older than 15 minutes, any expired
+  `processing` lease, or any `dead` row. Check `attempt_count`, `last_error`,
+  `event_name`, and provider status before replay.
+- Safe replay: after fixing the cause, move only the reviewed dead row to
+  `retry`, clear `completed_at`, and set `next_attempt_at=now()`. Do not change
+  its `idempotency_key` and do not bulk replay payment receipts without checking
+  the transaction/provider first.
+- Delivery is at-least-once across a process crash after a provider accepts a
+  message but before acknowledgement. Stable enqueue keys and provider/reference
+  checks prevent concurrent sends, but operators should still inspect provider
+  logs before replaying an ambiguous dead row.
+- Interactive chase/invites also enqueue into the same outbox and attempt an
+  immediate flush; if flush cannot complete, the cron picks the row up within
+  five minutes. Payment receipts skip landlord/tenant/chat steps that already
+  succeeded for that payment window.
+- The same cron purges rate-limit buckets expired for more than one day. A
+  sustained `503 Request protection temporarily unavailable` means the
+  service-role RPC or database is unavailable; do not bypass the limiter.
+
+---
+
+## 6. SQL / schema
 
 Repo files under `sql/` (apply in order if rebuilding):
 
-`000` → `001` → `002` → `003` → `004_security` / `004_remove_flutterwave` → `005` → `006` → `007`
+`000` → … → `031` → `032_resilience_payments_outbox_limits` →
+`033_reminders_queued_status`
 
-Remote (Supabase) already has reminders `kind`, `error_detail`, property `latitude`/`longitude` as of 2026-08-09 spot-check. Prefer MCP/`list_migrations` + column checks over blind re-apply.
+Remote (Supabase): `032` and `033` DDL are live and recorded as verify-only
+migration stamps (`20260917172210` / `20260917172220`). Do **not** re-apply the
+full financial sections of `032`. Prefer MCP/`list_migrations` + column checks
+over blind re-apply.
+
+`delivery_outbox` and `rate_limit_buckets` intentionally use RLS with no
+client policies (service-role RPCs only), matching `product_events`.
+
+Interactive chase can log `queued` reminder rows while the outbox worker
+delivers. Ensure Render cron `smart-prop-delivery-outbox` is created from
+`render.yaml` (`*/5 * * * *`) — it is defined in-repo but may not yet be live
+in every Render workspace.
 
 ---
 
-## 6. Smoke after deploy
+## 7. Smoke after deploy
 
 1. `/health` 200  
 2. Login → `/properties`  
-3. Manual payment → landlord email + receipt log  
-4. Reminder send with matching contact/channel  
+3. Manual payment → paid ledger + one queued receipt → delivered receipt log
+4. Reminder run → one queued row → one delivered provider message
 5. Admin invite lead → signup link opens with invite query params  

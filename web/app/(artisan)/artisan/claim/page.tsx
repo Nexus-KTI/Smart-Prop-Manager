@@ -17,7 +17,7 @@ function ClaimForm() {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token) {
-      showToast("Missing invite token");
+      showToast("Missing invite token", "error");
       return;
     }
     const data = new FormData(event.currentTarget);
@@ -32,7 +32,7 @@ function ClaimForm() {
       showToast("You’re on the roster");
       router.replace("/artisan");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Claim failed");
+      showToast(err instanceof Error ? err.message : "Claim failed", "error");
     } finally {
       setSubmitting(false);
     }

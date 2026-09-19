@@ -215,13 +215,10 @@ export function TenancyDossierClient({
     <section className="dashboard">
       <header className="dashboard-header dashboard-header-row">
         <div>
-          <p className="form-kicker">
-            <Link href={`/properties/${propertyId}`}>Property</Link>
-            {" · "}
-            Tenant paperwork
-          </p>
           <h1 className="page-title">Move-in checklist</h1>
           <p className="page-subtitle">
+            <Link href={`/properties/${propertyId}`}>Property</Link>
+            {" · "}
             Tick required steps before occupancy is active. Identity verify
             (NIN/BVN) stays optional.
           </p>
@@ -236,10 +233,11 @@ export function TenancyDossierClient({
       {error ? <p className="form-error">{error}</p> : null}
 
       {!tenancy ? (
-        <div className="form-card">
-          <p className="page-subtitle">
-            No tenancy on this unit yet. Start one to track checklist, docs, and
-            tenant invite.
+        <div className="dashboard-empty" role="status">
+          <p className="dashboard-empty-title mono-data">No tenancy yet.</p>
+          <p className="dashboard-empty-copy">
+            Start a lease on this unit to track checklist, docs, and the tenant
+            invite.
           </p>
           <button
             type="button"
@@ -408,7 +406,12 @@ export function TenancyDossierClient({
             </div>
           )}
           {docItems.length === 0 ? (
-            <p className="table-muted">No documents yet.</p>
+            <div className="dashboard-empty" role="status">
+              <p className="dashboard-empty-title mono-data">No documents yet.</p>
+              <p className="dashboard-empty-copy">
+                Upload a PDF or photo above for the lease agreement or ID.
+              </p>
+            </div>
           ) : (
             <ul className="tenancy-doc-list">
               {docItems.map((doc) => (

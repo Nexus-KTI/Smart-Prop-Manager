@@ -9,7 +9,7 @@
 
 ## Brand personality
 
-Calm, practical, landlord-tool. Forest green signals money/ops trust without UK-proptech blue. Surfaces stay quiet; data (amounts, dates) is the loud part via mono. No glassmorphism, glow stacks, or purple-default AI aesthetics.
+Calm, practical, landlord-tool. Forest green (`--accent`) signals money/ops trust without UK-proptech blue. KTI orange (`--brand`, from the parent logo) marks "by KTI" identity without replacing forest for primary actions. Surfaces stay quiet; data (amounts, dates) is the loud part via mono. No glassmorphism, glow stacks, or purple-default AI aesthetics.
 
 ---
 
@@ -26,7 +26,8 @@ All product and marketing brand color must resolve to these CSS variables.
 | `--surface` | `#ffffff` | Cards, tables wraps, forms, sticky header |
 | `--border` | `#e2e4e1` | Hairlines, inputs, table wraps |
 | `--ink` | `#14171a` | Titles, primary text |
-| `--accent` | `#0f6e4f` | Primary buttons, links, active nav, icons |
+| `--accent` | `#0f6e4f` | Primary buttons, links, active nav, money/ops trust |
+| `--brand` | `#e65100` | KTI parent mark - stamps, process line, collapsed "N" mark |
 | `--alert` | `#b4402a` | Destructive / overdue emphasis |
 | `--muted` | `#6b7280` | Subtitles, secondary labels, placeholders |
 
@@ -40,14 +41,16 @@ All product and marketing brand color must resolve to these CSS variables.
 | `--border` | `#26292D` |
 | `--ink` | `#E8EAED` |
 | `--accent` | `#2FA679` |
+| `--brand` | `#ff7a33` |
 | `--alert` | `#D96650` |
 | `--muted` | `#9BA1A6` |
 
 **Rules**
 
 - No Rentora `#3183c8`, no Tailwind palette classes as brand color.
+- `--accent` (forest) is the product action color. `--brand` (KTI orange from the Kings Technologies Innovations logo) is the parent identity accent only - stamps (`by KTI`), marketing process line, collapsed sidebar mark. Do not replace primary buttons or active nav with orange.
 - Primary button label uses `color: var(--surface)` on `background: var(--accent)`.
-- Mixes allowed: `color-mix(in srgb, var(--accent) …, var(--surface|ink))` for hover/active washes.
+- Mixes allowed: `color-mix(in srgb, var(--accent) …, var(--surface|ink))` for hover/active washes; `--brand` mixes are fine for soft marketing atmosphere only.
 - Marketing alt sections: `.section-bg-alt` → `--background-alt` (must win over `.marketing-section`).
 
 ---
@@ -88,11 +91,13 @@ All product and marketing brand color must resolve to these CSS variables.
 
 ---
 
-## Radius & elevation
+## Materials (radius, elevation, atmosphere)
 
 - Default interactive radius: **6px** (buttons, inputs, cards, table wraps).
-- Product shell: **`box-shadow: none !important`** — no decorative shadows.
-- Marketing also forces no box-shadow for a flat editorial read.
+- Flat product and marketing: **no decorative `box-shadow`**. `.app-shell` and `.marketing` force `box-shadow: none !important`.
+- Overlays (menus, panels, FABs): **border + `--surface` only** — not shadow elevation.
+- Atmosphere: soft `--accent` / `--brand` radial washes on `.marketing` only. Sections stay transparent so atmosphere shows; only `.section-bg-alt` paints a fill.
+- Ban: glow stacks, continuous shadow pulses, glass `backdrop-filter` on chrome, inventing per-screen elevation.
 
 ---
 
@@ -118,7 +123,7 @@ All product and marketing brand color must resolve to these CSS variables.
 
 ### Navigation
 
-- `.nav-item` + active state washes with `--accent` only (no second brand color).
+- `.nav-item` + active state washes with `--accent` only (nav chrome stays forest; KTI `--brand` is for stamps/marks, not nav active).
 - One Account entry point; one theme control (avoid duplicate moon + Appearance).
 
 ### Auth
@@ -127,10 +132,10 @@ All product and marketing brand color must resolve to these CSS variables.
 
 ### Marketing-only
 
-- `.marketing-container`, `.marketing-section`, `.section-bg-alt`, `.marketing-preview`, `.reveal-on-scroll`.
+- `.marketing-container`, `.marketing-section`, `.section-bg-alt`, `.marketing-preview`, `.marketing-reveal`.
+- Canonical scroll reveal: `MarketingReveal` (`.marketing-reveal`). Do not add a second reveal API.
 - Reusable: `MarketingSection`, `MarketingFeatureList` (`cards` | `grid` | `rail`), `MarketingTrustStrip`.
-- Atmosphere: soft accent radial washes on `.marketing`; sections stay transparent so it shows; only `.section-bg-alt` paints a fill.
-- Hierarchy: hero (brand + title + lede + CTAs + preview) → compact trust → problem cards → product preview early → step rail → feature grid → FAQ → CTA.
+- Hierarchy: hero (brand + title + lede + CTAs + preview) → product → roles → stories → FAQ → CTA.
 - No fake logos/testimonials/blog. Primary CTA → `/signup`; WhatsApp callback secondary.
 - Footer: hairline `border-top: var(--border)`.
 
@@ -143,11 +148,36 @@ All product and marketing brand color must resolve to these CSS variables.
 
 ## Motion
 
+Tokens live on `:root` in `globals.css`. Use them; do not invent per-screen durations.
+
+| Token | Value | Use |
+|-------|-------|-----|
+| `--motion-fast` | `120ms` | Hover / color / focus chrome |
+| `--motion-ui` | `200ms` | Sidebar width, panel opacity, shell chrome |
+| `--motion-reveal` | `300ms` | Marketing hero fade-up + scroll reveal |
+| `--ease-out` | `ease-out` | Default easing for the above |
+
 | Surface | Policy |
 |---------|--------|
-| Product | Hover/focus transitions on buttons/nav only; no scroll-storytelling |
-| Marketing | Reveal fade-up OK; respect `prefers-reduced-motion` |
-| Global | Calm; no Framer/AOS on dashboard |
+| Product | Hover/focus transitions on buttons/nav only; functional feedback OK (skeleton, row highlight, auth pulse, toasts). No scroll-storytelling under `.app-shell`. |
+| Marketing | One-shot `MarketingReveal`; short hero stagger (`.marketing-hero-animate`); hero mock idle autoplay (`MarketingHeroFrame`). |
+| Global | Calm; no Framer / AOS on dashboard. Always honor `prefers-reduced-motion` (show final state; kill loops). |
+
+### Product feedback (toasts)
+
+Shared API: `showToast(message, tone?)` in `ToastProvider` — one toast at a time.
+
+| Tone | Use | Visual | Duration |
+|------|-----|--------|----------|
+| `neutral` (default) | Unclassified / legacy callers | Left border `--border` | 3s |
+| `success` | Action completed | Left border `--accent` | 3s |
+| `error` | Action failed (prefer API `detail`) | Left border `--alert` | 4.5s |
+
+**When to toast:** quiet saves; money/chase/notify outcomes; post-confirm destructive results. Past tense, short copy. Side effects get honest secondary clause (“created — could not notify tenant”) with `success` if the primary action worked.
+
+**Not toasts:** persistent “needs attention” → bell / Action needed; field validation → inline; full-page load failure → `FetchErrorState`; destructive intent → confirm dialog first, then toast.
+
+Errors: `role="alert"` + `aria-live="assertive"`. Success/neutral: `status` / `polite`. No decorative shadows; tokens only. No toast queues or action buttons on the toast.
 
 ---
 
@@ -173,7 +203,9 @@ All product and marketing brand color must resolve to these CSS variables.
 - Purple-on-white or terracotta-cream default AI themes.  
 - Cards in marketing hero; orphaned full-bleed text outside `.marketing-container`.  
 - Nested competing page paddings inside `.shell-content`.  
-- Inventing new hex for “just this screen.”
+- Inventing new hex or motion durations for “just this screen.”  
+- Dual reveal APIs; marketing scroll motion under `.app-shell`.  
+- Glow stacks, glass blur chrome, decorative shadows.
 
 ---
 

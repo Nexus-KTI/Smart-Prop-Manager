@@ -145,7 +145,8 @@ comment on column public.transactions.initiated_by is
   'landlord = manual/landlord Paystack; tenant = tenant-initiated Paystack (same ledger).';
 
 -- Phase 3 exit helpers
-create or replace view public.phase3_tenancies_activated as
+create or replace view public.phase3_tenancies_activated
+with (security_invoker = true) as
 select
   t.id as tenancy_id,
   t.landlord_id,

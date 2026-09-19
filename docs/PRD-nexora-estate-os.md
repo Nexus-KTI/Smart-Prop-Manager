@@ -235,16 +235,23 @@ Near-zero early numbers are expected; they are evidence, not a bug.
 
 ---
 
-### Phase 3 — Tenancy dossier & tenant surface (LATER)
+### Phase 3 — Tenancy dossier & tenant surface (PARTIAL)
+
+Tenancy, checklist, invite, tenant pay, receipts, and messages are live.
+Document storage and receipt/read acknowledgment are **awaiting Nigerian
+legal/privacy approval** and remain server-disabled. See
+[`tenancy-docs-launch-gate.md`](tenancy-docs-launch-gate.md).
 
 **Goal:** Move from “tenant contact on unit” to a real occupancy record + tenant self-serve for money and docs.
 
 **In scope:**
 - Tenancy entity (term, parties, unit link)  
-- Document upload per unit/tenancy (reuse receipts Storage)  
+- Landlord document upload per tenancy to a dedicated private bucket (awaiting
+  legal approval); active tenants may read and acknowledge receipt, not upload
 - Verification checklist (ID collected / agreement signed / refs) — **required path**  
 - Optional identity verification via **NIN/BVN partner hook** (VerifyMe or Dojah — pick after pricing/turnaround conversation); **not** full criminal/credit screening in Phase 3  
-- Tenant invite / login: pay, view balance, download receipts, upload docs  
+- Tenant invite / login: pay, view balance, download receipts, and—after the
+  document launch gate—read tenancy documents
 - Notification event matrix (if users demand)  
 
 **Data / compliance framing (locked for design):** Landlord (owner) = **data controller** for tenant docs and verification artifacts; KTI/Nexora = **data processor**. Wireframe and ToS copy must say the landlord owns the tenant file; Nexora stores it for them. Full background screening (Risk Control / 360 Verify tier) is **out of Phase 3** — reopen only if a PM/estate pilot asks.

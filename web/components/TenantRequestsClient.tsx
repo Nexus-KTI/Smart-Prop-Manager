@@ -11,6 +11,7 @@ import {
   createMyMaintenanceRequest,
   fetchMyMaintenanceRequests,
   openMaintenanceThread,
+  uploadMaintenancePhoto,
   type MaintenanceRequest,
 } from "@/lib/api";
 import {
@@ -27,6 +28,8 @@ export function TenantRequestsClient() {
   const [listLoading, setListLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setListLoading(true);
@@ -44,6 +47,20 @@ export function TenantRequestsClient() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!photoFile) {
+      setPhotoPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(photoFile);
+    setPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photoFile]);
+
+  function clearPhoto() {
+    setPhotoFile(null);
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -52,28 +69,32 @@ export function TenantRequestsClient() {
     const details = String(data.get("details") || "").trim();
     const priority = String(data.get("priority") || "normal");
     const category = String(data.get("category") || "general");
-    const photo_url = String(data.get("photo_url") || "").trim();
     const preferred_time = String(data.get("preferred_time") || "").trim();
     const allow_entry = data.get("allow_entry") === "on";
     if (!title) return;
 
     setSubmitting(true);
     try {
+      let photo_url: string | undefined;
+      if (photoFile) {
+        photo_url = await uploadMaintenancePhoto(photoFile);
+      }
       await createMyMaintenanceRequest({
         title,
         details: details || undefined,
         priority,
         category,
-        photo_url: photo_url || undefined,
+        photo_url,
         preferred_time: preferred_time || undefined,
         allow_entry,
       });
       showToast("Request sent to your landlord");
       form.reset();
+      clearPhoto();
       setFormOpen(false);
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Could not submit");
+      showToast(err instanceof Error ? err.message : "Could not submit", "error");
     } finally {
       setSubmitting(false);
     }
@@ -85,7 +106,7 @@ export function TenantRequestsClient() {
       showToast("Request canceled");
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Could not cancel");
+      showToast(err instanceof Error ? err.message : "Could not cancel", "error");
     }
   }
 
@@ -100,7 +121,12 @@ export function TenantRequestsClient() {
             <button
               type="button"
               className="btn-primary"
-              onClick={() => setFormOpen((open) => !open)}
+              onClick={() =>
+                setFormOpen((open) => {
+                  if (open) clearPhoto();
+                  return !open;
+                })
+              }
             >
               {formOpen ? "Close form" : "New request"}
             </button>
@@ -166,14 +192,40 @@ export function TenantRequestsClient() {
                 />
               </label>
               <label className="form-field">
-                <span className="form-label">Photo URL (optional)</span>
+                <span className="form-label">Photo (optional)</span>
                 <input
                   className="form-input"
-                  name="photo_url"
-                  maxLength={2000}
-                  placeholder="https://…"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
                   disabled={submitting}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    if (file && file.size > 5 * 1024 * 1024) {
+                      showToast("Image must be 5 MB or smaller", "error");
+                      e.target.value = "";
+                      clearPhoto();
+                      return;
+                    }
+                    setPhotoFile(file);
+                  }}
                 />
+                <span className="table-muted" style={{ display: "block", marginTop: 4 }}>
+                  JPEG, PNG, or WebP · max 5 MB
+                </span>
+                {photoPreview ? (
+                  <div className="mr-photo-preview">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={photoPreview} alt="Selected repair photo" className="mr-photo-thumb" />
+                    <button
+                      type="button"
+                      className="table-link"
+                      disabled={submitting}
+                      onClick={() => clearPhoto()}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : null}
               </label>
               <label className="form-field" style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <input type="checkbox" name="allow_entry" disabled={submitting} />
@@ -224,9 +276,19 @@ export function TenantRequestsClient() {
                           </p>
                         ) : null}
                         {row.photo_url ? (
-                          <p style={{ margin: "4px 0 0" }}>
-                            <a href={row.photo_url} className="table-link" target="_blank" rel="noreferrer">
-                              Photo
+                          <p style={{ margin: "6px 0 0" }}>
+                            <a
+                              href={row.photo_url}
+                              className="mr-photo-link"
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={row.photo_url}
+                                alt={`Photo for ${row.title}`}
+                                className="mr-photo-thumb"
+                              />
                             </a>
                           </p>
                         ) : null}
@@ -244,6 +306,7 @@ export function TenantRequestsClient() {
                               .catch((err) =>
                                 showToast(
                                   err instanceof Error ? err.message : "Could not open messages",
+                                  "error",
                                 ),
                               )
                           }

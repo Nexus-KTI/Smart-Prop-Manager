@@ -47,7 +47,7 @@ export function formatPasswordAuthError(message: string | undefined): string {
     lower.includes("already been registered") ||
     lower.includes("user already exists")
   ) {
-    return "An account with that email already exists. Sign in instead, or reset your password.";
+    return "Couldn’t create that account. Try signing in, or reset your password if you already registered.";
   }
   if (lower.includes("same password") || lower.includes("should be different")) {
     return "Choose a password you haven’t used recently.";

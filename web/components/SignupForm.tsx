@@ -2,17 +2,24 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { AuthLoadingGate } from "@/components/auth/AuthLoadingGate";
+import {
+  AuthCaptcha,
+  requireCaptchaToken,
+} from "@/components/auth/AuthCaptcha";
 import { PasswordFields } from "@/components/auth/PasswordFields";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { claimTenancyInvite, updateMe } from "@/lib/api";
-import { BRAND_NAME } from "@/lib/brand";
+import { BrandMark } from "@/components/BrandMark";
+import { authOtpChannelLabel } from "@/lib/auth-otp-channel";
+import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
 import {
   formatPasswordAuthError,
   validatePasswordPair,
 } from "@/lib/password";
+import { validateSignupInvite } from "@/lib/public-leads";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeTenancyClaimToken } from "@/lib/tenancy-invite";
 
@@ -56,12 +63,14 @@ function stepIndex(step: SignupStep): number {
 export function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const otpChannel = authOtpChannelLabel();
   const defaultEmail = searchParams.get("email") ?? "";
   const inviteName = searchParams.get("name") ?? "";
   const inviteWhatsapp = searchParams.get("whatsapp") ?? "";
   const inviteToken = (searchParams.get("invite") ?? "").trim();
   const tokenParam = (searchParams.get("token") ?? "").trim();
-  const hasInvite = Boolean(inviteToken);
+  // Landlord beta: ?invite=<lead id>. Tenant/artisan claim: ?token=.
+  const hasAccessCode = Boolean(inviteToken) || Boolean(tokenParam);
   const roleParam = searchParams.get("role");
 
   const initialRole: SignupRole =
@@ -90,7 +99,30 @@ export function SignupForm() {
   const [info, setInfo] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [booting, setBooting] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [qualifyError, setQualifyError] = useState<string | null>(null);
+  const [inviteStatus, setInviteStatus] = useState<
+    "idle" | "checking" | "valid" | "invalid"
+  >("idle");
+
+  useEffect(() => {
+    if (!INVITE_ONLY || !inviteToken) {
+      setInviteStatus("idle");
+      return;
+    }
+    let cancelled = false;
+    setInviteStatus("checking");
+    validateSignupInvite(inviteToken).then((result) => {
+      if (cancelled) return;
+      setInviteStatus(result.valid ? "valid" : "invalid");
+      if (result.valid && result.name && !inviteName) {
+        setFullName(result.name);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteToken, inviteName]);
 
   const signupMeta = useMemo(() => {
     const meta: Record<string, string | number | boolean> = { role };
@@ -107,11 +139,30 @@ export function SignupForm() {
     return meta;
   }, [role, persona, unitCount, years, fullName, acceptedTerms, artisanTrades]);
 
+  async function assertInviteOk(): Promise<boolean> {
+    if (!INVITE_ONLY) return true;
+    if (tokenParam && !inviteToken) return true;
+    if (!inviteToken) {
+      setError("This signup link is missing an invite code.");
+      return false;
+    }
+    const result = await validateSignupInvite(inviteToken);
+    if (!result.valid) {
+      setInviteStatus("invalid");
+      setError(
+        `This invite link is invalid or expired. Request access again, or use the link from your ${otpChannel}.`,
+      );
+      return false;
+    }
+    setInviteStatus("valid");
+    return true;
+  }
+
   if (booting) {
     return <AuthLoadingGate label="Setting up your account…" />;
   }
 
-  if (INVITE_ONLY && !hasInvite) {
+  if (INVITE_ONLY && !hasAccessCode) {
     return (
       <div className="signup-shell signup-shell--gated">
         <div className="form-card auth-card signup-form-col">
@@ -120,8 +171,8 @@ export function SignupForm() {
             page, we’ll text you a signup link when you’re approved.
           </p>
           <p className="form-hint">
-            Already received an invite? Open the link from your SMS (it includes
-            a one-time invite code). Don’t use this page URL alone.
+            Already received an invite? Open the link from your {otpChannel} (it
+            includes a one-time invite code). Don’t use this page URL alone.
           </p>
           <div className="form-actions auth-actions">
             <Link href="/#get-started" className="btn-primary">
@@ -134,6 +185,28 @@ export function SignupForm() {
               Sign in
             </Link>
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (INVITE_ONLY && inviteToken && inviteStatus === "checking") {
+    return <AuthLoadingGate label="Checking invite…" />;
+  }
+
+  if (INVITE_ONLY && inviteToken && inviteStatus === "invalid") {
+    return (
+      <div className="signup-shell signup-shell--gated">
+        <div className="form-card auth-card signup-form-col">
+          <p className="form-error">
+            This invite link is invalid or expired. Request access again, or
+            open the latest link from your {otpChannel}.
+          </p>
+          <div className="form-actions auth-actions">
+            <Link href="/#get-started" className="btn-primary">
+              Request access
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -219,6 +292,7 @@ export function SignupForm() {
 
   async function onPhoneSuccess() {
     if (!landlordQualifyOk() || !accountOk()) return;
+    if (!(await assertInviteOk())) return;
     await finishSignup();
   }
 
@@ -247,6 +321,11 @@ export function SignupForm() {
     setInfo(null);
     setPending(true);
 
+    if (!(await assertInviteOk())) {
+      setPending(false);
+      return;
+    }
+
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email") ?? "").trim().toLowerCase();
 
@@ -258,6 +337,15 @@ export function SignupForm() {
     }
 
     const supabase = createClient();
+    let captcha: string | null = null;
+    try {
+      captcha = requireCaptchaToken(captchaToken);
+    } catch (err) {
+      setPending(false);
+      setError(err instanceof Error ? err.message : "Complete the captcha.");
+      return;
+    }
+
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -267,8 +355,10 @@ export function SignupForm() {
           full_name: fullName.trim(),
           name: fullName.trim(),
         },
+        ...(captcha ? { captchaToken: captcha } : {}),
       },
     });
+    setCaptchaToken(null);
 
     setPending(false);
 
@@ -294,7 +384,7 @@ export function SignupForm() {
 
   const previewTitle =
     role === "tenant"
-      ? "See what’s due and pay without chasing WhatsApp."
+      ? "See what’s due and pay without chasing rent on chat."
       : role === "artisan"
         ? "See assigned jobs and update work as you go."
         : unitCount > 0
@@ -305,11 +395,17 @@ export function SignupForm() {
     <div className="signup-shell">
       <header className="signup-topbar">
         <Link href="/" className="signup-brand">
-          {BRAND_NAME}
+          <span className="auth-brand-mark" aria-hidden="true">
+            <BrandMark size={22} />
+          </span>
+          <span className="auth-brand-text">
+            {BRAND_NAME}{" "}
+            <span className="marketing-logo-stamp">{BRAND_STAMP}</span>
+          </span>
         </Link>
         <p className="signup-topbar-auth">
           Already have an account?{" "}
-          <Link href="/login" className="btn-secondary signup-signin-btn">
+          <Link href="/login" className="auth-alt-link">
             Sign in
           </Link>
         </p>
@@ -701,6 +797,8 @@ export function SignupForm() {
                       passwordLabel="Password"
                       confirmLabel="Confirm password"
                     />
+
+                    <AuthCaptcha onToken={setCaptchaToken} />
 
                     <div className="form-actions auth-actions">
                       <button

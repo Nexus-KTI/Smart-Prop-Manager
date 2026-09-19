@@ -1,14 +1,18 @@
 import os
+import uuid
+from datetime import date
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from lib.auth import AuthedUser, get_current_user
+from lib.notification_prefs import (
+    is_prefs_opt_out_error,
+    load_tenant_prefs_for_unit,
+)
 from lib.notify import (
     contact_matches_channel,
     get_owner_notification_channel,
-    landlord_payment_notice_detail,
-    notify_landlord_payment_received,
-    send_notification,
 )
 from lib.pagination import apply_desc_cursor, page_size, paginate_desc
 from lib.reminder_job import run_reminder_jobs
@@ -23,6 +27,49 @@ def _clip_detail(detail: str | None, limit: int = 180) -> str | None:
     if len(text) > limit:
         return text[: limit - 1] + "…"
     return text
+
+
+def _tenant_prefs_kwargs(db, *, unit_id: str, owner_id: str, event: str) -> dict:
+    prefs = load_tenant_prefs_for_unit(
+        db, unit_id=str(unit_id), landlord_id=str(owner_id)
+    )
+    if prefs is None:
+        return {}
+    return {"event": event, "notification_prefs": prefs}
+
+
+def _queue_tenant_notice(
+    db,
+    *,
+    idempotency_key: str,
+    channel: str | None,
+    contact: str,
+    message: str,
+    email_subject: str,
+    email_html: str | None = None,
+    event: str | None = None,
+    notification_prefs: Any = None,
+    reminder_log: dict | None = None,
+    flush: bool = True,
+) -> dict:
+    """Enqueue durable delivery and best-effort flush for interactive chase."""
+    from lib.delivery_outbox import enqueue_notification, flush_delivery_outbox
+
+    queued = enqueue_notification(
+        db,
+        idempotency_key=idempotency_key,
+        channel=channel,
+        contact=contact,
+        message=message,
+        email_subject=email_subject,
+        email_html=email_html,
+        event=event,
+        notification_prefs=notification_prefs,
+        reminder_log=reminder_log,
+    )
+    if flush:
+        flush_delivery_outbox(db=db, batch_size=10)
+    return queued
 
 
 def _insert_reminder(
@@ -163,38 +210,91 @@ def send_reminder(payload: dict, user: AuthedUser = Depends(get_current_user)):
         )
 
     try:
-        used_channel = send_notification(
-            channel,
-            contact,
-            message,
-            email_subject=email_subject,
+        prefs_kwargs = _tenant_prefs_kwargs(
+            db, unit_id=str(unit_id), owner_id=str(ctx.owner_id), event="rent_due"
         )
-        reminder_status = "sent"
-        error_detail = None
+        queued = _queue_tenant_notice(
+            db,
+            idempotency_key=f"manual-due:{unit_id}:{uuid.uuid4()}",
+            channel=channel,
+            contact=contact,
+            message=message,
+            email_subject=email_subject,
+            reminder_log={
+                "unit_id": unit_id,
+                "channel": channel,
+                "kind": "due",
+            },
+            **prefs_kwargs,
+        )
+        used_channel = queued.get("channel") or channel
+        latest = (
+            db.table("reminders")
+            .select("*")
+            .eq("unit_id", unit_id)
+            .eq("kind", "due")
+            .order("sent_at", desc=True)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if latest and latest[0].get("status") in {"sent", "failed", "skipped"}:
+            if latest[0].get("status") == "failed":
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=latest[0].get("error_detail")
+                    or f"Failed to send {used_channel} reminder",
+                )
+            if latest[0].get("status") == "skipped":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=latest[0].get("error_detail")
+                    or "Tenant turned off rent reminders for this channel",
+                )
+            result = latest
+            used_channel = latest[0].get("channel") or used_channel
+        else:
+            result = _insert_reminder(
+                db,
+                unit_id=unit_id,
+                channel=used_channel,
+                kind="due",
+                reminder_status="queued",
+            )
+    except HTTPException:
+        raise
     except Exception as exc:
-        reminder_status = "failed"
-        error_detail = str(exc).strip() or f"Failed to send {channel} reminder"
+        if is_prefs_opt_out_error(exc):
+            error_detail = (
+                "Tenant turned off rent reminders for this channel"
+            )
+            _insert_reminder(
+                db,
+                unit_id=unit_id,
+                channel=channel,
+                kind="due",
+                reminder_status="skipped",
+                error_detail=error_detail,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_detail,
+            ) from exc
+        error_detail = str(exc).strip() or f"Failed to queue {channel} reminder"
         _insert_reminder(
             db,
             unit_id=unit_id,
             channel=channel,
             kind="due",
-            reminder_status=reminder_status,
+            reminder_status="failed",
             error_detail=error_detail,
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=error_detail,
-        )
+        ) from exc
 
-    result = _insert_reminder(
-        db,
-        unit_id=unit_id,
-        channel=used_channel,
-        kind="due",
-        reminder_status=reminder_status,
-        error_detail=error_detail,
-    )
     record_audit(
         ctx,
         action="reminder.send",
@@ -309,24 +409,56 @@ def send_bulk_reminders(
         message = due_mail.text
         error_detail = None
         try:
-            used = send_notification(
-                channel,
-                contact,
-                message,
+            prefs_kwargs = _tenant_prefs_kwargs(
+                db,
+                unit_id=unit_id,
+                owner_id=str(ctx.owner_id),
+                event="rent_due",
+            )
+            day_key = date.today().isoformat()
+            queued = _queue_tenant_notice(
+                db,
+                idempotency_key=f"bulk-due:{unit_id}:{day_key}",
+                channel=channel,
+                contact=contact,
+                message=message,
                 email_subject=due_mail.subject,
                 email_html=due_mail.html,
+                reminder_log={
+                    "unit_id": unit_id,
+                    "channel": channel,
+                    "kind": "due",
+                },
+                flush=False,
+                **prefs_kwargs,
             )
-            reminder_status = "sent"
+            used = queued.get("channel") or channel
+            reminder_status = "queued"
             stats["sent"] += 1
+            # Outbox reminder_log writes the sent/failed row after flush.
+            continue
         except Exception as exc:
             used = channel
-            reminder_status = "failed"
-            reason = getattr(exc, "msg", None) or str(exc)
-            reason = str(reason).strip()
-            if len(reason) > 180:
-                reason = reason[:177] + "…"
-            error_detail = reason or "Send failed"
-            _note_failure(error_detail)
+            if is_prefs_opt_out_error(exc):
+                reminder_status = "skipped"
+                error_detail = "Tenant turned off rent reminders for this channel"
+                stats["skipped"] += 1
+                if len(stats["errors"]) < 20:
+                    stats["errors"].append(
+                        {
+                            "unit_id": unit_id,
+                            "label": unit_key,
+                            "detail": error_detail,
+                        }
+                    )
+            else:
+                reminder_status = "failed"
+                reason = getattr(exc, "msg", None) or str(exc)
+                reason = str(reason).strip()
+                if len(reason) > 180:
+                    reason = reason[:177] + "…"
+                error_detail = reason or "Queue failed"
+                _note_failure(error_detail)
 
         _insert_reminder(
             db,
@@ -337,6 +469,9 @@ def send_bulk_reminders(
             error_detail=error_detail,
         )
 
+    from lib.delivery_outbox import flush_delivery_outbox
+
+    flush_delivery_outbox(db=svc, batch_size=min(50, max(10, len(unit_ids))))
     return stats
 
 
@@ -393,6 +528,9 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
     business = _business_name_for_owner(db, owner_id)
 
     if kind == "landlord_payment":
+        from lib.email_templates import landlord_money_in
+        from lib.notify import email_transport_configured, get_owner_email
+
         amount = 0
         paid_rows = (
             db.table("transactions")
@@ -407,38 +545,89 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         )
         if paid_rows:
             amount = paid_rows[0].get("amount") or 0
-        notify_result = notify_landlord_payment_received(
-            owner_id,
+        email = get_owner_email(owner_id)
+        if not email:
+            detail = "No email on landlord profile"
+            inserted = _insert_reminder(
+                db,
+                unit_id=unit_id,
+                channel="email",
+                kind="landlord_payment",
+                reminder_status="skipped",
+                error_detail=detail,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=detail,
+            )
+        content = landlord_money_in(
             amount=amount,
-            unit_label=unit_label,
-            property_name=property_name,
             tenant_name=(unit.get("tenant_name") or None),
+            property_name=property_name,
+            unit_label=unit_label,
             unit_id=str(unit_id),
         )
-        if isinstance(notify_result, str):
-            notify_status = notify_result
-            detail = landlord_payment_notice_detail(notify_status)
-        else:
-            notify_status = notify_result.status
-            detail = notify_result.detail or landlord_payment_notice_detail(notify_status)
-        inserted = _insert_reminder(
-            db,
-            unit_id=unit_id,
-            channel="email",
-            kind="landlord_payment",
-            reminder_status=notify_status,
-            error_detail=detail,
-        )
-        if notify_status != "sent":
+        try:
+            _queue_tenant_notice(
+                db,
+                idempotency_key=f"retry-landlord-payment:{reminder_id}:{uuid.uuid4()}",
+                channel="email",
+                contact=email,
+                message=content.text,
+                email_subject=content.subject,
+                email_html=content.html,
+                reminder_log={
+                    "unit_id": unit_id,
+                    "channel": "email",
+                    "kind": "landlord_payment",
+                },
+            )
+            latest = (
+                db.table("reminders")
+                .select("*")
+                .eq("unit_id", unit_id)
+                .eq("kind", "landlord_payment")
+                .order("sent_at", desc=True)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+            if latest and latest[0].get("status") in {"sent", "failed", "skipped"}:
+                if latest[0].get("status") != "sent":
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=latest[0].get("error_detail")
+                        or "Could not send landlord notice",
+                    )
+                return latest
+            return _insert_reminder(
+                db,
+                unit_id=unit_id,
+                channel="email",
+                kind="landlord_payment",
+                reminder_status="queued",
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            detail = str(exc).strip() or "Could not queue landlord notice"
+            if not email_transport_configured():
+                detail = "Email not configured (set MAILGUN_* or SMTP_HOST/SMTP_FROM)"
+            _insert_reminder(
+                db,
+                unit_id=unit_id,
+                channel="email",
+                kind="landlord_payment",
+                reminder_status="failed",
+                error_detail=detail,
+            )
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=detail or "Could not send landlord notice",
-            )
-        return inserted
+                detail=detail,
+            ) from exc
 
     if kind == "receipt":
-        from routers.payments import deliver_payment_receipt
-
         paid = (
             db.table("transactions")
             .select("*")
@@ -493,22 +682,58 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
                     receipt_url=existing_url,
                     business_name=business,
                 )
-                used = send_notification(
-                    channel,
-                    contact,
-                    receipt_mail.text,
+                prefs_kwargs = _tenant_prefs_kwargs(
+                    db,
+                    unit_id=unit_id,
+                    owner_id=str(ctx.owner_id),
+                    event="payment_receipt",
+                )
+                queued = _queue_tenant_notice(
+                    db,
+                    idempotency_key=f"retry-receipt:{reminder_id}:{uuid.uuid4()}",
+                    channel=channel,
+                    contact=contact,
+                    message=receipt_mail.text,
                     email_subject=receipt_mail.subject,
                     email_html=receipt_mail.html,
+                    reminder_log={
+                        "unit_id": unit_id,
+                        "channel": channel,
+                        "kind": "receipt",
+                    },
+                    **prefs_kwargs,
                 )
+                used = queued.get("channel") or channel
+                latest = (
+                    db.table("reminders")
+                    .select("*")
+                    .eq("unit_id", unit_id)
+                    .eq("kind", "receipt")
+                    .order("sent_at", desc=True)
+                    .limit(1)
+                    .execute()
+                    .data
+                    or []
+                )
+                if latest and latest[0].get("status") in {"sent", "failed", "skipped"}:
+                    if latest[0].get("status") != "sent":
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail=latest[0].get("error_detail")
+                            or f"Failed to send {used} receipt",
+                        )
+                    return latest
                 return _insert_reminder(
                     db,
                     unit_id=unit_id,
                     channel=used,
                     kind="receipt",
-                    reminder_status="sent",
+                    reminder_status="queued",
                 )
+            except HTTPException:
+                raise
             except Exception as exc:
-                detail = str(exc).strip() or f"Failed to send {channel} receipt"
+                detail = str(exc).strip() or f"Failed to queue {channel} receipt"
                 _insert_reminder(
                     db,
                     unit_id=unit_id,
@@ -522,14 +747,26 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
                     detail=detail,
                 ) from exc
 
-        # No public receipt yet — run full delivery (logs its own reminder rows).
-        receipt_url = deliver_payment_receipt(db, txn)
-        if not receipt_url:
+        # No public receipt yet — queue full delivery (outbox logs reminder rows).
+        from lib.delivery_outbox import enqueue_payment_receipt, flush_delivery_outbox
+
+        try:
+            enqueue_payment_receipt(db, str(txn["id"]))
+            flush_delivery_outbox(db=db, batch_size=5)
+        except Exception as exc:
+            detail = str(exc).strip() or "Could not queue receipt regeneration"
+            _insert_reminder(
+                db,
+                unit_id=unit_id,
+                channel=channel,
+                kind="receipt",
+                reminder_status="failed",
+                error_detail=detail,
+            )
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Could not regenerate receipt",
-            )
-        # deliver_payment_receipt already logged; return latest receipt row
+                detail=detail,
+            ) from exc
         latest = (
             db.table("reminders")
             .select("*")
@@ -541,12 +778,17 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
             .data
             or []
         )
+        if not latest:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Receipt queued; delivery still pending",
+            )
         return latest
 
     # kind == due (default) — fall through below after renewal branch
     if kind == "renewal":
         from lib.email_templates import landlord_renewal
-        from lib.notify import get_owner_email, send_email
+        from lib.notify import get_owner_email
 
         term_rows = (
             db.table("units")
@@ -604,21 +846,50 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
             unit_id=str(unit_id),
         )
         try:
-            send_email(
-                email,
-                content.text,
-                subject=content.subject,
-                html=content.html,
+            _queue_tenant_notice(
+                db,
+                idempotency_key=f"retry-renewal:{reminder_id}:{uuid.uuid4()}",
+                channel="email",
+                contact=email,
+                message=content.text,
+                email_subject=content.subject,
+                email_html=content.html,
+                reminder_log={
+                    "unit_id": unit_id,
+                    "channel": "email",
+                    "kind": "renewal",
+                },
             )
+            latest = (
+                db.table("reminders")
+                .select("*")
+                .eq("unit_id", unit_id)
+                .eq("kind", "renewal")
+                .order("sent_at", desc=True)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+            if latest and latest[0].get("status") in {"sent", "failed", "skipped"}:
+                if latest[0].get("status") != "sent":
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=latest[0].get("error_detail")
+                        or "Failed to send renewal email",
+                    )
+                return latest
             return _insert_reminder(
                 db,
                 unit_id=unit_id,
                 channel="email",
                 kind="renewal",
-                reminder_status="sent",
+                reminder_status="queued",
             )
+        except HTTPException:
+            raise
         except Exception as exc:
-            detail = str(exc).strip() or "Failed to send renewal email"
+            detail = str(exc).strip() or "Failed to queue renewal email"
             _insert_reminder(
                 db,
                 unit_id=unit_id,
@@ -672,22 +943,77 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         business_name=business,
     )
     try:
-        used = send_notification(
-            channel,
-            contact,
-            due_mail.text,
+        prefs_kwargs = _tenant_prefs_kwargs(
+            db, unit_id=unit_id, owner_id=str(ctx.owner_id), event="rent_due"
+        )
+        queued = _queue_tenant_notice(
+            db,
+            idempotency_key=f"retry-due:{reminder_id}:{uuid.uuid4()}",
+            channel=channel,
+            contact=contact,
+            message=due_mail.text,
             email_subject=due_mail.subject,
             email_html=due_mail.html,
+            reminder_log={
+                "unit_id": unit_id,
+                "channel": channel,
+                "kind": "due",
+            },
+            **prefs_kwargs,
         )
+        used = queued.get("channel") or channel
+        latest = (
+            db.table("reminders")
+            .select("*")
+            .eq("unit_id", unit_id)
+            .eq("kind", "due")
+            .order("sent_at", desc=True)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if latest and latest[0].get("status") in {"sent", "failed", "skipped"}:
+            if latest[0].get("status") == "skipped":
+                detail = latest[0].get("error_detail") or (
+                    "Tenant turned off rent reminders for this channel"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=detail,
+                )
+            if latest[0].get("status") == "failed":
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=latest[0].get("error_detail")
+                    or f"Failed to send {used} reminder",
+                )
+            return latest
         return _insert_reminder(
             db,
             unit_id=unit_id,
             channel=used,
             kind="due",
-            reminder_status="sent",
+            reminder_status="queued",
         )
+    except HTTPException:
+        raise
     except Exception as exc:
-        detail = str(exc).strip() or f"Failed to send {channel} reminder"
+        if is_prefs_opt_out_error(exc):
+            detail = "Tenant turned off rent reminders for this channel"
+            _insert_reminder(
+                db,
+                unit_id=unit_id,
+                channel=channel,
+                kind="due",
+                reminder_status="skipped",
+                error_detail=detail,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=detail,
+            ) from exc
+        detail = str(exc).strip() or f"Failed to queue {channel} reminder"
         _insert_reminder(
             db,
             unit_id=unit_id,
@@ -700,6 +1026,46 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=detail,
         ) from exc
+
+
+@router.get("/actions")
+def urgent_actions_queue(
+    user: AuthedUser = Depends(get_current_user),
+    x_portfolio_owner_id: str | None = Header(
+        default=None, alias="X-Portfolio-Owner-Id"
+    ),
+):
+    """Action Needed queue: overdue chase, lease ending, failed sends."""
+    from lib.access import (
+        PERM_CHASE,
+        accessible_property_ids_for_portfolio,
+        resolve_portfolio,
+    )
+    from lib.db import create_service_client
+    from lib.urgent_actions import collect_urgent_actions_for_owner
+
+    portfolio_owner_id = (x_portfolio_owner_id or "").strip() or None
+    ctx = resolve_portfolio(user.id, portfolio_owner_id)
+    ctx.require(PERM_CHASE)
+
+    empty_summary = {
+        "urgent": 0,
+        "overdue": 0,
+        "lease_ending": 0,
+        "failed": 0,
+        "due_soon": 0,
+    }
+    property_ids = accessible_property_ids_for_portfolio(ctx)
+    if not property_ids:
+        return {"items": [], "summary": empty_summary}
+
+    db = user.db if ctx.role == "owner" else create_service_client()
+    items, summary = collect_urgent_actions_for_owner(
+        db,
+        owner_id=str(ctx.owner_id),
+        property_ids=property_ids,
+    )
+    return {"items": items, "summary": summary}
 
 
 @router.post("/jobs/due")

@@ -20,6 +20,8 @@ function passCode(row: MaintenanceRequest): string | null {
 export function ArtisanJobsClient() {
   const { showToast } = useToast();
   const [items, setItems] = useState<MaintenanceRequest[]>([]);
+  const [listCapped, setListCapped] = useState(false);
+  const [listLoaded, setListLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +29,10 @@ export function ArtisanJobsClient() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await fetchArtisanJobs());
+      const data = await fetchArtisanJobs();
+      setItems(data.items);
+      setListCapped(data.capped);
+      setListLoaded(data.loaded);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
     } finally {
@@ -45,7 +50,7 @@ export function ArtisanJobsClient() {
       showToast("Job marked done");
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Could not complete");
+      showToast(err instanceof Error ? err.message : "Could not complete", "error");
     }
   }
 
@@ -64,11 +69,19 @@ export function ArtisanJobsClient() {
 
   return (
     <section className="dashboard">
-      <p className="form-kicker">Artisan</p>
-      <h1 className="page-title">Your jobs</h1>
-      <p className="page-subtitle">
-        Assigned repair jobs. Use the gate code during your window, then mark done.
-      </p>
+      <header className="dashboard-header">
+        <h1 className="page-title">Your jobs</h1>
+        <p className="page-subtitle">
+          Assigned repair jobs. Use the gate code during your window, then mark
+          done.
+        </p>
+      </header>
+      {listCapped ? (
+        <p className="page-subtitle" role="status">
+          Showing the {listLoaded} most recent jobs. Older assignments may not
+          appear here.
+        </p>
+      ) : null}
 
       {open.length === 0 ? (
         <p className="table-muted">No open jobs assigned to you.</p>
@@ -82,6 +95,23 @@ export function ArtisanJobsClient() {
                 {row.details ? (
                   <p className="page-subtitle" style={{ margin: 0 }}>
                     {row.details}
+                  </p>
+                ) : null}
+                {row.photo_url ? (
+                  <p style={{ margin: "8px 0 0" }}>
+                    <a
+                      href={row.photo_url}
+                      className="mr-photo-link"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={row.photo_url}
+                        alt={`Photo for ${row.title}`}
+                        className="mr-photo-thumb"
+                      />
+                    </a>
                   </p>
                 ) : null}
                 {row.scheduled_start || row.scheduled_end ? (

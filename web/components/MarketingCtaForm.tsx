@@ -2,7 +2,12 @@
 
 import { FormEvent, useState } from "react";
 
-import { createClient } from "@/lib/supabase/client";
+import {
+  AuthCaptcha,
+  captchaRequired,
+  requireCaptchaToken,
+} from "@/components/auth/AuthCaptcha";
+import { submitPublicLead } from "@/lib/public-leads";
 
 type Props = {
   inviteOnly?: boolean;
@@ -12,6 +17,7 @@ export function MarketingCtaForm({ inviteOnly = false }: Props) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -35,22 +41,30 @@ export function MarketingCtaForm({ inviteOnly = false }: Props) {
       return;
     }
 
-    const supabase = createClient();
-    const { error: insertError } = await supabase.from("leads").insert({
-      name,
-      whatsapp,
-      unit_count: unitCount,
-      source: "access",
-    });
-
-    setPending(false);
-
-    if (insertError) {
-      setError("Could not submit. Please try again.");
+    let captcha: string | null = null;
+    try {
+      captcha = requireCaptchaToken(captchaToken);
+    } catch (err) {
+      setPending(false);
+      setError(err instanceof Error ? err.message : "Complete the captcha.");
       return;
     }
 
-    setSubmitted(true);
+    try {
+      await submitPublicLead({
+        name,
+        whatsapp,
+        unit_count: unitCount,
+        source: "access",
+        captcha_token: captcha,
+      });
+      setCaptchaToken(null);
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not submit.");
+    } finally {
+      setPending(false);
+    }
   }
 
   if (submitted) {
@@ -111,6 +125,10 @@ export function MarketingCtaForm({ inviteOnly = false }: Props) {
           placeholder="e.g. 12"
         />
       </label>
+
+      {captchaRequired() ? (
+        <AuthCaptcha token={captchaToken} onToken={setCaptchaToken} />
+      ) : null}
 
       <button className="btn-primary" type="submit" disabled={pending}>
         {pending ? "Submitting…" : "Message me on WhatsApp"}

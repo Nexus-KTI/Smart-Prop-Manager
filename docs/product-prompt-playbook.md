@@ -116,7 +116,7 @@ Read web/app/globals.css and docs/PRD.md. Update docs/design-system.md with:
 Brand personality, color tokens (light/dark), typography (Geist + JetBrains Mono),
 spacing (shell 32px, form-card 22px, onboarding 28px, marketing 720px),
 radius 6px, no decorative product shadows, button hierarchy, surface classes,
-marketing vs product density, motion rules, accessibility, anti-patterns.
+marketing vs product density, Motion + Materials (`--motion-*`, flat surfaces), accessibility, anti-patterns.
 
 Save to docs/design-system.md
 ```
@@ -242,3 +242,21 @@ Do not implement fixes in this step unless asked.
 | [`upgrade-prompts.md`](upgrade-prompts.md) | Implementation backlog prompts |
 | [`layout-upgrade-prompts.md`](layout-upgrade-prompts.md) | Layout chrome prompts |
 | [`gap-analysis.md`](gap-analysis.md) | Adopt / defer / skip table |
+| [`../plans/spec.md`](../plans/spec.md) | Living initiative spec (ADLC-lite) |
+| [`../plans/backlog.md`](../plans/backlog.md) | Dependency-ordered tasks |
+| [`../CLAUDE.md`](../CLAUDE.md) | Always-on agent constraints |
+| [`../scripts/check-green.ps1`](../scripts/check-green.ps1) | Local green gate (pytest + lint) |
+
+---
+
+## ADLC-lite (agent process)
+
+Borrowed from the “process over prompts” workshop pattern — adapted for Cursor + this monorepo.
+
+1. Update `plans/spec.md` / pick a `plans/backlog.md` task before multi-file work.
+2. Implement with the `engineer` agent (or main agent following `CLAUDE.md`).
+3. Run `.\scripts\check-green.ps1` (or targeted tests) before claiming done.
+4. Use `reviewer` / `qa` agents for findings-only checks.
+5. Keep `os-*` agents for Estate OS explorer only (`web/app/(design)/os-explorer/**`).
+
+Do **not** enable unattended auto-merge loops on auth/money paths.

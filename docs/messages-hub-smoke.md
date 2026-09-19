@@ -19,7 +19,7 @@ Restart FastAPI so `/messages/*` mounts.
 3. Tenant Messages → same conversation appears **live (no reload)** → reply; landlord sees reply live.
 4. Confirm **Sent → Read** after the other party opens the thread.
 5. Record a paid payment on the unit → payment status line + Open receipt appear in chat (if a chat thread already exists).
-6. With Messages closed, send from the other account → **bell badge** and **Messages nav/topbar badge** update without reload; open thread → badges clear.
+6. With Messages closed, send from the other account → **bell badge** and **Messages rail badge** (landlord + tenant) update without reload; open thread → badges clear. Unread scan pages past 200 threads; Chat/Maintenance lists show honesty when capped at 100.
 7. Tenant submits a repair → Maintenance tab shows a thread for both sides.
 8. Landlord Publications tab → New publication → tenant sees it under Publications (and Notices).
 

@@ -10,14 +10,23 @@ import {
   useState,
 } from "react";
 
+export type ToastTone = "neutral" | "success" | "error";
+
 type ToastContextValue = {
-  showToast: (message: string) => void;
+  showToast: (message: string, tone?: ToastTone) => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+const DURATION_MS: Record<ToastTone, number> = {
+  neutral: 3000,
+  success: 3000,
+  error: 4500,
+};
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [message, setMessage] = useState<string | null>(null);
+  const [tone, setTone] = useState<ToastTone>("neutral");
   const [visible, setVisible] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -30,14 +39,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const showToast = useCallback(
-    (next: string) => {
+    (next: string, nextTone: ToastTone = "neutral") => {
       clearTimers();
       setMessage(next);
+      setTone(nextTone);
       setVisible(true);
       hideTimer.current = setTimeout(() => {
         setVisible(false);
-        clearTimer.current = setTimeout(() => setMessage(null), 200);
-      }, 3000);
+        clearTimer.current = setTimeout(() => {
+          setMessage(null);
+          setTone("neutral");
+        }, 200);
+      }, DURATION_MS[nextTone]);
     },
     [clearTimers],
   );
@@ -46,14 +59,23 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(() => ({ showToast }), [showToast]);
 
+  const toneClass =
+    tone === "success"
+      ? " app-toast--success"
+      : tone === "error"
+        ? " app-toast--error"
+        : "";
+
+  const isError = tone === "error";
+
   return (
     <ToastContext.Provider value={value}>
       {children}
       {message ? (
         <div
-          className={`app-toast${visible ? " is-visible" : ""}`}
-          role="status"
-          aria-live="polite"
+          className={`app-toast${toneClass}${visible ? " is-visible" : ""}`}
+          role={isError ? "alert" : "status"}
+          aria-live={isError ? "assertive" : "polite"}
         >
           {message}
         </div>

@@ -53,6 +53,29 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  async function mfaPending(): Promise<boolean> {
+    if (!user) return false;
+    try {
+      const { data: aal } =
+        await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!aal) return false;
+      return aal.nextLevel === "aal2" && aal.currentLevel !== "aal2";
+    } catch {
+      return false;
+    }
+  }
+
+  // MFA enrolled but session still AAL1: keep on login, block app shells.
+  if (user && (await mfaPending())) {
+    if (!isAuthRoute && !pathname.startsWith("/auth/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("mfa", "1");
+      return NextResponse.redirect(url);
+    }
+    return supabaseResponse;
+  }
+
   async function userIsAdmin(): Promise<boolean> {
     if (isAdminEmail(user?.email)) return true;
     const email = user?.email?.trim();

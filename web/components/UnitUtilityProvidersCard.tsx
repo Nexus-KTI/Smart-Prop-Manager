@@ -69,7 +69,7 @@ export function UnitUtilityProvidersCard({ unitId }: Props) {
       setFormOpen(false);
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Could not save");
+      showToast(err instanceof Error ? err.message : "Could not save", "error");
     } finally {
       setSubmitting(false);
     }
@@ -81,7 +81,7 @@ export function UnitUtilityProvidersCard({ unitId }: Props) {
       showToast(row.is_enabled ? "Hidden from tenant" : "Visible to tenant");
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Update failed");
+      showToast(err instanceof Error ? err.message : "Update failed", "error");
     }
   }
 
@@ -91,7 +91,7 @@ export function UnitUtilityProvidersCard({ unitId }: Props) {
       showToast("Provider removed");
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Delete failed");
+      showToast(err instanceof Error ? err.message : "Delete failed", "error");
     }
   }
 
@@ -100,7 +100,7 @@ export function UnitUtilityProvidersCard({ unitId }: Props) {
 
   return (
     <section className="form-card" style={{ marginTop: 20 }} aria-label="Utilities">
-      <header className="dashboard-header-row" style={{ marginBottom: 12 }}>
+      <header className="dashboard-header dashboard-header-row">
         <div>
           <p className="form-kicker">Tenant utilities</p>
           <h2 className="page-title" style={{ fontSize: "1.15rem", margin: 0 }}>
@@ -121,7 +121,7 @@ export function UnitUtilityProvidersCard({ unitId }: Props) {
       </header>
 
       {formOpen && availableKinds.length > 0 ? (
-        <form className="form-card" onSubmit={(e) => void onSubmit(e)} style={{ marginBottom: 16 }}>
+        <form className="settings-inline-form" onSubmit={(e) => void onSubmit(e)} style={{ marginBottom: 16 }}>
           <label className="form-field">
             <span className="form-label">Kind</span>
             <select className="form-input" name="kind" required disabled={submitting}>
@@ -174,8 +174,21 @@ export function UnitUtilityProvidersCard({ unitId }: Props) {
       {loading ? <p className="page-subtitle">Loading…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
 
-      {!loading && items.length === 0 ? (
-        <p className="table-muted">No providers yet, tenant sees a landlord wait banner.</p>
+      {!loading && items.length === 0 && !formOpen ? (
+        <div className="dashboard-empty" role="status">
+          <p className="dashboard-empty-title mono-data">No providers yet.</p>
+          <p className="dashboard-empty-copy">
+            Publish power, water, or waste contacts for tenants.
+          </p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setFormOpen(true)}
+            disabled={availableKinds.length === 0}
+          >
+            Add provider
+          </button>
+        </div>
       ) : null}
 
       {items.length > 0 ? (

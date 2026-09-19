@@ -214,15 +214,85 @@ Dashboard · Rent · Requests · Utility providers · Applications · File manag
 | `/signup?role=tenant` | OK — tenant form + portal rail |
 | `/signup?role=admin&mode=1` | OK after qualify — trial form + phone |
 | Cookie import Chrome | Failed DPAPI |
-| Authenticated `/`, `/transactions`, etc. | Not reachable without session |
+| Authenticated `/`, `/transactions`, etc. | OK (Emmanuel session 2026-08-24 / 2026-08-26) |
 
 ---
 
-## 6. Open follow-up
+## 6. Tenant role deep-dive close-out (2026-08-26)
 
-To capture **every authenticated click-path** live (settings, welcome dismiss, Find a place map filters, notification mark-read):
+**Session:** Emmanuel Okeowo (`emmanuel@keyriumconsulting.com`) — still **no shared lease**; utilities invite card present on home.
 
-1. Provide a disposable tenant test account, **or**  
-2. Run `browse handoff` and sign in once in the headed window, then continue the crawl.
+### Account settings (finished)
 
-Until then, this doc + user screenshots are the source of truth for in-product empty-state principles.
+| Tab | URL | Observed |
+|-----|-----|----------|
+| Profile | `/settings/account/profile` | Name/company/phone/avatar; email Unverified + Change/Verify; password Change; Additional: timezone/date/measurement/country (US defaults on this account) |
+| My cards | `/settings/account/cards` | Empty: “No cards…”. **Actions → Add new card** (payment method vault for online rent / autopay) |
+| Security | `/settings/account/security` | **Two-Step Authentication** (Enable + Learn more); **Login sessions** table (Location · Device · IP · Last activity · Current Session); MaxMind attribution |
+| Notifications | `/settings/account/notifications` | Email / Feed / SMS columns × granular event toggles (already sampled earlier) |
+
+### Messages hub (finished at empty states)
+
+| Channel | URL | Empty copy |
+|---------|-----|------------|
+| Chat | `/messages/chat` | No contacts — “You can only send…” until connected users |
+| Publications (`pb`) | `/messages/publications` | No posts — landlord hasn’t published |
+| Maintenance (`mr`) | `/messages/maintenance_requests` | No shared requests |
+
+Header always has Messages; rail does not.
+
+### Applications → Find a place (finished)
+
+- `/applications` — 0 Total + primary **Find a place**
+- Opens `/applications/listings/search` with map + list
+- Live sample: **~3929** US listings, search “Garden City, Kansas…”, filters Price / Rental type / Beds & Baths / More, sort New–Old, Mapbox clusters, promo badges, heart favorites
+- **US marketplace** — parallel value path without a lease (P8). Not a Lagos Phase 3 core.
+
+### Utilities invite path (confirmed)
+
+- Home card: landlord invited utilities setup → CTA → `/utility`
+- Page still shows “Currently not setup on Landlord side” + empty list
+- Principle: landlord-originated task can surface **before** lease share is complete
+
+### Explicitly still blocked on this tenant account
+
+Needs a **lease-linked** tenant (or Mary Zeal with lease) — out of scope for closing *this* no-lease role pass:
+
+- Pay rent / autopay / invoice detail  
+- E-sign lease / insurance upload  
+- Rent reporting (US-only anyway)  
+- Maintenance submit with photo/video  
+- Connected chat + real publications  
+
+### Tenant role status
+
+**Pre-lease tenant portal audit: COMPLETE (2026-08-26).**
+
+### Pragmatic gap close (Nexora)
+
+| TC finding | Nexora disposition |
+|------------|-------------------|
+| Account tabs Profile / Security / Notifications | **Shipped** (tenant + landlord) |
+| Email verified badge + Verify | **Shipped** |
+| Preferred channel + mismatch when no phone/email | **Shipped** |
+| Locale timezone / date format (NG defaults) | **Shipped** (`Africa/Lagos`, `dd/mm/yyyy`) |
+| Messages in header | **Closed** — rail badge (aligned landlord/tenant) |
+| Honest empties + name the blocker | **Shipped** (tenant home / requests / utilities) |
+| Landlord-originated home task card (e.g. utilities) | **Shipped** pattern via notices / getting-started |
+| Maintenance photo attach (file upload, not URL paste) | **Shipped** (`POST /maintenance/me/photo` + tenant/landlord thumbs) |
+| My cards / Paystack authorization vault | **Shipped** (Settings → Cards; ₦100 verify charge) |
+| 2FA + login sessions | **Shipped** (TOTP enroll + sign out other sessions; email login challenge) |
+| Full Email×SMS×WhatsApp×In-app event matrix | **Shipped** (Notifications tab; rent_due / receipt respect prefs) |
+| Find a place / US marketplace | **Skip** for NG core (P8) |
+| Lease-linked TC pay / e-sign / rent reporting audit | **Park** — needs lease-linked TC account; rent reporting US-only |
+| Video on maintenance requests | **Defer** — photo only for v1 |
+| Autopay recurring charges | **Shipped** (saved card + due-day cron via `/reminders/jobs/due`; Home enable + pay-with-card) |
+
+**Optional later (not blocking landlord audit):** one lease-linked tenant session for pay + e-sign media only.
+
+---
+
+## 7. Handoff to next role
+
+Next: **Landlord / PM portal** — follow [`tenantcloud-landlord-audit.md`](tenantcloud-landlord-audit.md) procedure.  
+After that (only if needed): Owner portal → Service Pro portal.  

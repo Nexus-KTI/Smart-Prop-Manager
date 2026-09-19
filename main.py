@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 
@@ -8,6 +9,7 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from lib.request_limits import DocumentUploadLimitMiddleware
 from routers import (
     access,
     admin,
@@ -21,6 +23,7 @@ from routers import (
     notify_diag,
     payments,
     properties,
+    public_leads,
     publications,
     reminders,
     staff,
@@ -56,8 +59,21 @@ def _cors_origins() -> list[str]:
     return origins
 
 
-app = FastAPI()
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    yield
+    from lib.db import close_shared_clients
+    from lib.http_client import close_http_client
+    from lib.notify import close_notification_clients
 
+    close_notification_clients()
+    close_http_client()
+    close_shared_clients()
+
+
+app = FastAPI(lifespan=_lifespan)
+
+app.add_middleware(DocumentUploadLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
@@ -81,6 +97,7 @@ app.include_router(tasks.router)
 app.include_router(messages.router)
 app.include_router(staff.router)
 app.include_router(leads.router)
+app.include_router(public_leads.router)
 app.include_router(admin.router)
 app.include_router(events.router)
 app.include_router(users.router)

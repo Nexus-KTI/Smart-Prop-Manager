@@ -49,7 +49,9 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
         fetchArtisanRoster(),
       ]);
       setItems(rows);
-      setRoster(artisans.filter((a) => a.status === "active" && a.artisan_user_id));
+      setRoster(
+        artisans.items.filter((a) => a.status === "active" && a.artisan_user_id),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load requests");
     } finally {
@@ -70,7 +72,7 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
       );
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Update failed");
+      showToast(err instanceof Error ? err.message : "Update failed", "error");
     } finally {
       setUpdatingId(null);
     }
@@ -87,12 +89,12 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
         details: String(data.get("details") || "").trim() || undefined,
         priority: String(data.get("priority") || "normal"),
       });
-      showToast("Work order created");
+      showToast("Work order created", "success");
       form.reset();
       setJobOpen(false);
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Create failed");
+      showToast(err instanceof Error ? err.message : "Create failed", "error");
     } finally {
       setSubmitting(false);
     }
@@ -108,17 +110,23 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
     const startLocal = String(data.get("scheduled_start") || "");
     setSubmitting(true);
     try {
-      await assignMaintenanceArtisan(assignId, {
+      const result = await assignMaintenanceArtisan(assignId, {
         artisan_user_id: artisanId,
         scheduled_start: startLocal ? new Date(startLocal).toISOString() : undefined,
         scheduled_end: endLocal ? new Date(endLocal).toISOString() : undefined,
         issue_access_pass: data.get("issue_access_pass") === "on" && Boolean(endLocal),
       });
-      showToast("Artisan assigned");
+      if (result.notify?.sent) {
+        showToast("Artisan assigned — notified", "success");
+      } else if (result.notify?.error) {
+        showToast("Artisan assigned — could not notify", "success");
+      } else {
+        showToast("Artisan assigned", "success");
+      }
       setAssignId(null);
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Assign failed");
+      showToast(err instanceof Error ? err.message : "Assign failed", "error");
     } finally {
       setSubmitting(false);
     }
@@ -130,7 +138,7 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
 
   return (
     <section className="form-card" style={{ marginTop: 20 }} aria-label="Repair requests">
-      <header className="dashboard-header-row" style={{ marginBottom: 12 }}>
+      <header className="dashboard-header dashboard-header-row">
         <div>
           <p className="form-kicker">Tenant requests</p>
           <h2 className="page-title" style={{ fontSize: "1.15rem", margin: 0 }}>
@@ -157,7 +165,7 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
       </header>
 
       {jobOpen ? (
-        <form className="form-card" onSubmit={(e) => void onCreateJob(e)} style={{ marginBottom: 16 }}>
+        <form className="settings-inline-form" onSubmit={(e) => void onCreateJob(e)} style={{ marginBottom: 16 }}>
           <label className="form-field">
             <span className="form-label">Title</span>
             <input className="form-input" name="title" required disabled={submitting} />
@@ -182,7 +190,7 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
       ) : null}
 
       {assignId ? (
-        <form className="form-card" onSubmit={(e) => void onAssign(e)} style={{ marginBottom: 16 }}>
+        <form className="settings-inline-form" onSubmit={(e) => void onAssign(e)} style={{ marginBottom: 16 }}>
           <p className="form-kicker">Assign artisan</p>
           {roster.length === 0 ? (
             <p className="form-error">
@@ -244,8 +252,20 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
       {loading ? <p className="page-subtitle">Loading…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
 
-      {!loading && !error && items.length === 0 ? (
-        <p className="table-muted">No repair requests for this unit yet.</p>
+      {!loading && !error && items.length === 0 && !jobOpen ? (
+        <div className="dashboard-empty" role="status">
+          <p className="dashboard-empty-title mono-data">No repair requests yet.</p>
+          <p className="dashboard-empty-copy">
+            Log a work order so you can assign an artisan.
+          </p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setJobOpen(true)}
+          >
+            New job
+          </button>
+        </div>
       ) : null}
 
       {items.length > 0 ? (
@@ -272,6 +292,23 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
                     {row.artisan_user_id ? (
                       <p className="table-muted" style={{ margin: "4px 0 0" }}>
                         Assigned artisan
+                      </p>
+                    ) : null}
+                    {row.photo_url ? (
+                      <p style={{ margin: "6px 0 0" }}>
+                        <a
+                          href={row.photo_url}
+                          className="mr-photo-link"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={row.photo_url}
+                            alt={`Photo for ${row.title}`}
+                            className="mr-photo-thumb"
+                          />
+                        </a>
                       </p>
                     ) : null}
                   </td>

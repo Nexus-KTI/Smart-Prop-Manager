@@ -56,6 +56,8 @@ export function MessagesHubClient({ audience }: Props) {
   const [meId, setMeId] = useState<string | null>(null);
   const [contacts, setContacts] = useState<MessageContact[]>([]);
   const [threads, setThreads] = useState<MessageThread[]>([]);
+  const [threadsCapped, setThreadsCapped] = useState(false);
+  const [threadsLoaded, setThreadsLoaded] = useState(0);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [peerLastReadAt, setPeerLastReadAt] = useState<string | null>(null);
@@ -88,12 +90,15 @@ export function MessagesHubClient({ audience }: Props) {
 
       if (tab === "publications") {
         if (audience === "landlord") {
-          setPubs(await fetchPublications());
+          const pubs = await fetchPublications();
+          setPubs(pubs.items);
         } else {
           const data = await fetchMyPublications();
           setPubs(data.items);
         }
         setThreads([]);
+        setThreadsCapped(false);
+        setThreadsLoaded(0);
         setActiveId(null);
         setMessages([]);
         setPeerLastReadAt(null);
@@ -104,8 +109,10 @@ export function MessagesHubClient({ audience }: Props) {
           fetchMessageThreads(kind),
         ]);
         setContacts(c);
-        setThreads(t);
-        if (t.length && !activeId) {
+        setThreads(t.items);
+        setThreadsCapped(t.capped);
+        setThreadsLoaded(t.loaded);
+        if (t.items.length && !activeId) {
           // keep selection if still present
         }
       }
@@ -134,7 +141,7 @@ export function MessagesHubClient({ audience }: Props) {
         emitMessagesRead();
       } catch (err) {
         if (!opts?.quiet) {
-          showToast(err instanceof Error ? err.message : "Could not load thread");
+          showToast(err instanceof Error ? err.message : "Could not load thread", "error");
         }
       }
     },
@@ -275,7 +282,7 @@ export function MessagesHubClient({ audience }: Props) {
       setActiveId(thread.id);
       showToast("Chat opened");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Could not open chat");
+      showToast(err instanceof Error ? err.message : "Could not open chat", "error");
     }
   }
 
@@ -303,7 +310,7 @@ export function MessagesHubClient({ audience }: Props) {
         ),
       );
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Send failed");
+      showToast(err instanceof Error ? err.message : "Send failed", "error");
     } finally {
       setSending(false);
     }
@@ -322,7 +329,7 @@ export function MessagesHubClient({ audience }: Props) {
       setPubOpen(false);
       await loadTab();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Publish failed");
+      showToast(err instanceof Error ? err.message : "Publish failed", "error");
     }
   }
 
@@ -334,7 +341,7 @@ export function MessagesHubClient({ audience }: Props) {
         <h1 className="page-title">Messages</h1>
         <p className="page-subtitle">
           Chat with connected {audience === "landlord" ? "tenants" : "landlord"},
-          estate bulletin, and maintenance threads, TenantCloud-style hub.
+          estate bulletin, and maintenance threads.
         </p>
       </header>
 
@@ -367,11 +374,17 @@ export function MessagesHubClient({ audience }: Props) {
 
       {error ? <p className="form-error">{error}</p> : null}
       {loading ? <p className="page-subtitle">Loading…</p> : null}
+      {threadsCapped && tab !== "publications" && !loading ? (
+        <p className="page-subtitle" role="status">
+          Showing the {threadsLoaded} most recent threads in this tab. Older
+          conversations may not appear here.
+        </p>
+      ) : null}
 
       {tab === "publications" ? (
         <div className="messages-pub-pane">
           {bulletinManage ? (
-            <div className="dashboard-header-actions" style={{ marginBottom: 12 }}>
+            <div className="dashboard-header-actions">
               <button
                 type="button"
                 className="btn-primary"
@@ -399,13 +412,25 @@ export function MessagesHubClient({ audience }: Props) {
               </button>
             </form>
           ) : null}
-          {!loading && pubs.length === 0 ? (
-            <p className="table-muted">
-              {audience === "tenant"
-                ? "No landlord publications yet. You’ll see estate posts here when they publish."
-                : "No publications yet. Post building-wide updates for your tenants."}
-            </p>
-          ) : (
+          {!loading && pubs.length === 0 && !pubOpen ? (
+            <div className="dashboard-empty" role="status">
+              <p className="dashboard-empty-title mono-data">No publications yet.</p>
+              <p className="dashboard-empty-copy">
+                {audience === "tenant"
+                  ? "Estate posts from your landlord will show here when they publish."
+                  : "Post a building-wide update so tenants see it under Notices."}
+              </p>
+              {bulletinManage ? (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => setPubOpen(true)}
+                >
+                  New publication
+                </button>
+              ) : null}
+            </div>
+          ) : pubs.length > 0 ? (
             <ul className="stack-list">
               {pubs.map((p) => (
                 <li key={p.id} className="form-card">
@@ -439,6 +464,7 @@ export function MessagesHubClient({ audience }: Props) {
                           .catch((err) =>
                             showToast(
                               err instanceof Error ? err.message : "Archive failed",
+                              "error",
                             ),
                           )
                       }
@@ -449,7 +475,7 @@ export function MessagesHubClient({ audience }: Props) {
                 </li>
               ))}
             </ul>
-          )}
+          ) : null}
         </div>
       ) : (
         <div className="messages-split">

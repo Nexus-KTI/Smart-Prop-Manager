@@ -12,6 +12,7 @@ from supabase_auth.errors import AuthApiError
 
 from lib.auth import AuthedUser, get_current_user, verify_access_token
 from lib.db import create_service_client
+from lib.http_client import DEFAULT_TIMEOUT, get_http_client
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -20,6 +21,22 @@ _supabase_anon_key = os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY")
 
 NotificationChannel = Literal["whatsapp", "sms", "email"]
 SignupRole = Literal["landlord", "tenant", "artisan"]
+DateFormat = Literal["dd/mm/yyyy", "mm/dd/yyyy", "yyyy-mm-dd"]
+DEFAULT_TIMEZONE = "Africa/Lagos"
+DEFAULT_DATE_FORMAT: DateFormat = "dd/mm/yyyy"
+# Curated IANA zones for NG / common diaspora — not a full tzdb dump.
+ALLOWED_TIMEZONES = frozenset(
+    {
+        "Africa/Lagos",
+        "Africa/Accra",
+        "Africa/Abidjan",
+        "Africa/Nairobi",
+        "Africa/Johannesburg",
+        "Europe/London",
+        "America/New_York",
+        "UTC",
+    }
+)
 SignupPersona = Literal[
     "manage_own",
     "manage_others",
@@ -40,6 +57,18 @@ class UserProfileUpdate(BaseModel):
     notification_channel: NotificationChannel | None = Field(
         default=None,
         description="Preferred notification channel",
+    )
+    notification_prefs: dict[str, Any] | None = Field(
+        default=None,
+        description="Per-event Email/SMS/WhatsApp/In-app toggles",
+    )
+    timezone: str | None = Field(
+        default=None,
+        description="IANA timezone for display (e.g. Africa/Lagos)",
+    )
+    date_format: DateFormat | None = Field(
+        default=None,
+        description="Preferred date display format",
     )
     role: SignupRole | None = Field(
         default=None,
@@ -133,21 +162,33 @@ def _ensure_profile_row(user: AuthedUser) -> dict[str, Any]:
 
 def _serialize(auth_user: Any, profile: dict[str, Any]) -> dict[str, Any]:
     meta = auth_user.user_metadata or {}
+    from lib.notification_prefs import normalize_notification_prefs
+
     if not isinstance(meta, dict):
         meta = {}
     name = str(meta.get("full_name") or meta.get("name") or "").strip()
     role = str(profile.get("role") or "landlord").strip() or "landlord"
+    tz = str(profile.get("timezone") or DEFAULT_TIMEZONE).strip() or DEFAULT_TIMEZONE
+    date_fmt = str(profile.get("date_format") or DEFAULT_DATE_FORMAT).strip()
+    if date_fmt not in ("dd/mm/yyyy", "mm/dd/yyyy", "yyyy-mm-dd"):
+        date_fmt = DEFAULT_DATE_FORMAT
     return {
         "id": auth_user.id,
         "name": name,
         "business_name": profile.get("business_name"),
         "notification_channel": profile.get("notification_channel") or "sms",
+        "notification_prefs": normalize_notification_prefs(
+            profile.get("notification_prefs")
+        ),
         "role": role,
         "signup_persona": profile.get("signup_persona"),
         "signup_unit_count": profile.get("signup_unit_count"),
         "signup_years": profile.get("signup_years"),
         "phone": _format_phone(getattr(auth_user, "phone", None)),
         "email": getattr(auth_user, "email", None),
+        "email_confirmed": bool(getattr(auth_user, "email_confirmed_at", None)),
+        "timezone": tz,
+        "date_format": date_fmt,
         "avatar_url": profile.get("avatar_url") or None,
         "created_at": profile.get("created_at"),
     }
@@ -168,8 +209,12 @@ def _update_auth_user(access_token: str, user_id: str, attributes: dict[str, Any
         "Content-Type": "application/json",
     }
     try:
-        with httpx.Client(timeout=20.0) as client:
-            response = client.put(url, headers=headers, json=attributes)
+        response = get_http_client().put(
+            url,
+            headers=headers,
+            json=attributes,
+            timeout=DEFAULT_TIMEOUT,
+        )
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -290,9 +335,53 @@ def update_me(
         )
     if "notification_channel" in patch and patch["notification_channel"] is not None:
         profile_updates["notification_channel"] = patch["notification_channel"]
+    if "notification_prefs" in patch and patch["notification_prefs"] is not None:
+        from lib.notification_prefs import normalize_notification_prefs
+
+        profile_updates["notification_prefs"] = normalize_notification_prefs(
+            patch["notification_prefs"]
+        )
+    if "timezone" in patch and patch["timezone"] is not None:
+        tz = str(patch["timezone"]).strip()
+        if tz not in ALLOWED_TIMEZONES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported timezone",
+            )
+        profile_updates["timezone"] = tz
+    if "date_format" in patch and patch["date_format"] is not None:
+        profile_updates["date_format"] = patch["date_format"]
     if "role" in patch and patch["role"] is not None:
-        # Allow role set at signup / early profile; claim flow may also set tenant.
-        profile_updates["role"] = patch["role"]
+        requested = str(patch["role"]).strip().lower()
+        if requested not in {"landlord", "tenant", "artisan"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid role",
+            )
+        current = str(profile.get("role") or "landlord").strip().lower()
+        if requested != current:
+            # Signup bootstrap only: default landlord → tenant/artisan before
+            # portfolio exists. Privilege escalation / flip after claim blocked.
+            if current != "landlord" or requested not in {"tenant", "artisan"}:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Role cannot be changed here",
+                )
+            owned = (
+                user.db.table("properties")
+                .select("id")
+                .eq("owner_id", user.id)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+            if owned:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Role cannot be changed after properties exist",
+                )
+            profile_updates["role"] = requested
     if "signup_persona" in patch:
         profile_updates["signup_persona"] = patch.get("signup_persona")
     if "signup_unit_count" in patch:

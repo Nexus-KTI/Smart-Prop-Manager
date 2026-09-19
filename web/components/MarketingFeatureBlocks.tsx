@@ -1,11 +1,9 @@
-import {
-  Banknote,
-  ClipboardList,
-  MessageSquare,
-  PieChart,
-} from "lucide-react";
+"use client";
+
+import { Banknote, Wrench } from "lucide-react";
 import Link from "next/link";
 
+import { MarketingReveal } from "@/components/MarketingReveal";
 import { formatNaira } from "@/lib/dashboard";
 
 type Block = {
@@ -16,182 +14,143 @@ type Block = {
   bullets: string[];
   href: string;
   Icon: typeof Banknote;
-  visual: "rent" | "leasing" | "accounting" | "messages";
+  visual: "rent" | "ops";
 };
 
 const BLOCKS: Block[] = [
   {
-    id: "rent",
-    kicker: "Rent collection",
-    title: "Collect payments, effortlessly",
-    body: "Tenants pay online when you want, or you record cash and transfer on the same list.",
+    id: "money-deep",
+    kicker: "Friday",
+    title: "Who paid. Who owes. Chase without a silent send.",
+    body: "The unit list is the wedge: cash, transfer, and card on one ledger - reminders that show when they fail.",
     bullets: [
-      "Accept cash, transfer, or Paystack on one ledger",
-      "See paid, due soon, and overdue at a glance",
-      "Send reminders with real failure detail",
+      "Paid, due soon, overdue at a glance",
+      "Service charge on the same trail",
+      "PDF receipts when you need paper",
     ],
     href: "#get-started",
     Icon: Banknote,
     visual: "rent",
   },
   {
-    id: "leasing",
-    kicker: "Applications & docs",
-    title: "Find the right renters, faster",
-    body: "Share an apply link from the unit, review submissions, and hand tenants the docs they need to acknowledge before move-in.",
+    id: "ops-deep",
+    kicker: "The rest of the week",
+    title: "Apply, repair, and open the gate - on the unit.",
+    body: "Occupancy paperwork and weekday ops share the same truth as rent. No third app for the caretaker.",
     bullets: [
-      "Invite to apply, approve or reject in one place",
-      "Tenancy checklist and dossier on the unit",
-      "Document share with I acknowledge",
-    ],
-    href: "#get-started",
-    Icon: ClipboardList,
-    visual: "leasing",
-  },
-  {
-    id: "accounting",
-    kicker: "Accounting",
-    title: "Take control of the books",
-    body: "Track estate spend beside the unit ledger. Pull a rent roll when you need the portfolio view, without another spreadsheet night.",
-    bullets: [
-      "Expenses logged against the estate",
-      "Rent roll by unit and cycle",
-      "Scheduled fees tenants can settle",
-    ],
-    href: "/pricing",
-    Icon: PieChart,
-    visual: "accounting",
-  },
-  {
-    id: "messages",
-    kicker: "Messages & portal",
-    title: "Chat and repairs on the unit",
-    body: "Estate bulletins and maintenance threads live beside the money list, so nothing vanishes into private chats.",
-    bullets: [
-      "Messages hub: chat, publications, maintenance",
-      "Tenant portal for pay, docs, and requests",
-      "Artisan jobs from work orders",
+      "Applications, docs, renewals on the dossier",
+      "Messages and work orders beside the money list",
+      "Gate passes you can revoke",
     ],
     href: "#audiences",
-    Icon: MessageSquare,
-    visual: "messages",
+    Icon: Wrench,
+    visual: "ops",
   },
+];
+
+const RENT_ROWS = [
+  { unit: "Cedar · Flat 7", status: "overdue" as const, label: "OVERDUE" },
+  { unit: "Palm Court · 2", status: "paid" as const, label: "PAID" },
+  { unit: "Marina · 1A", status: "due-soon" as const, label: "DUE SOON" },
+  { unit: "Ikeja · B3", status: "overdue" as const, label: "OVERDUE" },
 ];
 
 function FeatureVisual({ kind }: { kind: Block["visual"] }) {
   if (kind === "rent") {
     return (
-      <div className="marketing-vignette" data-kind="rent">
-        <p className="marketing-vignette-label">Unit list</p>
-        <div className="marketing-vignette-row">
-          <span>Cedar · Flat 7</span>
-          <span className="status-badge overdue">OVERDUE</span>
+      <div className="marketing-vignette marketing-vignette--live" data-kind="rent">
+        <div className="marketing-vignette-head">
+          <p className="marketing-vignette-label">Unit list</p>
         </div>
-        <div className="marketing-vignette-row">
-          <span>Palm Court · 2</span>
-          <span className="status-badge paid">PAID</span>
-        </div>
-        <div className="marketing-vignette-row">
-          <span>Marina · 1A</span>
-          <span className="status-badge due-soon">DUE SOON</span>
+        <div className="marketing-vignette-stroll">
+          <div className="marketing-vignette-stroll-rail">
+            {[0, 1].map((copy) => (
+              <div
+                key={copy}
+                className="marketing-vignette-stroll-set"
+                aria-hidden={copy === 1 ? true : undefined}
+              >
+                {RENT_ROWS.map((row) => (
+                  <div
+                    key={`${copy}-${row.unit}`}
+                    className="marketing-vignette-row"
+                    data-status={row.status}
+                  >
+                    <span className="marketing-vignette-row-signal" aria-hidden />
+                    <span className="marketing-vignette-row-unit">{row.unit}</span>
+                    <span className={`status-badge ${row.status}`}>
+                      {row.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
         <p className="marketing-vignette-foot mono-data">
-          Chase · {formatNaira(1_500_000)}
+          Next chase · Cedar · {formatNaira(1_500_000)}
         </p>
       </div>
     );
   }
 
-  if (kind === "leasing") {
-    return (
-      <div className="marketing-vignette" data-kind="leasing">
-        <p className="marketing-vignette-label">Applications</p>
-        <div className="marketing-vignette-card">
-          <strong>Funke Adebayo</strong>
-          <span>Palm Court · Flat 2</span>
-          <span className="marketing-vignette-pill">New</span>
-        </div>
-        <div className="marketing-vignette-card">
-          <strong>Tunde Okoro</strong>
-          <span>Marina · Unit 1A</span>
-          <span className="marketing-vignette-pill" data-tone="muted">
-            In review
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  if (kind === "accounting") {
-    return (
-      <div className="marketing-vignette" data-kind="accounting">
-        <p className="marketing-vignette-label">Rent roll</p>
-        <div className="marketing-vignette-stat">
-          <span>Collected</span>
-          <strong className="mono-data">{formatNaira(4_200_000)}</strong>
-        </div>
-        <div className="marketing-vignette-stat">
-          <span>Outstanding</span>
-          <strong className="mono-data">{formatNaira(2_700_000)}</strong>
-        </div>
-        <div className="marketing-vignette-bar" aria-hidden>
-          <span style={{ width: "61%" }} />
-        </div>
-        <p className="marketing-vignette-foot">61% of portfolio paid this cycle</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="marketing-vignette" data-kind="messages">
-      <p className="marketing-vignette-label">Messages</p>
+    <div className="marketing-vignette marketing-vignette--live" data-kind="ops">
+      <p className="marketing-vignette-label">Ops board</p>
+      <div className="marketing-vignette-card">
+        <strong>Funke Adebayo</strong>
+        <span>Palm Court · Flat 2</span>
+        <span className="marketing-vignette-pill">New apply</span>
+      </div>
       <div className="marketing-vignette-msg" data-from="tenant">
         Water pressure dropped again in Flat 7.
       </div>
-      <div className="marketing-vignette-msg" data-from="you">
-        Logged. Assigning plumber today.
+      <div className="marketing-vignette-card">
+        <strong>WO-184 · Plumber</strong>
+        <span>Assigned · gate pass issued</span>
+        <span className="marketing-vignette-pill">Open</span>
       </div>
-      <p className="marketing-vignette-foot">Chat · Bulletin · Maintenance</p>
     </div>
   );
 }
 
-/** TenantCloud alternating features, NG copy + product vignettes. */
+/** Two deep dives - money wedge and weekday OS. */
 export function MarketingFeatureBlocks() {
   return (
     <div className="marketing-feature-blocks">
       {BLOCKS.map((block, index) => (
-        <article
-          key={block.id}
-          id={block.id}
-          className="marketing-feature-block"
-          data-flip={index % 2 === 1 ? "true" : undefined}
-        >
-          <div className="marketing-feature-block-copy">
-            <p className="marketing-feature-kicker">
-              <block.Icon size={16} aria-hidden /> {block.kicker}
-            </p>
-            <h3 className="marketing-feature-block-title">{block.title}</h3>
-            <p className="marketing-feature-block-body">{block.body}</p>
-            <ul className="marketing-feature-bullets">
-              {block.bullets.map((b) => (
-                <li key={b}>{b}</li>
-              ))}
-            </ul>
-            {block.href.startsWith("/") ? (
-              <Link href={block.href} className="marketing-feature-more">
-                Learn more →
-              </Link>
-            ) : (
-              <a href={block.href} className="marketing-feature-more">
-                Learn more →
-              </a>
-            )}
-          </div>
-          <div className="marketing-feature-block-visual">
-            <FeatureVisual kind={block.visual} />
-          </div>
-        </article>
+        <MarketingReveal key={block.id} delayMs={index * 40}>
+          <article
+            id={block.id}
+            className="marketing-feature-block"
+            data-flip={index % 2 === 1 ? "true" : undefined}
+          >
+            <div className="marketing-feature-block-copy">
+              <p className="marketing-feature-kicker">
+                <block.Icon size={16} aria-hidden /> {block.kicker}
+              </p>
+              <h3 className="marketing-feature-block-title">{block.title}</h3>
+              <p className="marketing-feature-block-body">{block.body}</p>
+              <ul className="marketing-feature-bullets">
+                {block.bullets.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+              {block.href.startsWith("/") ? (
+                <Link href={block.href} className="marketing-feature-more">
+                  Learn more →
+                </Link>
+              ) : (
+                <a href={block.href} className="marketing-feature-more">
+                  Continue →
+                </a>
+              )}
+            </div>
+            <div className="marketing-feature-block-visual">
+              <FeatureVisual kind={block.visual} />
+            </div>
+          </article>
+        </MarketingReveal>
       ))}
     </div>
   );

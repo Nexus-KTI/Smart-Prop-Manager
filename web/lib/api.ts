@@ -1,5 +1,9 @@
 import type { Session } from "@supabase/supabase-js";
 
+import {
+  emitDataInvalidation,
+  type DataInvalidationScope,
+} from "@/lib/data-invalidation";
 import { createClient } from "@/lib/supabase/client";
 import { readPortfolioOwnerId } from "@/lib/portfolio";
 
@@ -19,7 +23,7 @@ function apiBaseUrl(): string {
   );
 }
 
-/** Public, no auth. Used after phone OTP when Supabase returns OK but SMS may have failed. */
+/** Same-origin proxy → API with NOTIFY_DIAG_SECRET (not exposed to browser). */
 export async function checkSmsDelivery(phone: string): Promise<{
   found: boolean;
   status: string | null;
@@ -28,9 +32,8 @@ export async function checkSmsDelivery(phone: string): Promise<{
   hint: string | null;
   account_type: string | null;
 }> {
-  const base = apiBaseUrl();
-  const res = await fetch(
-    `${base}/notify/sms-delivery?phone=${encodeURIComponent(phone)}`,
+  const res = await fetchWithTimeout(
+    `/api/notify/sms-delivery?phone=${encodeURIComponent(phone)}`,
     { method: "GET", cache: "no-store" },
   );
   if (!res.ok) {
@@ -41,6 +44,71 @@ export async function checkSmsDelivery(phone: string): Promise<{
 
 /** Single-flight refresh, concurrent refreshSession() races cause "Already Used". */
 let refreshInFlight: Promise<Session | null> | null = null;
+export const API_REQUEST_TIMEOUT_MS = 25_000;
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, API_REQUEST_TIMEOUT_MS);
+  const onAbort = () => controller.abort(init.signal?.reason);
+  if (init.signal?.aborted) onAbort();
+  else init.signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error("Request timed out. Check your connection, then retry.");
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeout);
+    init.signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+function mutationInvalidations(
+  path: string,
+  method: string,
+): DataInvalidationScope[] {
+  if (["GET", "HEAD", "OPTIONS"].includes(method)) return [];
+  const scopes = new Set<DataInvalidationScope>();
+  if (
+    path.startsWith("/properties/") ||
+    /^\/payments\/(?:manual|paystack\/confirm|cards\/charge)$/.test(path) ||
+    /^\/reminders\/(?:bulk|send|retry\/)/.test(path) ||
+    /^\/tenancies\/[^/]+\/activate$/.test(path)
+  ) {
+    scopes.add("urgent-actions");
+  }
+  if (
+    (method === "PATCH" && /^\/applications\/[^/]+$/.test(path)) ||
+    /^\/applications\/token\/[^/]+\/submit$/.test(path)
+  ) {
+    scopes.add("applications");
+  }
+  if (
+    /^\/maintenance\/(?:me|unit\/[^/]+)$/.test(path) ||
+    /^\/maintenance\/[^/]+(?:\/complete)?$/.test(path)
+  ) {
+    scopes.add("work-orders");
+  }
+  if (/^\/messages\/threads\/[^/]+\/read$/.test(path)) {
+    scopes.add("message-unread");
+  }
+  if (
+    /^\/publications\/[^/]+\/read$/.test(path) ||
+    (method === "PATCH" && /^\/tasks\/[^/]+$/.test(path))
+  ) {
+    scopes.add("notification-extras");
+  }
+  return [...scopes];
+}
 
 function sessionExpiringSoon(session: Session | null, skewMs = 60_000): boolean {
   if (!session?.access_token) return true;
@@ -116,31 +184,33 @@ export async function apiFetch(
 ): Promise<Response> {
   const url = `${apiBaseUrl()}${path}`;
   const accessToken = await resolveAccessToken();
+  const method = (init.method || "GET").toUpperCase();
+  const requestHeaders = new Headers(init.headers);
+  const requestInit = { ...init, headers: requestHeaders };
 
-  const response = await fetch(url, {
-    ...init,
-    headers: buildHeaders(init, accessToken),
+  const response = await fetchWithTimeout(url, {
+    ...requestInit,
+    headers: buildHeaders(requestInit, accessToken),
   });
 
   // Expired JWT that slipped past skew check, refresh once and retry.
-  if (response.status === 401 && !retried) {
+  const retrySafe =
+    method === "GET" ||
+    method === "HEAD" ||
+    requestHeaders.has("Idempotency-Key");
+  if (response.status === 401 && !retried && retrySafe) {
     refreshInFlight = null;
     const refreshed = await resolveAccessToken();
     if (refreshed) {
-      return apiFetch(path, init, true);
+      return apiFetch(path, requestInit, true);
     }
   }
 
-  return response;
-}
-
-async function readJson<T>(res: Response): Promise<T | null> {
-  if (!res.ok) return null;
-  try {
-    return (await res.json()) as T;
-  } catch {
-    return null;
+  if (response.ok && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    emitDataInvalidation(mutationInvalidations(path, method), path);
   }
+
+  return response;
 }
 
 export type CursorPage<T> = {
@@ -273,6 +343,72 @@ export async function fetchReminderLogPage(
     `/reminders/unit/${unitId}${cursorQuery(cursor)}`,
   );
   return readCursorPage<Reminder>(res, "Failed to load reminder log");
+}
+
+export type UrgentActionsSummary = {
+  urgent: number;
+  overdue: number;
+  lease_ending: number;
+  failed: number;
+  due_soon: number;
+};
+
+export type UrgentActionKind =
+  | "overdue_chase"
+  | "overdue_no_contact"
+  | "due_soon"
+  | "lease_ending"
+  | "chase_failed";
+
+export type UrgentActionItem = {
+  id: string;
+  kind: UrgentActionKind | string;
+  priority?: number;
+  unit_id: string;
+  property_id?: string | null;
+  property_name?: string | null;
+  unit_label?: string | null;
+  tenant_name?: string | null;
+  tenant_contact?: string | null;
+  detail?: string | null;
+  reminder_id?: string | null;
+  days_until_term_end?: number | null;
+  payment_status?: string | null;
+};
+
+export type UrgentActionsPayload = {
+  items: UrgentActionItem[];
+  summary: UrgentActionsSummary;
+};
+
+const EMPTY_URGENT_SUMMARY: UrgentActionsSummary = {
+  urgent: 0,
+  overdue: 0,
+  lease_ending: 0,
+  failed: 0,
+  due_soon: 0,
+};
+
+/** Full Action Needed queue (items + summary). */
+export async function fetchUrgentActions(): Promise<UrgentActionsPayload> {
+  const res = await apiFetch("/reminders/actions");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load action needed"));
+  }
+  const data = (await res.json()) as {
+    items?: UrgentActionItem[];
+    summary?: UrgentActionsSummary;
+  };
+  return {
+    items: data.items ?? [],
+    summary: data.summary ?? EMPTY_URGENT_SUMMARY,
+  };
+}
+
+/** Landlord Action Needed counts for the notifications bell. */
+export async function fetchUrgentActionsSummary(): Promise<UrgentActionsSummary> {
+  const data = await fetchUrgentActions();
+  return data.summary;
 }
 
 export async function createProperty(payload: {
@@ -410,6 +546,7 @@ export async function createPendingPaystackPayment(payload: {
 }): Promise<Transaction> {
   const res = await apiFetch("/payments/paystack/pending", {
     method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -493,6 +630,7 @@ export async function recordManualPayment(payload: {
 }): Promise<Transaction> {
   const res = await apiFetch("/payments/manual", {
     method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -582,23 +720,32 @@ export type UserProfile = {
   name: string;
   business_name: string | null;
   notification_channel: string;
+  notification_prefs?: Record<string, Record<string, boolean>>;
   role: "landlord" | "tenant" | "artisan" | string;
   signup_persona?: string | null;
   signup_unit_count?: number | null;
   signup_years?: string | null;
   phone: string | null;
   email: string | null;
+  email_confirmed?: boolean;
+  timezone?: string;
+  date_format?: "dd/mm/yyyy" | "mm/dd/yyyy" | "yyyy-mm-dd" | string;
   avatar_url?: string | null;
   created_at?: string | null;
 };
 
 function parseUserProfile(data: Partial<UserProfile> & { role?: string }): UserProfile {
   const rawRole = String(data.role ?? "landlord").trim() || "landlord";
+  const dateFormat = String(data.date_format ?? "dd/mm/yyyy").trim();
   return {
     id: String(data.id ?? ""),
     name: String(data.name ?? "").trim(),
     business_name: data.business_name ? String(data.business_name) : null,
     notification_channel: String(data.notification_channel ?? "sms"),
+    notification_prefs:
+      data.notification_prefs && typeof data.notification_prefs === "object"
+        ? (data.notification_prefs as Record<string, Record<string, boolean>>)
+        : undefined,
     role: rawRole,
     signup_persona: data.signup_persona ? String(data.signup_persona) : null,
     signup_unit_count:
@@ -606,6 +753,12 @@ function parseUserProfile(data: Partial<UserProfile> & { role?: string }): UserP
     signup_years: data.signup_years ? String(data.signup_years) : null,
     phone: data.phone ? String(data.phone) : null,
     email: data.email ? String(data.email) : null,
+    email_confirmed: Boolean(data.email_confirmed),
+    timezone: String(data.timezone ?? "Africa/Lagos").trim() || "Africa/Lagos",
+    date_format:
+      dateFormat === "mm/dd/yyyy" || dateFormat === "yyyy-mm-dd"
+        ? dateFormat
+        : "dd/mm/yyyy",
     avatar_url: data.avatar_url ? String(data.avatar_url) : null,
     created_at: data.created_at ?? null,
   };
@@ -624,6 +777,9 @@ export async function updateMe(payload: {
   business_name?: string | null;
   email?: string | null;
   notification_channel?: string | null;
+  notification_prefs?: Record<string, Record<string, boolean>> | null;
+  timezone?: string | null;
+  date_format?: string | null;
   role?: "landlord" | "tenant" | "artisan";
   signup_persona?: string | null;
   signup_unit_count?: number | null;
@@ -638,6 +794,11 @@ export async function updateMe(payload: {
   if (payload.notification_channel !== undefined) {
     body.notification_channel = payload.notification_channel;
   }
+  if (payload.notification_prefs !== undefined) {
+    body.notification_prefs = payload.notification_prefs;
+  }
+  if (payload.timezone !== undefined) body.timezone = payload.timezone;
+  if (payload.date_format !== undefined) body.date_format = payload.date_format;
   if (payload.role !== undefined) body.role = payload.role;
   if (payload.signup_persona !== undefined) {
     body.signup_persona = payload.signup_persona;
@@ -670,6 +831,50 @@ export async function uploadMyAvatar(file: File): Promise<UserProfile> {
     throw new Error(await readErrorDetail(res, "Could not upload photo"));
   }
   return parseUserProfile((await res.json()) as Partial<UserProfile>);
+}
+
+export type SavedPaymentMethod = {
+  id: string;
+  last4?: string | null;
+  card_type?: string | null;
+  exp_month?: string | null;
+  exp_year?: string | null;
+  bank?: string | null;
+  reusable?: boolean;
+  created_at?: string;
+};
+
+export async function fetchSavedCards(): Promise<SavedPaymentMethod[]> {
+  const res = await apiFetch("/payments/cards");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load cards"));
+  }
+  const data = (await res.json()) as { items?: SavedPaymentMethod[] };
+  return data.items ?? [];
+}
+
+export async function confirmSavedCard(
+  reference: string,
+): Promise<SavedPaymentMethod> {
+  const res = await apiFetch("/payments/cards/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reference }),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not save card"));
+  }
+  const data = (await res.json()) as { item: SavedPaymentMethod };
+  return data.item;
+}
+
+export async function deleteSavedCard(cardId: string): Promise<void> {
+  const res = await apiFetch(`/payments/cards/${cardId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not remove card"));
+  }
 }
 
 export async function fetchAdminMe(): Promise<{
@@ -840,7 +1045,12 @@ export async function inviteStaff(payload: {
   role: "manager" | "caretaker";
   contact: string;
   property_ids?: string[];
-}): Promise<{ claim_path: string; invite_token: string; membership: StaffMembership }> {
+}): Promise<{
+  claim_path: string;
+  invite_token: string;
+  membership: StaffMembership;
+  notify?: { sent?: boolean; channel?: string | null; error?: string | null } | null;
+}> {
   const res = await apiFetch("/staff/invite", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -852,6 +1062,7 @@ export async function inviteStaff(payload: {
     claim_path: string;
     invite_token: string;
     membership: StaffMembership;
+    notify?: { sent?: boolean; channel?: string | null; error?: string | null } | null;
   };
 }
 
@@ -913,6 +1124,8 @@ export async function fetchOpsOverdue(): Promise<{
   }>;
   owner_id: string;
   role: string;
+  loaded?: number;
+  capped?: boolean;
 }> {
   const res = await apiFetch("/staff/ops/overdue");
   if (!res.ok) {
@@ -928,6 +1141,8 @@ export async function fetchOpsOverdue(): Promise<{
     }>;
     owner_id: string;
     role: string;
+    loaded?: number;
+    capped?: boolean;
   };
 }
 
@@ -958,6 +1173,9 @@ export type Tenancy = {
   docs_upload_enabled?: boolean;
   docs_belong_to_landlord?: string;
   activated_at?: string | null;
+  autopay_enabled?: boolean;
+  autopay_payment_method_id?: string | null;
+  autopay_days_before?: number;
   units?: {
     id?: string;
     label?: string;
@@ -1068,6 +1286,48 @@ export async function fetchMyTenancy(): Promise<Tenancy | null> {
   return data.tenancy ?? null;
 }
 
+export async function fetchMyTenancies(): Promise<Tenancy[]> {
+  const tenancy = await fetchMyTenancy();
+  return tenancy ? [tenancy] : [];
+}
+
+export async function updateMyAutopay(payload: {
+  enabled: boolean;
+  payment_method_id?: string | null;
+  days_before?: number;
+}): Promise<Tenancy> {
+  const res = await apiFetch("/tenancies/me/autopay", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not update autopay"));
+  }
+  const data = (await res.json()) as { tenancy: Tenancy };
+  return data.tenancy;
+}
+
+export async function chargeSavedCard(payload: {
+  unit_id: string;
+  payment_method_id: string;
+  amount: number;
+  charge_type?: string;
+}): Promise<{ item: unknown; receipt_url?: string | null }> {
+  const res = await apiFetch("/payments/cards/charge", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": crypto.randomUUID(),
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not charge card"));
+  }
+  return (await res.json()) as { item: unknown; receipt_url?: string | null };
+}
+
 export type MaintenanceRequest = {
   id: string;
   unit_id: string;
@@ -1113,6 +1373,23 @@ export async function fetchMyMaintenanceRequests(): Promise<MaintenanceRequest[]
   }
   const data = (await res.json()) as { items?: MaintenanceRequest[] };
   return data.items ?? [];
+}
+
+export async function uploadMaintenancePhoto(file: File): Promise<string> {
+  const body = new FormData();
+  body.append("file", file);
+  const res = await apiFetch("/maintenance/me/photo", {
+    method: "POST",
+    body,
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not upload photo"));
+  }
+  const data = (await res.json()) as { photo_url?: string };
+  if (!data.photo_url) {
+    throw new Error("Could not upload photo");
+  }
+  return data.photo_url;
 }
 
 export async function createMyMaintenanceRequest(payload: {
@@ -1279,9 +1556,15 @@ export type AccessPass = {
   effective_status?: string;
 };
 
+export type AccessPassesPayload = {
+  items: AccessPass[];
+  loaded: number;
+  capped: boolean;
+};
+
 export async function fetchAccessPasses(
   propertyId?: string,
-): Promise<AccessPass[]> {
+): Promise<AccessPassesPayload> {
   const q = propertyId
     ? `?property_id=${encodeURIComponent(propertyId)}`
     : "";
@@ -1289,8 +1572,15 @@ export async function fetchAccessPasses(
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load access passes"));
   }
-  const data = (await res.json()) as { items?: AccessPass[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<AccessPassesPayload> & {
+    items?: AccessPass[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export type AccessOccupant = {
@@ -1347,13 +1637,20 @@ export async function revokeAccessPass(passId: string): Promise<AccessPass> {
   return data.item;
 }
 
-export async function fetchMyAccessPasses(): Promise<AccessPass[]> {
+export async function fetchMyAccessPasses(): Promise<AccessPassesPayload> {
   const res = await apiFetch("/access/me");
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load your passes"));
   }
-  const data = (await res.json()) as { items?: AccessPass[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<AccessPassesPayload> & {
+    items?: AccessPass[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export type ArtisanRosterItem = {
@@ -1365,18 +1662,32 @@ export type ArtisanRosterItem = {
   status: string;
 };
 
-export async function fetchArtisanRoster(): Promise<ArtisanRosterItem[]> {
+export type ArtisanRosterPayload = {
+  items: ArtisanRosterItem[];
+  loaded: number;
+  capped: boolean;
+};
+
+export async function fetchArtisanRoster(): Promise<ArtisanRosterPayload> {
   const res = await apiFetch("/artisans/roster");
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load artisans"));
   }
-  const data = (await res.json()) as { items?: ArtisanRosterItem[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<ArtisanRosterPayload> & {
+    items?: ArtisanRosterItem[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export async function inviteArtisan(invite_contact: string): Promise<{
   item: ArtisanRosterItem;
   claim_path: string;
+  notify?: { sent?: boolean; channel?: string | null; error?: string | null } | null;
 }> {
   const res = await apiFetch("/artisans/invite", {
     method: "POST",
@@ -1386,7 +1697,11 @@ export async function inviteArtisan(invite_contact: string): Promise<{
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Could not invite artisan"));
   }
-  return (await res.json()) as { item: ArtisanRosterItem; claim_path: string };
+  return (await res.json()) as {
+    item: ArtisanRosterItem;
+    claim_path: string;
+    notify?: { sent?: boolean; channel?: string | null; error?: string | null } | null;
+  };
 }
 
 export async function claimArtisanInvite(payload: {
@@ -1445,7 +1760,10 @@ export async function assignMaintenanceArtisan(
     scheduled_end?: string;
     issue_access_pass?: boolean;
   },
-): Promise<MaintenanceRequest> {
+): Promise<{
+  item: MaintenanceRequest;
+  notify?: { sent?: boolean; channel?: string | null; error?: string | null } | null;
+}> {
   const res = await apiFetch(`/maintenance/${requestId}/assign`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1454,8 +1772,11 @@ export async function assignMaintenanceArtisan(
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Could not assign artisan"));
   }
-  const data = (await res.json()) as { item: MaintenanceRequest };
-  return data.item;
+  const data = (await res.json()) as {
+    item: MaintenanceRequest;
+    notify?: { sent?: boolean; channel?: string | null; error?: string | null } | null;
+  };
+  return { item: data.item, notify: data.notify ?? null };
 }
 
 export async function completeMaintenanceRequest(
@@ -1471,34 +1792,151 @@ export async function completeMaintenanceRequest(
   return data.item;
 }
 
-export async function fetchArtisanJobs(): Promise<MaintenanceRequest[]> {
+export type ArtisanJobsPayload = {
+  items: MaintenanceRequest[];
+  loaded: number;
+  capped: boolean;
+};
+
+export async function fetchArtisanJobs(): Promise<ArtisanJobsPayload> {
   const res = await apiFetch("/maintenance/artisan/me");
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load jobs"));
   }
-  const data = (await res.json()) as { items?: MaintenanceRequest[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<ArtisanJobsPayload> & {
+    items?: MaintenanceRequest[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
-export async function fetchMaintenanceBoard(): Promise<MaintenanceRequest[]> {
+export type MaintenanceBoardPayload = {
+  items: MaintenanceRequest[];
+  open_count: number;
+  done_count: number;
+  loaded: number;
+  capped: boolean;
+};
+
+export async function fetchMaintenanceBoard(): Promise<MaintenanceBoardPayload> {
   const res = await apiFetch("/maintenance/board");
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load work orders"));
   }
-  const data = (await res.json()) as { items?: MaintenanceRequest[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<MaintenanceBoardPayload> & {
+    items?: MaintenanceRequest[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    open_count: data.open_count ?? items.filter(
+      (i) => i.status === "new" || i.status === "in_progress",
+    ).length,
+    done_count: data.done_count ?? items.filter(
+      (i) => i.status === "resolved" || i.status === "canceled",
+    ).length,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
+
+export async function fetchWorkOrdersOpenCount(): Promise<number> {
+  const res = await apiFetch("/maintenance/open-count");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load open count"));
+  }
+  const data = (await res.json()) as { open_count?: number };
+  return Number(data.open_count) || 0;
+}
+
+export type DocumentCollectionCapabilities = {
+  request: boolean;
+  cancel_request: boolean;
+  submit_requested: boolean;
+  replace: boolean;
+  review: boolean;
+  open: boolean;
+  privacy_request: boolean;
+};
+
+export type TenancyDocumentSubmission = {
+  id: string;
+  version: number;
+  review_status: string;
+  document?: { id: string; file_name?: string | null } | null;
+};
+
+export type TenancyDocumentRequest = {
+  id: string;
+  tenancy_id: string;
+  doc_type: "agreement" | "reference";
+  title: string;
+  instructions?: string | null;
+  due_on?: string | null;
+  status: string;
+  current_submission_id?: string | null;
+  policy?: {
+    purpose_code: string;
+    lawful_basis: string;
+    privacy_notice_version: string;
+    privacy_notice_url: string;
+  } | null;
+  submissions: TenancyDocumentSubmission[];
+  events: Array<{
+    id?: string;
+    event_type: string;
+    reason_code?: string | null;
+    comment?: string | null;
+  }>;
+};
+
+export type TenancyPrivacyRequest = {
+  id: string;
+  request_type:
+    | "access"
+    | "rectification"
+    | "erasure"
+    | "restriction"
+    | "objection"
+    | "portability";
+  status: string;
+  due_on?: string | null;
+};
+
+export type TenancyPrivacyCasePolicy = {
+  version: string;
+  notice_version: string;
+  notice_url: string;
+};
+
+const DISABLED_DOCUMENT_COLLECTION: DocumentCollectionCapabilities = {
+  request: false,
+  cancel_request: false,
+  submit_requested: false,
+  replace: false,
+  review: false,
+  open: false,
+  privacy_request: false,
+};
 
 export async function fetchTenancyDocuments(tenancyId: string): Promise<{
   docs_upload_enabled: boolean;
+  capabilities: { read: boolean; acknowledge: boolean };
   items: Array<{
     id: string;
     doc_type: string;
     file_name: string;
     url?: string | null;
+    can_open?: boolean;
     expires_on?: string | null;
     requires_ack?: boolean;
     acknowledged_at?: string | null;
+    acknowledgment_text_version?: string | null;
+    scan_status?: "pending" | "clean" | "rejected";
   }>;
   message?: string;
 }> {
@@ -1506,7 +1944,7 @@ export async function fetchTenancyDocuments(tenancyId: string): Promise<{
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load documents"));
   }
-  return (await res.json()) as {
+  const data = (await res.json()) as {
     docs_upload_enabled: boolean;
     items: Array<{
       id: string;
@@ -1516,9 +1954,92 @@ export async function fetchTenancyDocuments(tenancyId: string): Promise<{
       expires_on?: string | null;
       requires_ack?: boolean;
       acknowledged_at?: string | null;
+      acknowledgment_text_version?: string | null;
+      scan_status?: "pending" | "clean" | "rejected";
     }>;
     message?: string;
   };
+  const readable = Boolean(data.docs_upload_enabled);
+  return {
+    ...data,
+    capabilities: {
+      read: readable,
+      acknowledge: readable,
+    },
+    items: (data.items ?? []).map((item) => ({
+      ...item,
+      can_open: Boolean(item.url),
+    })),
+  };
+}
+
+export async function fetchTenancyDocumentRequests(
+  _tenancyId: string,
+): Promise<{
+  capabilities: DocumentCollectionCapabilities;
+  items: TenancyDocumentRequest[];
+  message?: string;
+}> {
+  return {
+    capabilities: DISABLED_DOCUMENT_COLLECTION,
+    items: [],
+    message:
+      "Requested document collection is awaiting legal and privacy approval.",
+  };
+}
+
+export async function fetchTenancyPrivacyRequests(
+  _tenancyId: string,
+): Promise<{
+  capabilities: DocumentCollectionCapabilities;
+  items: TenancyPrivacyRequest[];
+}> {
+  return {
+    capabilities: DISABLED_DOCUMENT_COLLECTION,
+    items: [],
+  };
+}
+
+export async function fetchTenancyPrivacyCasePolicies(
+  _tenancyId: string,
+): Promise<TenancyPrivacyCasePolicy[]> {
+  return [];
+}
+
+export async function openTenancyDocument(
+  tenancyId: string,
+  documentId: string,
+): Promise<{ url: string; expires_in?: number }> {
+  const documents = await fetchTenancyDocuments(tenancyId);
+  const document = documents.items.find((item) => item.id === documentId);
+  if (!document?.url) throw new Error("Document is not available to open");
+  return { url: document.url };
+}
+
+export async function submitRequestedTenancyDocument(_payload: {
+  tenancyId: string;
+  requestId: string;
+  document: File;
+  noticeVersion: string;
+  replacesSubmissionId?: string | null;
+  idempotencyKey: string;
+}): Promise<never> {
+  throw new Error(
+    "Requested document uploads are awaiting legal and privacy approval.",
+  );
+}
+
+export async function createTenancyPrivacyRequest(
+  _tenancyId: string,
+  _payload: {
+    request_type: TenancyPrivacyRequest["request_type"];
+    privacy_policy_version: string;
+  },
+  _idempotencyKey: string,
+): Promise<never> {
+  throw new Error(
+    "In-product privacy requests are awaiting approved policy.",
+  );
 }
 
 export async function uploadTenancyDocument(payload: {
@@ -1591,11 +2112,37 @@ export type RentalApplication = {
   created_at?: string;
 };
 
-export async function fetchApplications(): Promise<RentalApplication[]> {
+export type ApplicationsListPayload = {
+  items: RentalApplication[];
+  pending_count: number;
+  loaded: number;
+  capped: boolean;
+};
+
+export async function fetchApplications(): Promise<ApplicationsListPayload> {
   const res = await apiFetch("/applications/");
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load applications"));
-  const data = (await res.json()) as { items?: RentalApplication[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<ApplicationsListPayload> & {
+    items?: RentalApplication[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    pending_count:
+      data.pending_count ??
+      items.filter((a) => a.status === "submitted").length,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
+}
+
+export async function fetchApplicationsPendingCount(): Promise<number> {
+  const res = await apiFetch("/applications/pending-count");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load pending count"));
+  }
+  const data = (await res.json()) as { pending_count?: number };
+  return Number(data.pending_count) || 0;
 }
 
 export async function openApplicationInvite(unitId: string): Promise<{
@@ -1621,9 +2168,10 @@ export async function previewApplicationToken(token: string): Promise<{
   questions: Array<{ key: string; label: string }>;
 }> {
   const base = apiBaseUrl();
-  const res = await fetch(`${base}/applications/token/${encodeURIComponent(token)}`, {
-    cache: "no-store",
-  });
+  const res = await fetchWithTimeout(
+    `${base}/applications/token/${encodeURIComponent(token)}`,
+    { cache: "no-store" },
+  );
   if (!res.ok) throw new Error(await readErrorDetail(res, "Invite not found"));
   return (await res.json()) as {
     token: string;
@@ -1694,11 +2242,24 @@ export type Expense = {
   unit_id?: string | null;
 };
 
-export async function fetchExpenses(): Promise<Expense[]> {
+export type ExpensesListPayload = {
+  items: Expense[];
+  loaded: number;
+  capped: boolean;
+};
+
+export async function fetchExpenses(): Promise<ExpensesListPayload> {
   const res = await apiFetch("/expenses");
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load expenses"));
-  const data = (await res.json()) as { items?: Expense[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<ExpensesListPayload> & {
+    items?: Expense[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export async function createExpense(payload: {
@@ -1730,6 +2291,7 @@ export type RentRollReport = {
   items: Array<{
     unit_id: string;
     unit_label?: string | null;
+    property_id?: string | null;
     property_name?: string | null;
     rent_amount?: number | null;
     currency: string;
@@ -1742,6 +2304,9 @@ export type RentRollReport = {
   month_expenses_total: number;
   occupied: number;
   vacant: number;
+  loaded?: number;
+  capped?: boolean;
+  expenses_capped?: boolean;
 };
 
 export async function fetchRentRoll(): Promise<RentRollReport> {
@@ -1761,11 +2326,24 @@ export type ScheduledFee = {
   status: string;
 };
 
-export async function fetchUnitFees(unitId: string): Promise<ScheduledFee[]> {
+export type ScheduledFeesPayload = {
+  items: ScheduledFee[];
+  loaded: number;
+  capped: boolean;
+};
+
+export async function fetchUnitFees(unitId: string): Promise<ScheduledFeesPayload> {
   const res = await apiFetch(`/fees/unit/${unitId}`);
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load fees"));
-  const data = (await res.json()) as { items?: ScheduledFee[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<ScheduledFeesPayload> & {
+    items?: ScheduledFee[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export async function createUnitFee(
@@ -1802,11 +2380,18 @@ export async function updateFeeStatus(
   return data.item;
 }
 
-export async function fetchMyFees(): Promise<ScheduledFee[]> {
+export async function fetchMyFees(): Promise<ScheduledFeesPayload> {
   const res = await apiFetch("/fees/me");
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load fees"));
-  const data = (await res.json()) as { items?: ScheduledFee[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<ScheduledFeesPayload> & {
+    items?: ScheduledFee[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export type Publication = {
@@ -1818,11 +2403,24 @@ export type Publication = {
   is_read?: boolean;
 };
 
-export async function fetchPublications(): Promise<Publication[]> {
+export type PublicationsListPayload = {
+  items: Publication[];
+  loaded: number;
+  capped: boolean;
+};
+
+export async function fetchPublications(): Promise<PublicationsListPayload> {
   const res = await apiFetch("/publications/");
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load publications"));
-  const data = (await res.json()) as { items?: Publication[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<PublicationsListPayload> & {
+    items?: Publication[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export async function createPublication(payload: {
@@ -1879,11 +2477,24 @@ export type CalendarEvent = {
   meta?: Record<string, unknown>;
 };
 
-export async function fetchTasks(): Promise<OpsTask[]> {
+export type TasksListPayload = {
+  items: OpsTask[];
+  loaded: number;
+  capped: boolean;
+};
+
+export async function fetchTasks(): Promise<TasksListPayload> {
   const res = await apiFetch("/tasks/");
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load tasks"));
-  const data = (await res.json()) as { items?: OpsTask[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<TasksListPayload> & {
+    items?: OpsTask[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export async function createTask(payload: {
@@ -1894,15 +2505,27 @@ export async function createTask(payload: {
   tenancy_id?: string;
   tenant_user_id?: string;
   unit_id?: string;
-}): Promise<OpsTask> {
+}): Promise<{
+  item: OpsTask;
+  notify?: { sent?: boolean; channel?: string | null; error?: string | null } | null;
+}> {
   const res = await apiFetch("/tasks/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(await readErrorDetail(res, "Could not create task"));
-  const data = (await res.json()) as { item: OpsTask };
-  return data.item;
+  const data = (await res.json()) as {
+    item?: OpsTask | null;
+    notify?: { sent?: boolean; channel?: string | null; error?: string | null } | null;
+  } | null;
+  if (!data?.item) {
+    throw new Error("Could not create task");
+  }
+  return {
+    item: data.item,
+    notify: data.notify ?? null,
+  };
 }
 
 export async function updateTaskStatus(
@@ -1926,11 +2549,24 @@ export async function fetchMyTasks(): Promise<OpsTask[]> {
   return data.items ?? [];
 }
 
-export async function fetchCalendar(): Promise<CalendarEvent[]> {
+export type CalendarPayload = {
+  items: CalendarEvent[];
+  loaded: number;
+  capped: boolean;
+};
+
+export async function fetchCalendar(): Promise<CalendarPayload> {
   const res = await apiFetch("/tasks/calendar");
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load calendar"));
-  const data = (await res.json()) as { items?: CalendarEvent[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<CalendarPayload> & {
+    items?: CalendarEvent[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export async function fetchMyCalendar(): Promise<CalendarEvent[]> {
@@ -1953,11 +2589,24 @@ export type PortfolioTenancy = {
   property_id?: string | null;
 };
 
-export async function fetchPortfolioTenancies(): Promise<PortfolioTenancy[]> {
+export type PortfolioTenanciesPayload = {
+  items: PortfolioTenancy[];
+  loaded: number;
+  capped: boolean;
+};
+
+export async function fetchPortfolioTenancies(): Promise<PortfolioTenanciesPayload> {
   const res = await apiFetch("/tenancies/");
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load tenancies"));
-  const data = (await res.json()) as { items?: PortfolioTenancy[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<PortfolioTenanciesPayload> & {
+    items?: PortfolioTenancy[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export async function acknowledgeTenancyDocument(
@@ -2031,14 +2680,27 @@ export async function fetchMessageContacts(): Promise<MessageContact[]> {
   return data.items ?? [];
 }
 
+export type MessageThreadsPayload = {
+  items: MessageThread[];
+  loaded: number;
+  capped: boolean;
+};
+
 export async function fetchMessageThreads(
   kind?: "chat" | "maintenance",
-): Promise<MessageThread[]> {
+): Promise<MessageThreadsPayload> {
   const q = kind ? `?kind=${encodeURIComponent(kind)}` : "";
   const res = await apiFetch(`/messages/threads${q}`);
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load threads"));
-  const data = (await res.json()) as { items?: MessageThread[] };
-  return data.items ?? [];
+  const data = (await res.json()) as Partial<MessageThreadsPayload> & {
+    items?: MessageThread[];
+  };
+  const items = data.items ?? [];
+  return {
+    items,
+    loaded: data.loaded ?? items.length,
+    capped: Boolean(data.capped),
+  };
 }
 
 export async function openChatThread(tenancyId: string): Promise<MessageThread> {

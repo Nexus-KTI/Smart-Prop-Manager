@@ -94,7 +94,7 @@ export function PortfolioSwitcherClient() {
       </ul>
       <p style={{ marginTop: 16 }}>
         <Link href="/ops" className="table-link">
-          Back to chase ops
+          Back to Across owners
         </Link>
       </p>
     </section>

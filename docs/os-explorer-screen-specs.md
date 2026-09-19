@@ -7,6 +7,8 @@ Explorer root: `web/app/(design)/os-explorer/`
 Gate: `NEXT_PUBLIC_DESIGN_MODE=true|1` (layout `notFound()` when off; never in production AppShell nav)  
 Brand in chrome: **Nexora** (wireframe-only label; production may still say Smart Prop)
 
+**Chrome account:** Sidebar **Signed in** block + banner avatar show mock Ada Okafor (Landlord) with Settings and Log out. Log out is mock only (`/os-explorer?logged_out=1`).
+
 ---
 
 ## Hub
@@ -33,30 +35,58 @@ Brand in chrome: **Nexora** (wireframe-only label; production may still say Smar
 ### P1 Portfolio
 - **Route:** `/os-explorer/phase-1/portfolio`
 - **Purpose:** Properties + units list; unit-less property still visible.
-- **Key states:** units present; property with 0 units + “Add unit”; empty.
-- **Primary CTA:** Add unit / Open unit.
-- **PRD:** §9 F7 / Skip recovery; J1; IA §12 current.
+- **Key states:** units present; property with 0 units + “Add unit”; vacant + **Start tenancy**; Occupancy + Payment filter segments.
+- **Primary CTA:** Add unit / Record payment / Start tenancy / Chase.
+- **PRD:** §9 F7 / Skip recovery; J1; IA §12 current. **Prod parity 2026-09:** All/Occupied/Vacant + payment status filters.
 
 ### P1 Unit
 - **Route:** `/os-explorer/phase-1/unit`
-- **Purpose:** Single unit truth — tenant contact, rent, due day, status.
-- **Key states:** PAID; OVERDUE.
+- **Purpose:** Single unit truth — tenant contact, rent, due day, status, **amount due this cycle**.
+- **Key states:** PAID (next due + Log next rent early); OVERDUE (Record + Chase link).
 - **Primary CTA:** Record payment (manual emphasized for cash).
 - **PRD:** §9 Phase 1 in-scope; J2; Persona Ada §6.
 
 ### P1 Payments
 - **Route:** `/os-explorer/phase-1/payments`
-- **Purpose:** Payment history + manual log / Paystack alternate; receipt affordance.
-- **Key states:** history with PAID rows; empty history + Record payment; form success (row appears).
-- **Primary CTA:** Record manual payment.
-- **PRD:** §9 F2/F3; J2; §17 mono-data for amounts.
+- **Purpose:** Money-in feed + who-owes segments; receipt affordance.
+- **Key states:** Money in history; Overdue / Due soon unit list with Record / Remind; empty + Open overdue unit.
+- **Primary CTA:** Record manual payment / Chase.
+- **PRD:** §9 F2/F3; J2; §17 mono-data for amounts. **Prod parity 2026-09:** Money in / Overdue / Due soon.
 
 ### P1 Reminders
 - **Route:** `/os-explorer/phase-1/reminders`
-- **Purpose:** Send / see reminder log; failure recovery.
-- **Key states:** sent; failed + error detail + Retry (one CTA).
-- **Primary CTA:** Send reminder / Retry.
-- **PRD:** §9 F4; J3.
+- **Purpose:** Action Needed hub — overdue chase, leases ending soon, failed sends.
+- **Key states:** Urgent (ranked merge); Overdue; Ending soon; Failed; empty clear.
+- **Primary CTA:** Remind selected / Retry / Open unit.
+- **PRD:** §9 F4; J3. **Prod parity 2026-09:** `GET /reminders/actions` + `/reminders?filter=`.
+
+### P1 Tenancies
+- **Route:** `/os-explorer/phase-1/tenancies`
+- **Purpose:** Occupancy list; Ending soon (60d); vacant deep-link.
+- **Key states:** All / Active / Ending soon; empty → Find vacant units.
+- **Primary CTA:** Find vacant units / Payments / Dossier.
+- **PRD:** Ada §4.4. **Prod parity 2026-09:** `?occupancy=vacant` on Properties.
+
+### P1 Expenses
+- **Route:** `/os-explorer/phase-1/expenses`
+- **Purpose:** Money out empty + Add expense; pair with Payments.
+- **Key states:** empty default; form open; list after save (mock).
+- **Primary CTA:** Add expense.
+- **PRD:** Ada §4.4. Help tip “money out” → here.
+
+### P1 Reports
+- **Route:** `/os-explorer/phase-1/reports`
+- **Purpose:** Rent roll — occupancy, rent, month expenses link.
+- **Key states:** units present; row Payments + Tenancy / Start tenancy.
+- **Primary CTA:** Payments / Start tenancy / Expenses.
+- **PRD:** Ada §4.4.
+
+### P1 Help
+- **Route:** `/os-explorer/phase-1/help`
+- **Purpose:** Landlord tips mirroring HelpSheet (leases, chase, expenses, rent roll).
+- **Key states:** tip list with Open links.
+- **Primary CTA:** Open target screen.
+- **Chrome:** Banner Bell → overdue / ending soon / failed → `/reminders?filter=…` (not Chase ops).
 
 ### P1 Settings
 - **Route:** `/os-explorer/phase-1/settings`

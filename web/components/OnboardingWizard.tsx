@@ -169,7 +169,7 @@ export function OnboardingWizard({ userName = "" }: OnboardingWizardProps) {
           return (
             <div key={label} className="onboarding-step" data-state={state}>
               <span className="onboarding-step-dot" aria-hidden>
-                {index + 1}
+                {state === "complete" ? "✓" : index + 1}
               </span>
               <span className="onboarding-step-label">{label}</span>
             </div>

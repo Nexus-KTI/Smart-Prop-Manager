@@ -15,6 +15,8 @@ import { FEE_STATUS_LABELS, labelOrTitle } from "@/lib/labels";
 export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
   const { showToast } = useToast();
   const [fees, setFees] = useState<ScheduledFee[]>([]);
+  const [feesCapped, setFeesCapped] = useState(false);
+  const [feesLoaded, setFeesLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
   const [applyUrl, setApplyUrl] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -22,9 +24,14 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setFees(await fetchUnitFees(unitId));
+      const data = await fetchUnitFees(unitId);
+      setFees(data.items);
+      setFeesCapped(data.capped);
+      setFeesLoaded(data.loaded);
     } catch {
       setFees([]);
+      setFeesCapped(false);
+      setFeesLoaded(0);
     } finally {
       setLoading(false);
     }
@@ -49,7 +56,7 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
         showToast("Apply link created");
       }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Could not create apply link");
+      showToast(err instanceof Error ? err.message : "Could not create apply link", "error");
     }
   }
 
@@ -68,7 +75,7 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
       setOpen(false);
       await load();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Could not create fee");
+      showToast(err instanceof Error ? err.message : "Could not create fee", "error");
     }
   }
 
@@ -91,32 +98,39 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
       </div>
       {applyUrl ? <p className="mono-data">{applyUrl}</p> : null}
       {open ? (
-        <form onSubmit={onFee} className="stack-form">
-          <label className="form-label">
-            Label
+        <form onSubmit={onFee} className="settings-inline-form">
+          <div className="form-field">
+            <span className="form-label">Label</span>
             <input name="label" required className="form-input" placeholder="Service charge" />
-          </label>
-          <label className="form-label">
-            Amount
+          </div>
+          <div className="form-field">
+            <span className="form-label">Amount</span>
             <input name="amount" type="number" min="0" step="0.01" required className="form-input" />
-          </label>
-          <label className="form-label">
-            Due
+          </div>
+          <div className="form-field">
+            <span className="form-label">Due</span>
             <input name="due_on" type="date" required className="form-input" />
-          </label>
-          <label className="form-label">
-            Type
+          </div>
+          <div className="form-field">
+            <span className="form-label">Type</span>
             <select name="charge_type" className="form-input" defaultValue="other">
               <option value="service_charge">Service charge</option>
               <option value="other">Other</option>
             </select>
-          </label>
-          <button type="submit" className="btn-primary">
-            Save fee
-          </button>
+          </div>
+          <div className="form-actions">
+            <button type="submit" className="btn-primary">
+              Save fee
+            </button>
+          </div>
         </form>
       ) : null}
       {loading ? <p className="table-muted">Loading fees…</p> : null}
+      {!loading && feesCapped ? (
+        <p className="page-subtitle" role="status">
+          Showing the {feesLoaded} most recent fees (list capped).
+        </p>
+      ) : null}
       <ul className="stack-list">
         {fees.map((f) => (
           <li key={f.id}>
@@ -132,7 +146,7 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
                   void updateFeeStatus(f.id, "paid")
                     .then(load)
                     .catch((err) =>
-                      showToast(err instanceof Error ? err.message : "Update failed"),
+                      showToast(err instanceof Error ? err.message : "Update failed", "error"),
                     )
                 }
               >

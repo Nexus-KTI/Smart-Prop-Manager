@@ -6,13 +6,16 @@ import logging
 import os
 import re
 import smtplib
+import threading
 from email.message import EmailMessage
 from typing import Any, Literal
 from dataclasses import dataclass
 
 from twilio.rest import Client
+from twilio.http.http_client import TwilioHttpClient
 
 from lib.brand import BRAND_NAME
+from lib.http_client import DEFAULT_TIMEOUT, get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,37 @@ NotificationChannel = Literal["whatsapp", "sms", "email"]
 # SMS is the reliable default for NG (WhatsApp needs a production sender/template).
 DEFAULT_CHANNEL: NotificationChannel = "sms"
 VALID_CHANNELS = frozenset({"whatsapp", "sms", "email"})
+_twilio_lock = threading.Lock()
+_twilio_clients: dict[tuple[str, str], Client] = {}
+
+
+def _twilio_client(account_sid: str, auth_token: str) -> Client:
+    key = (account_sid, auth_token)
+    with _twilio_lock:
+        client = _twilio_clients.get(key)
+        if client is None:
+            client = Client(
+                account_sid,
+                auth_token,
+                http_client=TwilioHttpClient(
+                    pool_connections=True,
+                    timeout=20.0,
+                    max_retries=0,
+                ),
+            )
+            _twilio_clients[key] = client
+        return client
+
+
+def close_notification_clients() -> None:
+    with _twilio_lock:
+        clients = list(_twilio_clients.values())
+        _twilio_clients.clear()
+    for client in clients:
+        session = getattr(getattr(client, "http_client", None), "session", None)
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
 
 
 def resolve_channel(channel: str | None) -> NotificationChannel:
@@ -255,7 +289,7 @@ def send_whatsapp(contact: str, message: str):
 
     phone = normalize_e164(contact)
     to = phone if phone.startswith("whatsapp:") else f"whatsapp:{phone}"
-    client = Client(account_sid, auth_token)
+    client = _twilio_client(account_sid, auth_token)
     return client.messages.create(from_=from_number, to=to, body=message)
 
 
@@ -271,7 +305,7 @@ def send_sms(contact: str, message: str):
         )
 
     to = normalize_e164(contact)
-    client = Client(account_sid, auth_token)
+    client = _twilio_client(account_sid, auth_token)
     return client.messages.create(from_=from_number, to=to, body=message)
 
 
@@ -279,8 +313,6 @@ def _send_email_mailgun(
     to: str, message: str, *, subject: str, html: str | None = None
 ) -> None:
     """Send via Mailgun Messages API (HTTP)."""
-    import httpx
-
     api_key = (os.getenv("MAILGUN_API_KEY") or "").strip()
     domain = (os.getenv("MAILGUN_DOMAIN") or "").strip()
     base = (os.getenv("MAILGUN_API_BASE_URL") or "https://api.mailgun.net").rstrip("/")
@@ -297,11 +329,11 @@ def _send_email_mailgun(
     }
     if html:
         data["html"] = html
-    response = httpx.post(
+    response = get_http_client().post(
         url,
         auth=("api", api_key),
         data=data,
-        timeout=20.0,
+        timeout=DEFAULT_TIMEOUT,
     )
     if response.status_code >= 400:
         raise RuntimeError(
@@ -386,13 +418,22 @@ def send_notification(
     *,
     email_subject: str = f"{BRAND_NAME} notice",
     email_html: str | None = None,
+    event: str | None = None,
+    notification_prefs: Any = None,
 ) -> NotificationChannel:
     """
     Send via the preferred channel (WhatsApp / SMS / email).
     Falls back to SMS when channel is unset or invalid.
     Returns the channel actually used.
+    When ``event`` is set, respects profiles.notification_prefs matrix.
     """
+    from lib.notification_prefs import event_channel_enabled
+
     resolved = resolve_channel(channel)
+    if event and not event_channel_enabled(notification_prefs, event, resolved):
+        raise RuntimeError(
+            f"Notification '{event}' is turned off for {resolved} in account preferences"
+        )
     contact = (contact or "").strip()
     if not contact:
         raise RuntimeError("contact is required")

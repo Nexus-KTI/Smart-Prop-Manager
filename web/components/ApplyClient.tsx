@@ -49,7 +49,7 @@ export function ApplyClient() {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!authed) {
-      showToast("Sign in to submit your application");
+      showToast("Sign in to submit your application", "error");
       return;
     }
     const form = event.currentTarget;
@@ -70,7 +70,7 @@ export function ApplyClient() {
       setDone(true);
       showToast("Application submitted");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Submit failed");
+      showToast(err instanceof Error ? err.message : "Submit failed", "error");
     } finally {
       setPending(false);
     }

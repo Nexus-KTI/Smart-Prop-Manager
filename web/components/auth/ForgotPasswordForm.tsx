@@ -4,6 +4,10 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import {
+  AuthCaptcha,
+  requireCaptchaToken,
+} from "@/components/auth/AuthCaptcha";
 import { createClient } from "@/lib/supabase/client";
 
 function formatResetRequestError(message: string | undefined): string {
@@ -17,10 +21,13 @@ function formatResetRequestError(message: string | undefined): string {
   if (lower.includes("rate") || lower.includes("too many")) {
     return "Too many reset attempts. Wait a minute, then try again.";
   }
+  if (lower.includes("captcha")) {
+    return "Complete the captcha and try again.";
+  }
   if (lower.includes("redirect") || lower.includes("url")) {
     return "Reset link redirect isn’t configured. Ask your admin to allow /auth/callback in Supabase.";
   }
-  return raw;
+  return "Could not send reset link. Try again.";
 }
 
 export function ForgotPasswordForm() {
@@ -30,6 +37,7 @@ export function ForgotPasswordForm() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [pending, setPending] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   useEffect(() => {
     setEmail(initialEmail);
@@ -47,12 +55,25 @@ export function ForgotPasswordForm() {
       return;
     }
 
+    let captcha: string | null = null;
+    try {
+      captcha = requireCaptchaToken(captchaToken);
+    } catch (err) {
+      setPending(false);
+      setError(err instanceof Error ? err.message : "Complete the captcha.");
+      return;
+    }
+
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent("/auth/reset-password")}`;
     const supabase = createClient();
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(
       trimmed,
-      { redirectTo },
+      {
+        redirectTo,
+        ...(captcha ? { captchaToken: captcha } : {}),
+      },
     );
+    setCaptchaToken(null);
 
     setPending(false);
 
@@ -103,6 +124,8 @@ export function ForgotPasswordForm() {
           placeholder="Enter your email"
         />
       </label>
+
+      <AuthCaptcha token={captchaToken} onToken={setCaptchaToken} />
 
       <div className="form-actions auth-actions">
         <button className="btn-primary" type="submit" disabled={pending}>

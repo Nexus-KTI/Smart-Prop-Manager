@@ -97,14 +97,14 @@ def test_notify_swallows_smtp_errors(monkeypatch):
     assert result.detail and "SMTP down" in result.detail
 
 
-def test_manual_and_webhook_paths_call_deliver_payment_receipt():
-    """Both paid paths must invoke the shared receipt/landlord-email helper."""
+def test_paid_paths_queue_shared_receipt_delivery():
+    """Every paid path durably queues the shared receipt/notice helper."""
     manual_src = inspect.getsource(payments.record_manual_payment)
     webhook_src = inspect.getsource(payments.paystack_webhook)
     confirm_src = inspect.getsource(payments.confirm_paystack_payment)
-    assert "deliver_payment_receipt" in manual_src
-    assert "deliver_payment_receipt" in webhook_src
-    assert "deliver_payment_receipt" in confirm_src
+    assert "_queue_paid_side_effects" in manual_src
+    assert "_queue_paid_side_effects" in webhook_src
+    assert "_queue_paid_side_effects" in confirm_src
 
 
 def test_deliver_payment_receipt_logs_landlord_notice(monkeypatch):
@@ -303,7 +303,8 @@ def test_mailgun_configured_and_send(monkeypatch):
         captured["data"] = data
         return _Resp()
 
-    monkeypatch.setattr("httpx.post", _fake_post)
+    fake_client = type("Client", (), {"post": staticmethod(_fake_post)})()
+    monkeypatch.setattr("lib.notify.get_http_client", lambda: fake_client)
     send_email("landlord@example.com", "body", subject="Money in: test")
     assert captured["url"] == "https://api.mailgun.net/v3/example.com/messages"
     assert captured["auth"] == ("api", "test-key")

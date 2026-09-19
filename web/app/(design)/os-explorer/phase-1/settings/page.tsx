@@ -1,15 +1,27 @@
 import Link from "next/link";
 
+import { WireframeNote } from "../../_components/ui";
+
 export default function Phase1SettingsPage() {
   return (
     <>
       <p className="osx-meta">
         <Link href="/os-explorer/phase-1">Phase 1</Link> · Settings · PRD F5/F6
       </p>
-      <h1 className="page-title">Settings</h1>
-      <p className="page-subtitle">
-        Profile + one notification channel. Copy must match the real channel.
-      </p>
+      <header className="dashboard-header dashboard-header-row">
+        <div>
+          <h1 className="page-title">Settings</h1>
+          <p className="page-subtitle">
+            Profile + one notification channel. Copy must match the real
+            channel.
+          </p>
+        </div>
+        <div className="dashboard-header-actions">
+          <Link href="/os-explorer/phase-1/help" className="btn-secondary">
+            Help
+          </Link>
+        </div>
+      </header>
       <div className="form-card" style={{ marginTop: 20, maxWidth: 420 }}>
         <div className="osx-field">
           <label className="osx-field-label" htmlFor="osx-name">
@@ -49,6 +61,10 @@ export default function Phase1SettingsPage() {
           </button>
         </div>
       </div>
+      <WireframeNote>
+        Bell overdue → Reminders (not Chase ops). Help tips resolve leases /
+        chase / expenses / rent roll.
+      </WireframeNote>
     </>
   );
 }

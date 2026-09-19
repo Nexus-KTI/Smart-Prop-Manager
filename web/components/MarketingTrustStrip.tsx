@@ -1,27 +1,23 @@
 const FACTS = [
   {
-    label: "Honest reminders",
-    body: "Failure detail you can act on, not a silent send",
+    label: "Unit truth",
+    body: "Money, docs, repairs, and access on one trail",
   },
   {
-    label: "One ledger",
-    body: "Cash, transfer, and Paystack on the same list",
+    label: "Role doors",
+    body: "Landlord, staff, tenant, artisan - invite-scoped",
   },
   {
-    label: "Scoped staff",
-    body: "Managers and caretakers without a shared login",
-  },
-  {
-    label: "Free to first value",
-    body: "No hard paywall once you’re in",
+    label: "Nigeria-native",
+    body: "Cash, transfer, card, WhatsApp",
   },
 ] as const;
 
-/** Trust band under hero, outcome chips, not a second feature parade. */
+/** Compact trust rail under hero - three facts, not a card parade. */
 export function MarketingTrustStrip() {
   return (
     <ul
-      className="marketing-trust marketing-trust-cards"
+      className="marketing-trust marketing-trust-rail"
       aria-label="Why landlords choose Nexora"
     >
       {FACTS.map((fact) => (

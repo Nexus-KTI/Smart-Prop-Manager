@@ -164,3 +164,110 @@ services:
           name: smart-prop-api
           type: web
           envVarKey: SMTP_FROM
+
+  - type: cron
+    name: smart-prop-delivery-outbox
+    runtime: docker
+    schedule: "*/5 * * * *"
+    dockerCommand: python -m scripts.delivery_outbox
+    envVars:
+      - key: SUPABASE_URL
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SUPABASE_URL
+      - key: SUPABASE_ANON_KEY
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SUPABASE_ANON_KEY
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SUPABASE_SERVICE_ROLE_KEY
+      - key: TWILIO_ACCOUNT_SID
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: TWILIO_ACCOUNT_SID
+      - key: TWILIO_AUTH_TOKEN
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: TWILIO_AUTH_TOKEN
+      - key: TWILIO_WHATSAPP_FROM
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: TWILIO_WHATSAPP_FROM
+      - key: TWILIO_SMS_FROM
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: TWILIO_SMS_FROM
+      - key: EMAIL_SERVICE_PROVIDER
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: EMAIL_SERVICE_PROVIDER
+      - key: MAILGUN_API_KEY
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: MAILGUN_API_KEY
+      - key: MAILGUN_DOMAIN
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: MAILGUN_DOMAIN
+      - key: MAILGUN_API_BASE_URL
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: MAILGUN_API_BASE_URL
+      - key: MAILGUN_SENDER_EMAIL
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: MAILGUN_SENDER_EMAIL
+      - key: EMAIL_FROM_NAME
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: EMAIL_FROM_NAME
+      - key: FROM_EMAIL
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: FROM_EMAIL
+      - key: FRONTEND_URL
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: FRONTEND_URL
+      - key: SMTP_HOST
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SMTP_HOST
+      - key: SMTP_PORT
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SMTP_PORT
+      - key: SMTP_USERNAME
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SMTP_USERNAME
+      - key: SMTP_PASSWORD
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SMTP_PASSWORD
+      - key: SMTP_FROM
+        fromService:
+          name: smart-prop-api
+          type: web
+          envVarKey: SMTP_FROM

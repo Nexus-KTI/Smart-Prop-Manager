@@ -1,0 +1,13 @@
+---
+description: FastAPI / Python API conventions
+globs: "{main.py,routers/**/*.py,lib/**/*.py,tests/**/*.py}"
+alwaysApply: false
+---
+
+# API conventions
+
+- Auth via existing `lib.auth` helpers; respect AAL/MFA and rate limits.
+- Public abuse surfaces use `lib.rate_limit` + optional `lib.captcha`.
+- Prefer service role only where already patterned (leads, admin, webhooks).
+- Add/extend tests under `tests/` for new auth, money, or tenancy logic.
+- Do not log secrets. Keep `.env.example` in sync when adding env vars.

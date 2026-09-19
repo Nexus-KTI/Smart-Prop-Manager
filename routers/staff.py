@@ -19,6 +19,8 @@ from lib.access import (
 from lib.audit import list_audit_for_owner, record_audit
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
+from lib.invite_bind import require_invite_contact_match
+from lib.rate_limit import enforce_rate_limit
 
 router = APIRouter(prefix="/staff", tags=["staff"])
 
@@ -219,17 +221,32 @@ def invite_staff(
         ]
         svc.table("staff_membership_properties").insert(links).execute()
 
+    notify: dict = {"sent": False, "channel": None, "error": None}
     try:
-        from lib.notify import send_notification
+        from lib.delivery_outbox import enqueue_notification, flush_delivery_outbox
+        from lib.email_templates import frontend_base_url
 
-        send_notification(
-            None,
-            contact,
-            f"You've been invited as {role} on Nexora. Sign in, then open "
-            f"/staff/claim?token={token}",
+        claim_url = f"{frontend_base_url()}/staff/claim?token={token}"
+        queued = enqueue_notification(
+            svc,
+            idempotency_key=f"staff-invite:{membership.get('id') or token}",
+            channel=None,
+            contact=contact,
+            message=(
+                f"You've been invited as {role} on Nexora. "
+                f"Sign in, then open {claim_url}"
+            ),
+            email_subject="Nexora staff invite",
         )
-    except Exception:
-        pass
+        flush_delivery_outbox(db=svc, batch_size=5)
+        notify = {
+            "sent": True,
+            "queued": True,
+            "channel": queued.get("channel"),
+            "error": None,
+        }
+    except Exception as exc:  # noqa: BLE001 — invite must succeed even if notify fails
+        notify["error"] = str(exc) or "notify_failed"
 
     record_audit(
         ctx,
@@ -243,11 +260,18 @@ def invite_staff(
         "membership": _serialize_membership(dict(membership)),
         "invite_token": token,
         "claim_path": f"/staff/claim?token={token}",
+        "notify": notify,
     }
 
 
 @router.post("/claim")
 def claim_staff_invite(payload: dict, user: AuthedUser = Depends(get_current_user)):
+    enforce_rate_limit(
+        f"claim-staff:{user.id}",
+        limit=10,
+        window_seconds=60,
+        detail="Too many claim attempts. Try again shortly.",
+    )
     token = (payload.get("token") or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="token is required")
@@ -264,6 +288,11 @@ def claim_staff_invite(payload: dict, user: AuthedUser = Depends(get_current_use
     if not rows:
         raise HTTPException(status_code=404, detail="Invite not found")
     membership = dict(rows[0])
+    require_invite_contact_match(
+        membership.get("invite_contact"),
+        user.access_token,
+        detail="Sign in with the phone or email this staff invite was sent to.",
+    )
     if membership.get("status") == "revoked":
         raise HTTPException(status_code=410, detail="Invite revoked")
     if membership.get("user_id") and membership["user_id"] != user.id:
@@ -350,8 +379,15 @@ def portfolio_overdue_ops(
 
     property_ids = accessible_property_ids_for_portfolio(ctx)
     if not property_ids:
-        return {"items": [], "owner_id": ctx.owner_id, "role": ctx.role}
+        return {
+            "items": [],
+            "owner_id": ctx.owner_id,
+            "role": ctx.role,
+            "loaded": 0,
+            "capped": False,
+        }
 
+    OPS_UNIT_CAP = 200
     svc = create_service_client()
     rows = (
         svc.table("units")
@@ -364,7 +400,7 @@ def portfolio_overdue_ops(
         .in_("property_id", property_ids)
         .eq("properties.owner_id", ctx.owner_id)
         .order("created_at", desc=True)
-        .limit(200)
+        .limit(OPS_UNIT_CAP)
         .execute()
         .data
         or []
@@ -391,6 +427,8 @@ def portfolio_overdue_ops(
         "owner_id": ctx.owner_id,
         "role": ctx.role,
         "permissions": sorted(ctx.permissions),
+        "loaded": len(items),
+        "capped": len(items) >= OPS_UNIT_CAP,
     }
 
 

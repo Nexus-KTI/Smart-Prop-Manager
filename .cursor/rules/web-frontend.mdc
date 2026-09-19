@@ -1,0 +1,16 @@
+---
+description: Next.js web + design-system craft
+globs: "web/**/*.{tsx,ts,css}"
+alwaysApply: false
+---
+
+# Web / frontend craft
+
+- Follow `docs/design-system.md` and existing classes in `web/app/globals.css`.
+- Prefer editing existing components/classes over new design systems.
+- Marketing: flat editorial, section rhythm via `.section-spacing` / `.section-bg-alt`.
+- Product shell: `--shell-inset`, `.form-card`, `.data-table-wrap`, `.dashboard-empty`.
+- Amounts/dates use `.mono-data`. Interactive radius defaults to 6px in product chrome.
+- Avoid glow stacks, multi-layer shadows, purple accents, and emoji decoration.
+- Parent KTI orange is `--brand` / `text-brand` - stamps and marks only; keep `--accent` for primary CTAs and nav.
+- Read `web/AGENTS.md` / Next docs under `node_modules/next/dist/docs/` before novel Next APIs.

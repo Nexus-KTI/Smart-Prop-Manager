@@ -112,6 +112,11 @@ function PropertiesPageInner() {
   const searchParams = useSearchParams();
   const highlightUnitId = searchParams.get("highlight");
   const highlightPropertyId = searchParams.get("highlightProperty");
+  const occupancyParam = searchParams.get("occupancy");
+  const initialOccupancy =
+    occupancyParam === "vacant" || occupancyParam === "occupied"
+      ? occupancyParam
+      : "all";
 
   const [portfolioUnits, setPortfolioUnits] = useState<PortfolioUnit[]>([]);
   const [emptyProperties, setEmptyProperties] = useState<Property[]>([]);
@@ -213,6 +218,7 @@ function PropertiesPageInner() {
         properties={checklistProperties}
         highlightUnitId={highlightUnitId}
         highlightPropertyId={highlightPropertyId}
+        initialOccupancy={initialOccupancy}
         hasMore={Boolean(nextCursor)}
         loadingMore={loadingMore}
         onLoadMore={() => void onLoadMore()}

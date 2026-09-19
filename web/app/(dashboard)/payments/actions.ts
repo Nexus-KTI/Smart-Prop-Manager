@@ -49,15 +49,21 @@ export async function recordManualPaymentAction(
 
 export async function confirmPaystackPaymentAction(
   unitId: string,
+  transactionId: string,
   reference: string,
 ): Promise<PaymentFormState> {
   const ref = reference.trim();
-  if (!ref) {
-    return { error: "Missing Paystack reference." };
+  const txnId = transactionId.trim();
+  if (!ref || !txnId) {
+    return { error: "Missing Paystack transaction details." };
   }
 
   try {
-    await confirmPaystackPayment({ unit_id: unitId, reference: ref });
+    await confirmPaystackPayment({
+      unit_id: unitId,
+      reference: ref,
+      transaction_id: txnId,
+    });
     revalidatePath(`/payments/${unitId}`);
     revalidatePath("/properties");
     return { success: "Paystack payment confirmed." };

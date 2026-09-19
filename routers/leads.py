@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 from lib.auth import AuthedUser, require_admin
 from lib.brand import BRAND_NAME
 from lib.db import create_service_client
-from lib.notify import send_notification
 from lib.pagination import apply_desc_cursor, page_size, paginate_desc
 
 logger = logging.getLogger(__name__)
@@ -114,10 +113,21 @@ def invite_lead(lead_id: str, user: AuthedUser = Depends(require_admin)):
     invite_error: str | None = None
 
     if whatsapp:
-        # Prefer SMS for NG delivery; fall back to WhatsApp if SMS fails.
+        # Prefer SMS for NG delivery; fall back to WhatsApp if SMS enqueue fails.
+        from lib.delivery_outbox import enqueue_notification, flush_delivery_outbox
+
         for channel in ("sms", "whatsapp"):
             try:
-                invite_channel = send_notification(channel, whatsapp, message)
+                queued = enqueue_notification(
+                    db,
+                    idempotency_key=f"lead-invite:{lead_id}:{channel}",
+                    channel=channel,
+                    contact=whatsapp,
+                    message=message,
+                    email_subject="You're invited to Nexora",
+                )
+                flush_delivery_outbox(db=db, batch_size=5)
+                invite_channel = queued.get("channel") or channel
                 invite_sent = True
                 break
             except Exception as exc:

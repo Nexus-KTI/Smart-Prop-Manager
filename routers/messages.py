@@ -12,6 +12,10 @@ from lib.db import create_service_client
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
+THREADS_LIST_LIMIT = 100
+UNREAD_SCAN_PAGE = 200
+UNREAD_SCAN_MAX = 2000
+
 
 def _first_row(data: Any) -> dict | None:
     if isinstance(data, list) and data and isinstance(data[0], dict):
@@ -310,43 +314,47 @@ def post_payment_to_chat(db: Any, transaction: dict) -> dict | None:
 
 @router.get("/unread-count")
 def unread_count(user: AuthedUser = Depends(get_current_user)):
-    threads = (
-        user.db.table("message_threads")
-        .select("id, last_message_at, landlord_id, tenant_user_id")
-        .or_(f"landlord_id.eq.{user.id},tenant_user_id.eq.{user.id}")
-        .limit(200)
-        .execute()
-        .data
-        or []
-    )
-    # Landlord query: RLS returns landlord threads; tenant: tenant threads.
-    # Dual or_ may not work under RLS for landlord-only select — fetch both shapes.
-    if not threads:
-        as_landlord = (
-            user.db.table("message_threads")
-            .select("id, last_message_at")
-            .eq("landlord_id", user.id)
-            .limit(200)
-            .execute()
-            .data
-            or []
-        )
-        as_tenant = (
-            user.db.table("message_threads")
-            .select("id, last_message_at")
-            .eq("tenant_user_id", user.id)
-            .limit(200)
-            .execute()
-            .data
-            or []
-        )
-        threads = as_landlord + as_tenant
+    """Unread thread count — pages through threads so the rail badge is not stuck at 200."""
 
-    count = 0
-    for t in threads:
-        if _unread_for_thread(user, dict(t)):
-            count += 1
-    return {"unread_threads": count}
+    def _page(eq_col: str, offset: int) -> list:
+        end = offset + UNREAD_SCAN_PAGE - 1
+        return (
+            user.db.table("message_threads")
+            .select("id, last_message_at, landlord_id, tenant_user_id")
+            .eq(eq_col, user.id)
+            .order("last_message_at", desc=True)
+            .range(offset, end)
+            .execute()
+            .data
+            or []
+        )
+
+    seen: set[str] = set()
+    threads: list[dict] = []
+    capped = False
+    for eq_col in ("landlord_id", "tenant_user_id"):
+        offset = 0
+        while offset < UNREAD_SCAN_MAX:
+            batch = _page(eq_col, offset)
+            for row in batch:
+                tid = str(row.get("id") or "")
+                if not tid or tid in seen:
+                    continue
+                seen.add(tid)
+                threads.append(dict(row))
+            if len(batch) < UNREAD_SCAN_PAGE:
+                break
+            offset += UNREAD_SCAN_PAGE
+            if offset >= UNREAD_SCAN_MAX:
+                capped = True
+                break
+
+    count = sum(1 for t in threads if _unread_for_thread(user, t))
+    return {
+        "unread_threads": count,
+        "scanned": len(threads),
+        "capped": capped,
+    }
 
 
 @router.get("/contacts")
@@ -433,22 +441,19 @@ def list_threads(
             .select("*")
             .eq(eq_col, user.id)
             .order("last_message_at", desc=True)
-            .limit(100)
+            .limit(THREADS_LIST_LIMIT)
         )
         if kind:
             q = q.eq("kind", kind)
         return q.execute().data or []
 
-    rows = _fetch("landlord_id")
-    if not rows:
-        rows = _fetch("tenant_user_id")
-    else:
-        # landlord who is also tenant elsewhere
-        extra = _fetch("tenant_user_id")
-        seen = {r["id"] for r in rows}
-        for r in extra:
-            if r["id"] not in seen:
-                rows.append(r)
+    landlord_rows = _fetch("landlord_id")
+    tenant_rows = _fetch("tenant_user_id")
+    rows = list(landlord_rows)
+    seen = {r["id"] for r in rows}
+    for r in tenant_rows:
+        if r["id"] not in seen:
+            rows.append(r)
 
     items = []
     for row in rows:
@@ -456,7 +461,15 @@ def list_threads(
         item["unread"] = _unread_for_thread(user, item)
         items.append(item)
     items.sort(key=lambda x: x.get("last_message_at") or x.get("created_at") or "", reverse=True)
-    return {"items": items}
+    capped = (
+        len(landlord_rows) >= THREADS_LIST_LIMIT
+        or len(tenant_rows) >= THREADS_LIST_LIMIT
+    )
+    return {
+        "items": items,
+        "loaded": len(items),
+        "capped": capped,
+    }
 
 
 @router.post("/threads/chat", status_code=status.HTTP_201_CREATED)

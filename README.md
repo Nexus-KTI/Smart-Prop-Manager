@@ -45,7 +45,7 @@ Forgot-password emails redirect through `/auth/callback` → `/auth/reset-passwo
 6. Keep `SUPABASE_SERVICE_ROLE_KEY`, Twilio, and SMTP secrets on API/cron only.
 7. Apply SQL under `sql/` in order (`000` → `004`) in the Supabase SQL Editor.
 8. Optional observability: set `SENTRY_DSN` (API) and `NEXT_PUBLIC_SENTRY_DSN` (web).
-9. Closed beta is invite-only by default (`NEXT_PUBLIC_INVITE_ONLY_SIGNUP=true` in `web/.env.example`): `/signup` requires `?invite=…` from an admin invite.
+9. Closed beta invite-only (`NEXT_PUBLIC_INVITE_ONLY_SIGNUP=true`): `/signup?invite=<lead uuid>` is validated via `GET /public/invites/{id}` (lead must be `status=invited`). Marketing forms post to `POST /public/leads` (rate-limited; set `TURNSTILE_SECRET_KEY` + `NEXT_PUBLIC_TURNSTILE_SITE_KEY` to enforce Cloudflare Turnstile). In Supabase Dashboard → Authentication → Attack Protection, select Turnstile and save the same secret key so Auth requests can validate `captchaToken`. Add `localhost` and the production web hostname to the Cloudflare widget. On reverse proxies set `TRUST_PROXY=1`. True signup lock still needs Supabase Auth attack protection / hooks — anon can call Auth APIs directly.
 
 ## Smoke test
 

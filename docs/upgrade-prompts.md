@@ -91,7 +91,7 @@ Fixes landed with M2: accent `focus-visible` rings on auth tabs, settings tabs, 
 
 ## Now (open) — implement next
 
-_No open Now prompts._ Continue layout prompts from [`layout-upgrade-prompts.md`](layout-upgrade-prompts.md) **one at a time** (next: 1.2), or prod Twilio upgrade for SMS.
+_No open Now prompts._ Ada: servers + pytest + static-headed-gate **PASS** (2026-09-15); **headed live** still needs your signed-in walk ([`landlord-ada-loop-smoke.md`](landlord-ada-loop-smoke.md)). After that: prod Twilio upgrade for SMS.
 
 ---
 

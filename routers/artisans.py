@@ -10,6 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
+from lib.invite_bind import require_invite_contact_match
+from lib.rate_limit import enforce_rate_limit
 
 router = APIRouter(prefix="/artisans", tags=["artisans"])
 
@@ -29,17 +31,22 @@ def _now() -> str:
 
 @router.get("/roster")
 def list_roster(user: AuthedUser = Depends(get_current_user)):
+    ROSTER_PAGE_LIMIT = 100
     rows = (
         user.db.table("landlord_artisans")
         .select("*")
         .eq("landlord_id", user.id)
         .order("created_at", desc=True)
-        .limit(100)
+        .limit(ROSTER_PAGE_LIMIT)
         .execute()
         .data
         or []
     )
-    return {"items": rows}
+    return {
+        "items": rows,
+        "loaded": len(rows),
+        "capped": len(rows) >= ROSTER_PAGE_LIMIT,
+    }
 
 
 @router.post("/invite", status_code=status.HTTP_201_CREATED)
@@ -62,15 +69,49 @@ def invite_artisan(payload: dict, user: AuthedUser = Depends(get_current_user)):
     if not created:
         raise HTTPException(status_code=500, detail="Could not create invite")
 
+    notify: dict = {"sent": False, "channel": None, "error": None}
+    try:
+        from lib.delivery_outbox import enqueue_notification, flush_delivery_outbox
+        from lib.email_templates import frontend_base_url
+
+        claim_url = f"{frontend_base_url()}/artisan/claim?token={token}"
+        queued = enqueue_notification(
+            user.db,
+            idempotency_key=f"artisan-invite:{created.get('id') or token}",
+            channel=None,
+            contact=contact,
+            message=(
+                f"You've been invited as an artisan on Nexora. "
+                f"Claim your jobs link: {claim_url}"
+            ),
+            email_subject="Nexora artisan invite",
+        )
+        flush_delivery_outbox(db=user.db, batch_size=5)
+        notify = {
+            "sent": True,
+            "queued": True,
+            "channel": queued.get("channel"),
+            "error": None,
+        }
+    except Exception as exc:  # noqa: BLE001 — invite must succeed even if notify fails
+        notify["error"] = str(exc) or "notify_failed"
+
     # Claim URL is frontend-owned; return token for landlord to share.
     return {
         "item": created,
         "claim_path": f"/artisan/claim?token={token}",
+        "notify": notify,
     }
 
 
 @router.post("/claim")
 def claim_invite(payload: dict, user: AuthedUser = Depends(get_current_user)):
+    enforce_rate_limit(
+        f"claim-artisan:{user.id}",
+        limit=10,
+        window_seconds=60,
+        detail="Too many claim attempts. Try again shortly.",
+    )
     token = (payload.get("token") or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="token is required")
@@ -104,6 +145,11 @@ def claim_invite(payload: dict, user: AuthedUser = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Invite not found or already claimed")
 
     invite = dict(rows[0])
+    require_invite_contact_match(
+        invite.get("invite_contact"),
+        user.access_token,
+        detail="Sign in with the phone or email this artisan invite was sent to.",
+    )
     now = _now()
 
     # Upsert artisan profile
@@ -138,6 +184,7 @@ def claim_invite(payload: dict, user: AuthedUser = Depends(get_current_user)):
             {
                 "artisan_user_id": user.id,
                 "status": "active",
+                "invite_token": None,
                 "claimed_at": now,
                 "updated_at": now,
             }

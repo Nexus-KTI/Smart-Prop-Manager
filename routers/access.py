@@ -108,12 +108,13 @@ def list_passes(
     property_id: str | None = Query(default=None),
     user: AuthedUser = Depends(get_current_user),
 ):
+    PASSES_PAGE_LIMIT = 100
     q = (
         user.db.table("access_passes")
         .select("*")
         .eq("landlord_id", user.id)
         .order("created_at", desc=True)
-        .limit(100)
+        .limit(PASSES_PAGE_LIMIT)
     )
     if property_id:
         require_property_access(
@@ -121,7 +122,12 @@ def list_passes(
         )
         q = q.eq("property_id", property_id)
     rows = q.execute().data or []
-    return {"items": [_serialize_pass(dict(r)) for r in rows]}
+    items = [_serialize_pass(dict(r)) for r in rows]
+    return {
+        "items": items,
+        "loaded": len(items),
+        "capped": len(items) >= PASSES_PAGE_LIMIT,
+    }
 
 
 @router.post("/passes", status_code=status.HTTP_201_CREATED)
@@ -248,12 +254,13 @@ def revoke_pass(pass_id: str, user: AuthedUser = Depends(get_current_user)):
 
 @router.get("/me")
 def list_my_passes(user: AuthedUser = Depends(get_current_user)):
+    MY_PASSES_LIMIT = 50
     rows = (
         user.db.table("access_passes")
         .select("*")
         .eq("subject_user_id", user.id)
         .order("created_at", desc=True)
-        .limit(50)
+        .limit(MY_PASSES_LIMIT)
         .execute()
         .data
         or []
@@ -262,4 +269,9 @@ def list_my_passes(user: AuthedUser = Depends(get_current_user)):
     # Prefer showing still-usable codes first
     active = [i for i in items if i.get("effective_status") == "active"]
     other = [i for i in items if i.get("effective_status") != "active"]
-    return {"items": active + other}
+    ordered = active + other
+    return {
+        "items": ordered,
+        "loaded": len(ordered),
+        "capped": len(items) >= MY_PASSES_LIMIT,
+    }

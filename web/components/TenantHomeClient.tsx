@@ -4,13 +4,19 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { FetchErrorState } from "@/components/FetchErrorState";
+import { TenantAutopayCard } from "@/components/TenantAutopayCard";
 import { TenantNoLeaseEmpty } from "@/components/TenantNoLeaseEmpty";
 import {
+  chargeSavedCard,
   createPendingPaystackPayment,
   confirmPaystackPayment,
   fetchMe,
+  fetchMyTasks,
   fetchMyTenancy,
   fetchMyUtilities,
+  fetchSavedCards,
+  type OpsTask,
+  type SavedPaymentMethod,
   type Tenancy,
 } from "@/lib/api";
 import { BRAND_NAME, supportWhatsAppUrl } from "@/lib/brand";
@@ -47,6 +53,9 @@ export function TenantHomeClient() {
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [supportUrl, setSupportUrl] = useState<string | null>(null);
   const [hasUtilities, setHasUtilities] = useState(false);
+  const [savedCards, setSavedCards] = useState<SavedPaymentMethod[]>([]);
+  const [payCardId, setPayCardId] = useState("");
+  const [openTodos, setOpenTodos] = useState<OpsTask[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,8 +72,32 @@ export function TenantHomeClient() {
         } catch {
           setHasUtilities(false);
         }
+        try {
+          const cards = await fetchSavedCards();
+          setSavedCards(cards);
+          if (row.autopay_payment_method_id) {
+            setPayCardId(row.autopay_payment_method_id);
+          } else if (cards[0]?.id) {
+            setPayCardId(cards[0].id);
+          }
+        } catch {
+          setSavedCards([]);
+        }
+        try {
+          const tasks = await fetchMyTasks();
+          setOpenTodos(
+            tasks.filter((t) => {
+              const s = (t.status || "").toLowerCase();
+              return s !== "done" && s !== "canceled" && s !== "cancelled";
+            }),
+          );
+        } catch {
+          setOpenTodos([]);
+        }
       } else {
         setHasUtilities(false);
+        setSavedCards([]);
+        setOpenTodos([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
@@ -97,7 +130,7 @@ export function TenantHomeClient() {
       await navigator.clipboard.writeText(url);
       showToast("Home link copied. Save it or send to yourself");
     } catch {
-      showToast("Could not copy link");
+      showToast("Could not copy link", "error");
     }
   }
 
@@ -119,6 +152,20 @@ export function TenantHomeClient() {
     setPaying(true);
     setError(null);
     try {
+      // Prefer saved card one-shot when selected.
+      if (payCardId) {
+        await chargeSavedCard({
+          unit_id: tenancy.unit_id,
+          payment_method_id: payCardId,
+          amount: due,
+          charge_type: "rent",
+        });
+        showToast("Rent paid with saved card");
+        await load();
+        setPaying(false);
+        return;
+      }
+
       const pending = await createPendingPaystackPayment({
         unit_id: tenancy.unit_id,
         amount: due,
@@ -134,9 +181,12 @@ export function TenantHomeClient() {
       const paystack = new PaystackPop();
       paystack.newTransaction({
         key: publicKey,
-        email: "tenant@nexora.pay",
+        email: profileEmail || "tenant@nexora.pay",
         amount: Math.round(due * 100),
         currency: "NGN",
+        // Paystack documents `reference`; the bundled declaration omits it.
+        // @ts-expect-error upstream @paystack/inline-js type gap
+        reference: txn.payment_reference || undefined,
         metadata: { transaction_id: txnId, unit_id: tenancy.unit_id },
         onSuccess: (response: { reference: string }) => {
           void (async () => {
@@ -354,13 +404,31 @@ export function TenantHomeClient() {
           </div>
         </div>
         <div className="dashboard-header-actions">
+          {savedCards.length > 0 ? (
+            <label className="form-field" style={{ margin: 0, minWidth: 160 }}>
+              <span className="form-label">Pay with</span>
+              <select
+                className="form-input"
+                value={payCardId}
+                disabled={paying}
+                onChange={(e) => setPayCardId(e.target.value)}
+              >
+                <option value="">New Paystack checkout</option>
+                {savedCards.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {(c.card_type || "Card").toUpperCase()} ···· {c.last4 || "????"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <button
             type="button"
             className="btn-primary"
             disabled={paying || due <= 0}
             onClick={() => void payRent()}
           >
-            Pay rent
+            {paying ? "Paying…" : payCardId ? "Pay with saved card" : "Pay rent"}
           </button>
           <Link href="/tenant/documents" className="btn-secondary">
             Your documents
@@ -369,6 +437,36 @@ export function TenantHomeClient() {
             Receipts
           </Link>
         </div>
+        <TenantAutopayCard
+          tenancy={tenancy}
+          onUpdated={setTenancy}
+          onToast={showToast}
+        />
+        {openTodos.length > 0 ? (
+          <div className="form-card" style={{ marginBottom: 16 }}>
+            <p className="form-kicker">From your landlord</p>
+            <h2 className="page-title" style={{ fontSize: "1.1rem" }}>
+              {openTodos.length === 1
+                ? "1 open to-do"
+                : `${openTodos.length} open to-dos`}
+            </h2>
+            <ul className="stack-list" style={{ marginTop: 8 }}>
+              {openTodos.slice(0, 3).map((t) => (
+                <li key={t.id}>
+                  <strong>{t.title}</strong>
+                  {t.due_on ? (
+                    <span className="table-muted"> · due {t.due_on}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            <p style={{ marginTop: 12 }}>
+              <Link href="/tenant/tasks" className="btn-secondary">
+                Open to-dos
+              </Link>
+            </p>
+          </div>
+        ) : null}
         <div className="tenant-action-cards" aria-label="Landlord-originated tasks">
           <Link href="/tenant/utilities" className="tenant-action-card">
             <p className="tenant-action-card-title">
@@ -394,7 +492,7 @@ export function TenantHomeClient() {
             <p className="tenant-action-card-body">
               View active access passes issued to your account.
             </p>
-            <p className="tenant-action-card-cta">Open access →</p>
+            <p className="tenant-action-card-cta">Open gate codes →</p>
           </Link>
         </div>
       </section>

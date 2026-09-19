@@ -20,8 +20,10 @@ import {
   chargeStatusTone,
   chargeTypeLabel,
   daysUntilTermEnd,
+  dueDateForUnit,
   formatDueDate,
   formatNaira,
+  nextDueDateForUnit,
   parseTermEnd,
   resolveChargeStatus,
 } from "@/lib/dashboard";
@@ -158,6 +160,38 @@ export function UnitPaymentsClient({
     ? resolveChargeStatus(unitForStatus, transactions, "service_charge")
     : null;
 
+  const cycleDueDate = dueDateForUnit(
+    dueDay ?? null,
+    frequency,
+    new Date(),
+    dueMonth ?? null,
+  );
+  const nextCycleDueDate = nextDueDateForUnit(
+    dueDay ?? null,
+    frequency,
+    new Date(),
+    dueMonth ?? null,
+  );
+  const amountDueThisCycle =
+    (rentStatus !== "PAID" ? rentAmount : 0) +
+    (hasServiceCharge && serviceStatus !== "PAID" ? serviceChargeAmount : 0);
+  const cycleTone =
+    rentStatus === "OVERDUE" || serviceStatus === "OVERDUE"
+      ? "overdue"
+      : rentStatus === "DUE SOON" || serviceStatus === "DUE SOON"
+        ? "due-soon"
+        : amountDueThisCycle > 0
+          ? "pending"
+          : "paid";
+  const cycleStatusLabel =
+    amountDueThisCycle <= 0
+      ? "PAID"
+      : rentStatus === "OVERDUE" || serviceStatus === "OVERDUE"
+        ? "OVERDUE"
+        : rentStatus === "DUE SOON" || serviceStatus === "DUE SOON"
+          ? "DUE SOON"
+          : "PENDING";
+
   const renewalDays = daysUntilTermEnd(unitForStatus);
   const renewalDate = parseTermEnd(termEnd);
   const editUnitHref = `/properties/units/${unitId}/edit`;
@@ -189,6 +223,7 @@ export function UnitPaymentsClient({
     } catch (err) {
       showToast(
         err instanceof Error ? err.message : "Could not load more payments.",
+        "error",
       );
     } finally {
       setLoadingMore(false);
@@ -238,12 +273,15 @@ export function UnitPaymentsClient({
         if (current.some((row) => row.id === saved.id)) return current;
         return [saved, ...current];
       });
-      showToast("Payment recorded");
+      showToast("Payment recorded", "success");
 
       try {
         await refreshHistory();
       } catch {
-        showToast("Payment saved. Refresh the page if it doesn’t appear yet.");
+        showToast(
+          "Payment saved. Refresh the page if it doesn’t appear yet.",
+          "success",
+        );
       }
     } catch (err) {
       setManualError(
@@ -297,6 +335,9 @@ export function UnitPaymentsClient({
           email: checkoutEmail(tenantContact, unitId),
           amount: amountKobo,
           currency: "NGN",
+          // Paystack documents `reference`; the bundled declaration omits it.
+          // @ts-expect-error upstream @paystack/inline-js type gap
+          reference: pending.payment_reference || undefined,
           metadata: {
             unit_id: unitId,
             transaction_id: pending.id,
@@ -323,7 +364,7 @@ export function UnitPaymentsClient({
                   transaction_id: pending.id,
                 });
                 await refreshHistory();
-                showToast("Payment recorded");
+                showToast("Payment recorded", "success");
               } catch (err) {
                 setPaystackError(
                   err instanceof Error
@@ -375,13 +416,13 @@ export function UnitPaymentsClient({
         <div>
           <p className="form-kicker">
             <Link href="/properties">Properties</Link>
-            <span aria-hidden> / </span>
+            {" · "}
             {propertyName} · {unitLabel}
           </p>
           <h1 className="page-title">Payments</h1>
           <p className="page-subtitle">
-            Log cash or transfer, or collect online, rent and other charges
-            share this history.
+            Log cash, transfer, or Paystack. Rent and other charges share this
+            history
             {tenantName ? ` · ${tenantName}` : ""}
             {tenancyHref ? (
               <>
@@ -391,6 +432,7 @@ export function UnitPaymentsClient({
                 </Link>
               </>
             ) : null}
+            .
           </p>
         </div>
         <div className="dashboard-header-actions">
@@ -414,7 +456,7 @@ export function UnitPaymentsClient({
           ) : null}
           <button
             type="button"
-            className="btn-outline"
+            className="btn-secondary"
             onClick={handlePaystack}
             disabled={pendingPaystack || manualOpen}
           >
@@ -431,6 +473,73 @@ export function UnitPaymentsClient({
           ) : null}
         </div>
       </header>
+
+      <div className="stat-row unit-cycle-due" aria-label="Amount due this cycle">
+        <div className="stat-block">
+          <p className="stat-label">Amount due this cycle</p>
+          <p className="stat-value mono-data">{formatNaira(amountDueThisCycle)}</p>
+          <p className="table-muted">
+            {amountDueThisCycle <= 0
+              ? nextCycleDueDate
+                ? (
+                    <>
+                      This cycle is settled · Next due{" "}
+                      <span className="mono-data">
+                        {formatDueDate(nextCycleDueDate)}
+                      </span>
+                    </>
+                  )
+                : "Rent and service charge are recorded for this period"
+              : hasServiceCharge && rentStatus !== "PAID" && serviceStatus !== "PAID"
+                ? "Rent + service charge still open"
+                : rentStatus !== "PAID"
+                  ? "Rent still open"
+                  : "Service charge still open"}
+            {amountDueThisCycle > 0 && cycleDueDate ? (
+              <>
+                {" · Due "}
+                <span className="mono-data">{formatDueDate(cycleDueDate)}</span>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <div className="stat-block">
+          <p className="stat-label">Status</p>
+          <p className="stat-value">
+            <span className={`status-badge ${cycleTone}`}>{cycleStatusLabel}</span>
+          </p>
+          {amountDueThisCycle > 0 && !manualOpen ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ marginTop: 8 }}
+              onClick={() => setManualOpen(true)}
+            >
+              Record payment
+            </button>
+          ) : null}
+          {amountDueThisCycle <= 0 && !manualOpen ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ marginTop: 8 }}
+              onClick={() => {
+                setChargeType("rent");
+                setManualOpen(true);
+              }}
+            >
+              Log next rent early
+            </button>
+          ) : null}
+          {amountDueThisCycle > 0 && cycleStatusLabel === "OVERDUE" ? (
+            <p style={{ marginTop: 8 }}>
+              <Link href={`/reminders/${unitId}`} className="table-link">
+                Chase / remind →
+              </Link>
+            </p>
+          ) : null}
+        </div>
+      </div>
 
       {renewalCopy ? (
         <p
@@ -617,16 +726,10 @@ export function UnitPaymentsClient({
                   {manualOpen ? (
                     "No payments yet. Save the form above to start this log."
                   ) : (
-                    <div className="dashboard-empty" style={{ padding: "8px 0" }}>
-                      <p style={{ margin: "0 0 8px" }}>No payments yet.</p>
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        onClick={() => setManualOpen(true)}
-                      >
-                        Record manual payment
-                      </button>
-                    </div>
+                    <span className="table-muted">
+                      No payments yet. Use Record Manual Payment above to start
+                      this log.
+                    </span>
                   )}
                 </td>
               </tr>
@@ -662,7 +765,7 @@ export function UnitPaymentsClient({
                           className="table-link"
                           target="_blank"
                           rel="noreferrer"
-                          onClick={() => showToast("Receipt opened")}
+                          onClick={() => showToast("Receipt opened", "success")}
                         >
                           Open receipt
                         </a>

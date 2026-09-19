@@ -3,19 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bell,
   Building2,
   CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
   Ellipsis,
   FileText,
   ListChecks,
   Megaphone,
   MessageSquare,
   Receipt,
-  Settings,
   Shield,
   Users,
   Wallet,
@@ -28,16 +27,16 @@ import { NotificationsBell } from "@/components/NotificationsBell";
 import { ToastProvider } from "@/components/ToastProvider";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
 import { fetchAdminMe } from "@/lib/api";
-import { BRAND_NAME } from "@/lib/brand";
-import {
-  applySidebarCollapsed,
-  persistSidebarCollapsed,
-  readSidebarCollapsed,
-} from "@/lib/sidebar";
+import { BrandMark } from "@/components/BrandMark";
+import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
 import {
   formatUnreadBadge,
   useMessageUnreadCount,
 } from "@/lib/use-message-unread";
+import { useSidebarRail } from "@/lib/use-sidebar-rail";
+import { useUrgentActionsCount } from "@/lib/use-urgent-actions-count";
+import { useApplicationsPendingCount } from "@/lib/use-applications-pending-count";
+import { useWorkOrdersOpenCount } from "@/lib/use-work-orders-open-count";
 
 type NavItem = {
   href: string;
@@ -45,26 +44,32 @@ type NavItem = {
   icon: typeof Building2;
 };
 
-/** Daily landlord path, always visible. */
+/** Intentional landlord rail (layout 3.2): daily path, always visible.
+ *  Primary: Properties, Tenancies, Payments, Action needed, Messages,
+ *  Applications, Work orders (+ Admin when allowed).
+ *  Header bell = interrupt summary only; rail uses CircleAlert (not Bell).
+ *  Settings lives in the account menu — not on this rail. */
 const NAV_PRIMARY: NavItem[] = [
   { href: "/properties", label: "Properties", icon: Building2 },
   { href: "/tenancies", label: "Tenancies", icon: Users },
   { href: "/payments", label: "Payments", icon: Wallet },
+  { href: "/reminders", label: "Action needed", icon: CircleAlert },
   { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/applications", label: "Applications", icon: FileText },
   { href: "/work-orders", label: "Work orders", icon: ListChecks },
-  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-/** Secondary destinations, under More until needed. */
+/** Secondary destinations under More (layout 3.2).
+ *  Expenses, Reports, To-dos, Bulletin, Gate codes.
+ *  No Fees / Documents / Inventory hubs. Across-owner chase = /ops
+ *  (linked from Action needed / Team), not the rail.
+ *  To-dos ≠ Work orders; Gate codes ≠ Applications. */
 const NAV_MORE: NavItem[] = [
   { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/reports", label: "Reports", icon: FileText },
-  { href: "/reminders", label: "Reminders", icon: Bell },
-  { href: "/tasks", label: "Tasks", icon: CalendarDays },
+  { href: "/tasks", label: "To-dos", icon: CalendarDays },
   { href: "/publications", label: "Bulletin", icon: Megaphone },
-  { href: "/access", label: "Access", icon: Shield },
-  { href: "/ops", label: "Chase ops", icon: ListChecks },
+  { href: "/access", label: "Gate codes", icon: Shield },
 ];
 
 function pathActive(pathname: string, href: string): boolean {
@@ -74,26 +79,24 @@ function pathActive(pathname: string, href: string): boolean {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
-  // Always false on first paint so SSR HTML matches hydration. Width CSS
-  // already follows html[data-sidebar-collapsed] from the layout boot script.
-  const [collapsed, setCollapsed] = useState(false);
-  const [peekLocked, setPeekLocked] = useState(false);
+  const {
+    collapsed,
+    peekLocked,
+    toggleCollapsed,
+    closeDrawer,
+    unlockPeek,
+    drawerOpen,
+  } = useSidebarRail(pathname);
   const morePathActive = useMemo(
     () => NAV_MORE.some((item) => pathActive(pathname, item.href)),
     [pathname],
   );
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [morePinnedOpen, setMorePinnedOpen] = useState(false);
+  const moreOpen = morePathActive || morePinnedOpen;
   const messageUnread = useMessageUnreadCount();
-
-  useEffect(() => {
-    const next = readSidebarCollapsed();
-    setCollapsed(next);
-    applySidebarCollapsed(next);
-  }, []);
-
-  useEffect(() => {
-    if (morePathActive) setMoreOpen(true);
-  }, [morePathActive]);
+  const urgentActions = useUrgentActionsCount();
+  const applicationsPending = useApplicationsPendingCount();
+  const workOrdersOpen = useWorkOrdersOpenCount();
 
   useEffect(() => {
     let active = true;
@@ -110,15 +113,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  function toggleCollapsed() {
-    const next = !collapsed;
-    setCollapsed(next);
-    persistSidebarCollapsed(next);
-    // Lock peek until the pointer leaves, otherwise hover re-expands immediately.
-    if (next) setPeekLocked(true);
-    else setPeekLocked(false);
-  }
-
   const adminActive =
     pathname === "/admin/leads" || pathname.startsWith("/admin/");
 
@@ -126,7 +120,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const active = pathActive(pathname, item.href);
     const Icon = item.icon;
     const isMessages = item.href === "/messages";
-    const badge = isMessages ? formatUnreadBadge(messageUnread) : "";
+    const isReminders = item.href === "/reminders";
+    const isApplications = item.href === "/applications";
+    const isWorkOrders = item.href === "/work-orders";
+    const badgeCount = isMessages
+      ? messageUnread
+      : isReminders
+        ? urgentActions
+        : isApplications
+          ? applicationsPending
+          : isWorkOrders
+            ? workOrdersOpen
+            : 0;
+    const badge = formatUnreadBadge(badgeCount);
+    const badgeAria = isMessages
+      ? `${item.label}, ${messageUnread} unread`
+      : isReminders
+        ? `${item.label}, ${urgentActions} action needed`
+        : isApplications
+          ? `${item.label}, ${applicationsPending} pending`
+          : isWorkOrders
+            ? `${item.label}, ${workOrdersOpen} open`
+            : item.label;
     return (
       <Link
         key={item.href}
@@ -135,11 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         data-active={active}
         aria-current={active ? "page" : undefined}
         data-tooltip={item.label}
-        aria-label={
-          badge
-            ? `${item.label}, ${messageUnread} unread`
-            : item.label
-        }
+        aria-label={badge ? badgeAria : item.label}
       >
         <span className="nav-item-icon-wrap">
           <Icon className="nav-item-icon" size={20} strokeWidth={1.75} />
@@ -159,17 +170,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <UserMenuProvider>
       <HelpProvider audience="landlord">
       <div className="app-shell">
+        {drawerOpen ? (
+          <button
+            type="button"
+            className="sidebar-backdrop"
+            aria-label="Close menu"
+            onClick={closeDrawer}
+          />
+        ) : null}
         <aside
           className="sidebar"
           data-collapsed={collapsed}
           data-peek-locked={peekLocked ? "true" : undefined}
           aria-label="Primary"
-          onMouseLeave={() => setPeekLocked(false)}
+          onMouseLeave={unlockPeek}
         >
           <div className="sidebar-brand">
-            <span className="sidebar-brand-full">{BRAND_NAME}</span>
-            <span className="sidebar-brand-mark" aria-hidden="true">
-              N
+            <span className="sidebar-brand-lockup">
+              <span className="sidebar-brand-mark" aria-hidden="true">
+                <BrandMark size={22} />
+              </span>
+              <span className="sidebar-brand-text">
+                <span className="sidebar-brand-name">{BRAND_NAME}</span>
+                <span className="sidebar-brand-stamp">{BRAND_STAMP}</span>
+              </span>
             </span>
           </div>
 
@@ -184,7 +208,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 data-tooltip={moreOpen ? "Less" : "More"}
                 aria-expanded={moreOpen}
                 aria-controls="sidebar-more-items"
-                onClick={() => setMoreOpen((open) => !open)}
+                onClick={() => setMorePinnedOpen((open) => !open)}
               >
                 {moreOpen ? (
                   <ChevronDown

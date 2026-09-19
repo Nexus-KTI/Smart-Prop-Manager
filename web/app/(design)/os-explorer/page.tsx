@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 const PHASES = [
   {
@@ -28,10 +32,19 @@ const PHASES = [
   },
 ];
 
-export default function OsExplorerHubPage() {
+function HubBody() {
+  const searchParams = useSearchParams();
+  const loggedOut = searchParams.get("logged_out") === "1";
+
   return (
     <>
       <p className="osx-meta">Wireframe · mock data · not production</p>
+      {loggedOut ? (
+        <p className="osx-alert-text" role="status">
+          Mock log out - explorer stays open (no real session). Re-enter Phase 1
+          as Ada.
+        </p>
+      ) : null}
       <h1 className="page-title">Nexora</h1>
       <p className="page-subtitle">
         Who paid. Who owes. What&apos;s next., click through Phases 1–5 with
@@ -51,5 +64,13 @@ export default function OsExplorerHubPage() {
         ))}
       </div>
     </>
+  );
+}
+
+export default function OsExplorerHubPage() {
+  return (
+    <Suspense fallback={<p className="page-subtitle">Loading…</p>}>
+      <HubBody />
+    </Suspense>
   );
 }

@@ -14,29 +14,25 @@ import {
   Megaphone,
   MessageSquare,
   Receipt,
-  Settings,
   Shield,
   Wallet,
   Wrench,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { HelpFab, HelpIconButton, HelpProvider } from "@/components/HelpSheet";
-import { ShellTopbar, ShellTopbarLink } from "@/components/ShellTopbar";
+import { ShellTopbar } from "@/components/ShellTopbar";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
 import { ToastProvider } from "@/components/ToastProvider";
-import { BRAND_NAME } from "@/lib/brand";
-import {
-  applySidebarCollapsed,
-  persistSidebarCollapsed,
-  readSidebarCollapsed,
-} from "@/lib/sidebar";
+import { BrandMark } from "@/components/BrandMark";
+import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
 import {
   formatUnreadBadge,
   useMessageUnreadCount,
 } from "@/lib/use-message-unread";
+import { useSidebarRail } from "@/lib/use-sidebar-rail";
 
 type NavItem = {
   href: string;
@@ -44,23 +40,23 @@ type NavItem = {
   icon: typeof Home;
 };
 
-/** Daily tenant jobs, always visible. */
+/** Daily tenant jobs, always visible (Messages in rail, same as landlord). */
 const NAV_PRIMARY: NavItem[] = [
   { href: "/tenant", label: "Home", icon: Home },
   { href: "/tenant/fees", label: "Fees", icon: Wallet },
   { href: "/tenant/requests", label: "Requests", icon: Wrench },
+  { href: "/tenant/messages", label: "Messages", icon: MessageSquare },
   { href: "/tenant/utilities", label: "Utilities", icon: Zap },
   { href: "/tenant/documents", label: "Documents", icon: FileText },
-  { href: "/tenant/access", label: "Access", icon: KeyRound },
+  { href: "/tenant/access", label: "Gate codes", icon: KeyRound },
 ];
 
-/** Secondary, under More; Messages also in topbar. */
+/** Secondary destinations, under More until needed. Settings lives in the account menu. */
 const NAV_MORE: NavItem[] = [
   { href: "/tenant/notices", label: "Notices", icon: Megaphone },
   { href: "/tenant/claim", label: "Claim invite", icon: Shield },
   { href: "/tenant/receipts", label: "Receipts", icon: Receipt },
-  { href: "/tenant/tasks", label: "Tasks", icon: ListChecks },
-  { href: "/tenant/settings", label: "Settings", icon: Settings },
+  { href: "/tenant/tasks", label: "To-dos", icon: ListChecks },
 ];
 
 function pathActive(pathname: string, href: string): boolean {
@@ -70,38 +66,27 @@ function pathActive(pathname: string, href: string): boolean {
 
 export function TenantShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
-  const [peekLocked, setPeekLocked] = useState(false);
+  const {
+    collapsed,
+    peekLocked,
+    toggleCollapsed,
+    closeDrawer,
+    unlockPeek,
+    drawerOpen,
+  } = useSidebarRail(pathname);
   const morePathActive = useMemo(
     () => NAV_MORE.some((item) => pathActive(pathname, item.href)),
     [pathname],
   );
-  const [moreOpen, setMoreOpen] = useState(false);
-  const messagesActive = pathActive(pathname, "/tenant/messages");
+  const [morePinnedOpen, setMorePinnedOpen] = useState(false);
+  const moreOpen = morePathActive || morePinnedOpen;
   const messageUnread = useMessageUnreadCount();
-  const messagesBadge = formatUnreadBadge(messageUnread);
-
-  useEffect(() => {
-    const next = readSidebarCollapsed();
-    setCollapsed(next);
-    applySidebarCollapsed(next);
-  }, []);
-
-  useEffect(() => {
-    if (morePathActive) setMoreOpen(true);
-  }, [morePathActive]);
-
-  function toggleCollapsed() {
-    const next = !collapsed;
-    setCollapsed(next);
-    persistSidebarCollapsed(next);
-    if (next) setPeekLocked(true);
-    else setPeekLocked(false);
-  }
 
   function renderNavLink(item: NavItem) {
     const active = pathActive(pathname, item.href);
     const Icon = item.icon;
+    const isMessages = item.href === "/tenant/messages";
+    const badge = isMessages ? formatUnreadBadge(messageUnread) : "";
     return (
       <Link
         key={item.href}
@@ -110,9 +95,18 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
         data-active={active ? "true" : undefined}
         aria-current={active ? "page" : undefined}
         data-tooltip={item.label}
-        aria-label={item.label}
+        aria-label={
+          badge ? `${item.label}, ${messageUnread} unread` : item.label
+        }
       >
-        <Icon className="nav-item-icon" size={20} strokeWidth={1.75} />
+        <span className="nav-item-icon-wrap">
+          <Icon className="nav-item-icon" size={20} strokeWidth={1.75} />
+          {badge ? (
+            <span className="nav-item-badge" aria-hidden>
+              {badge}
+            </span>
+          ) : null}
+        </span>
         <span className="nav-item-label">{item.label}</span>
       </Link>
     );
@@ -123,17 +117,30 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
       <UserMenuProvider>
         <HelpProvider audience="tenant">
           <div className="app-shell">
+            {drawerOpen ? (
+              <button
+                type="button"
+                className="sidebar-backdrop"
+                aria-label="Close menu"
+                onClick={closeDrawer}
+              />
+            ) : null}
             <aside
               className="sidebar"
               data-collapsed={collapsed}
               data-peek-locked={peekLocked ? "true" : undefined}
               aria-label="Tenant"
-              onMouseLeave={() => setPeekLocked(false)}
+              onMouseLeave={unlockPeek}
             >
               <div className="sidebar-brand">
-                <span className="sidebar-brand-full">{BRAND_NAME}</span>
-                <span className="sidebar-brand-mark" aria-hidden="true">
-                  N
+                <span className="sidebar-brand-lockup">
+                  <span className="sidebar-brand-mark" aria-hidden="true">
+                    <BrandMark size={22} />
+                  </span>
+                  <span className="sidebar-brand-text">
+                    <span className="sidebar-brand-name">{BRAND_NAME}</span>
+                    <span className="sidebar-brand-stamp">{BRAND_STAMP}</span>
+                  </span>
                 </span>
               </div>
               <nav className="sidebar-nav" aria-label="Tenant">
@@ -147,7 +154,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
                     data-tooltip={moreOpen ? "Less" : "More"}
                     aria-expanded={moreOpen}
                     aria-controls="tenant-sidebar-more-items"
-                    onClick={() => setMoreOpen((open) => !open)}
+                    onClick={() => setMorePinnedOpen((open) => !open)}
                   >
                     {moreOpen ? (
                       <ChevronDown
@@ -204,14 +211,6 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
                 utilities={
                   <>
                     <NotificationsBell audience="tenant" />
-                    <ShellTopbarLink
-                      href="/tenant/messages"
-                      label="Messages"
-                      active={messagesActive}
-                      badge={messagesBadge || undefined}
-                    >
-                      <MessageSquare size={20} strokeWidth={1.75} aria-hidden />
-                    </ShellTopbarLink>
                     <HelpIconButton />
                   </>
                 }

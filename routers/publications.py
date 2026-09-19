@@ -22,18 +22,23 @@ def _first_row(data: Any) -> dict | None:
 
 @router.get("/")
 def list_publications(user: AuthedUser = Depends(get_current_user)):
+    PUBLICATIONS_PAGE_LIMIT = 100
     rows = (
         user.db.table("publications")
         .select("*")
         .eq("landlord_id", user.id)
         .is_("archived_at", "null")
         .order("published_at", desc=True)
-        .limit(100)
+        .limit(PUBLICATIONS_PAGE_LIMIT)
         .execute()
         .data
         or []
     )
-    return {"items": rows}
+    return {
+        "items": rows,
+        "loaded": len(rows),
+        "capped": len(rows) >= PUBLICATIONS_PAGE_LIMIT,
+    }
 
 
 @router.get("/me")
