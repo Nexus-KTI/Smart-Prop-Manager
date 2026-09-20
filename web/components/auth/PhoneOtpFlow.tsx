@@ -420,7 +420,7 @@ export function PhoneOtpFlow({
         <span className="form-help">{authOtpChannelSendHelp(otpChannel)}</span>
       </label>
 
-      <AuthCaptcha onToken={setCaptchaToken} />
+      <AuthCaptcha token={captchaToken} onToken={setCaptchaToken} />
 
       <div
         className={
