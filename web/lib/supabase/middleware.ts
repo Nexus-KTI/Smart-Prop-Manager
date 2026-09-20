@@ -37,23 +37,25 @@ export async function updateSession(request: NextRequest) {
 
   let supabaseResponse = NextResponse.next({ request });
 
-  let supabase;
+  const cookieOptions = {
+    getAll() {
+      return request.cookies.getAll();
+    },
+    setAll(cookiesToSet: { name: string; value: string; options?: object }[]) {
+      cookiesToSet.forEach(({ name, value }) => {
+        request.cookies.set(name, value);
+      });
+      supabaseResponse = NextResponse.next({ request });
+      cookiesToSet.forEach(({ name, value, options }) => {
+        supabaseResponse.cookies.set(name, value, options);
+      });
+    },
+  };
+
+  let supabase: ReturnType<typeof createServerClient>;
   try {
     supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => {
-            request.cookies.set(name, value);
-          });
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) => {
-            supabaseResponse.cookies.set(name, value, options);
-          });
-        },
-      },
+      cookies: cookieOptions,
     });
   } catch (error) {
     console.error("[middleware] createServerClient failed", error);
