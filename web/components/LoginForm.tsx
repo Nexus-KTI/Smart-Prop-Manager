@@ -249,7 +249,7 @@ export function LoginForm() {
             />
           </label>
 
-          <AuthCaptcha onToken={setCaptchaToken} />
+          <AuthCaptcha token={captchaToken} onToken={setCaptchaToken} />
 
           <div className="form-actions auth-actions">
             <button className="btn-primary" type="submit" disabled={pending}>

@@ -446,7 +446,7 @@ export function SignupForm() {
             })}
           </ol>
 
-          {hasInvite ? (
+          {hasAccessCode ? (
             <p className="form-success" role="status">
               {inviteName.trim()
                 ? `Welcome, ${inviteName.trim()}. Finish creating your account.`
@@ -798,7 +798,7 @@ export function SignupForm() {
                       confirmLabel="Confirm password"
                     />
 
-                    <AuthCaptcha onToken={setCaptchaToken} />
+                    <AuthCaptcha token={captchaToken} onToken={setCaptchaToken} />
 
                     <div className="form-actions auth-actions">
                       <button
