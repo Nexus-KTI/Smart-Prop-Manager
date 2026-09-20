@@ -5,47 +5,70 @@ import { isAdminEmail } from "@/lib/admin";
 
 const AUTH_ROUTES = new Set(["/login", "/signup", "/forgot-password"]);
 
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => {
-            request.cookies.set(name, value);
-          });
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) => {
-            supabaseResponse.cookies.set(name, value, options);
-          });
-        },
-      },
-    },
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const pathname = request.nextUrl.pathname;
-  const isAuthRoute = AUTH_ROUTES.has(pathname);
-  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
-
-  const isPublic =
-    isAuthRoute ||
+function isPublicPath(pathname: string): boolean {
+  return (
+    AUTH_ROUTES.has(pathname) ||
     pathname === "/" ||
     pathname === "/pricing" ||
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/apply/") ||
     pathname === "/tenant/claim" ||
     pathname === "/staff/claim" ||
-    pathname === "/artisan/claim";
+    pathname === "/artisan/claim"
+  );
+}
+
+export async function updateSession(request: NextRequest) {
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim();
+  const supabaseAnonKey = (
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+  ).trim();
+
+  // Missing public Supabase env crashes createServerClient and surfaces as
+  // MIDDLEWARE_INVOCATION_FAILED on Vercel. Fail open for public routes only.
+  if (!supabaseUrl || !supabaseAnonKey) {
+    if (isPublicPath(request.nextUrl.pathname)) {
+      return NextResponse.next({ request });
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  let supabaseResponse = NextResponse.next({ request });
+
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => {
+          request.cookies.set(name, value);
+        });
+        supabaseResponse = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) => {
+          supabaseResponse.cookies.set(name, value, options);
+        });
+      },
+    },
+  });
+
+  let user: Awaited<
+    ReturnType<typeof supabase.auth.getUser>
+  >["data"]["user"] = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // Network / auth edge failures must not take down every route.
+    return supabaseResponse;
+  }
+
+  const pathname = request.nextUrl.pathname;
+  const isAuthRoute = AUTH_ROUTES.has(pathname);
+  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isPublic = isPublicPath(pathname);
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
