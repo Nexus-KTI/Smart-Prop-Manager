@@ -4736,18 +4736,25 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 }
 
 .marketing-text-arrow-link .marketing-arrow {
-  opacity: 0;
-  transform: translateX(-4px);
+  /* Touch / coarse pointer: arrow visible at rest (no hover to reveal). */
+  opacity: 1;
+  transform: translateX(0);
   transition:
     opacity var(--motion-ui) var(--ease-out),
     transform var(--motion-ui) var(--ease-out);
 }
 
-.marketing-text-arrow-link:hover .marketing-arrow,
-.marketing-text-arrow-link:focus-visible .marketing-arrow,
-.marketing-text-arrow-link:active .marketing-arrow {
-  opacity: 1;
-  transform: translateX(0);
+@media (hover: hover) and (pointer: fine) {
+  .marketing-text-arrow-link .marketing-arrow {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+
+  .marketing-text-arrow-link:hover .marketing-arrow,
+  .marketing-text-arrow-link:focus-visible .marketing-arrow {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .marketing-hero-secondary {
@@ -4786,8 +4793,8 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   left: 0;
   display: flex;
   width: calc(var(--arrow-box-size) * 2);
-  /* Park both arrows fully left of the clip — box reads empty at rest. */
-  transform: translateX(-100%);
+  /* Touch / coarse pointer: arrow already settled in the box. */
+  transform: translateX(-50%);
   transition: transform 420ms var(--ease-out);
 }
 
@@ -4802,18 +4809,30 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   font-weight: 650;
 }
 
-.marketing-hero-secondary:hover .marketing-arrow-box,
-.marketing-hero-secondary:focus-visible .marketing-arrow-box,
+/* Brief press feedback on any pointer. */
 .marketing-hero-secondary:active .marketing-arrow-box {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
-.marketing-hero-secondary:hover .marketing-arrow-box-track,
-.marketing-hero-secondary:focus-visible .marketing-arrow-box-track,
-.marketing-hero-secondary:active .marketing-arrow-box-track {
-  /* First arrow crosses the box; second settles inside. */
-  transform: translateX(-50%);
+/* Desktop hover: empty box at rest, arrow slides in on hover / keyboard focus. */
+@media (hover: hover) and (pointer: fine) {
+  .marketing-arrow-box-track {
+    /* Park both arrows fully left of the clip — box reads empty at rest. */
+    transform: translateX(-100%);
+  }
+
+  .marketing-hero-secondary:hover .marketing-arrow-box,
+  .marketing-hero-secondary:focus-visible .marketing-arrow-box {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+
+  .marketing-hero-secondary:hover .marketing-arrow-box-track,
+  .marketing-hero-secondary:focus-visible .marketing-arrow-box-track {
+    /* First arrow crosses the box; second settles inside. */
+    transform: translateX(-50%);
+  }
 }
 
 @keyframes marketing-arrow-nudge {
@@ -5543,18 +5562,25 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 .marketing-audience-cta .marketing-arrow {
   display: inline-block;
   margin-left: 0.35em;
-  opacity: 0;
-  transform: translateX(-4px);
+  /* Touch / coarse pointer: arrow visible at rest. */
+  opacity: 1;
+  transform: translateX(0);
   transition:
     opacity var(--motion-ui) var(--ease-out),
     transform var(--motion-ui) var(--ease-out);
 }
 
-.marketing-audience-card:hover .marketing-audience-cta .marketing-arrow,
-.marketing-audience-link:focus-visible .marketing-audience-cta .marketing-arrow,
-.marketing-audience-link:active .marketing-audience-cta .marketing-arrow {
-  opacity: 1;
-  transform: translateX(0);
+@media (hover: hover) and (pointer: fine) {
+  .marketing-audience-cta .marketing-arrow {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+
+  .marketing-audience-card:hover .marketing-audience-cta .marketing-arrow,
+  .marketing-audience-link:focus-visible .marketing-audience-cta .marketing-arrow {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .marketing-pricing-teaser {
@@ -8891,20 +8917,13 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 
   .marketing-arrow-box-track {
     transition: none;
-  }
-
-  .marketing-hero-secondary:hover .marketing-arrow-box-track,
-  .marketing-hero-secondary:focus-visible .marketing-arrow-box-track,
-  .marketing-hero-secondary:active .marketing-arrow-box-track {
     transform: translateX(-50%);
   }
 
-  .marketing-audience-cta .marketing-arrow {
-    opacity: 1;
-  }
-
+  .marketing-audience-cta .marketing-arrow,
   .marketing-text-arrow-link .marketing-arrow {
     opacity: 1;
+    transform: none;
   }
 
   .marketing-vignette,
