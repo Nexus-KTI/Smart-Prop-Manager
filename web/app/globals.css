@@ -4540,20 +4540,44 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   }
 }
 
+@keyframes marketing-hero-media-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Visible by default — animation only when motion is allowed (avoids stuck opacity 0). */
 .marketing-hero-animate {
-  animation: marketing-fade-up var(--motion-reveal) var(--ease-out) both;
+  opacity: 1;
+  transform: none;
 }
 
-.marketing-hero-animate-delay {
-  animation-delay: 100ms;
-}
+@media (prefers-reduced-motion: no-preference) {
+  .marketing-hero-animate {
+    animation: marketing-fade-up var(--motion-reveal) var(--ease-out) both;
+  }
 
-.marketing-hero-animate-delay-2 {
-  animation-delay: 160ms;
-}
+  .marketing-hero-animate-delay {
+    animation-delay: 100ms;
+  }
 
-.marketing-hero-animate-delay-3 {
-  animation-delay: 220ms;
+  .marketing-hero-animate-delay-2 {
+    animation-delay: 160ms;
+  }
+
+  .marketing-hero-animate-delay-3 {
+    animation-delay: 220ms;
+  }
+
+  .marketing-hero-media.marketing-hero-animate {
+    animation-name: marketing-hero-media-in;
+    animation-duration: calc(var(--motion-reveal) + 80ms);
+  }
 }
 
 .marketing-trust-band {
@@ -4611,8 +4635,11 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   .marketing-hero-animate,
   .marketing-hero-animate-delay,
   .marketing-hero-animate-delay-2,
-  .marketing-hero-animate-delay-3 {
+  .marketing-hero-animate-delay-3,
+  .marketing-hero-media.marketing-hero-animate {
     animation: none;
+    opacity: 1;
+    transform: none;
   }
 
   .marketing-relief-before,
@@ -4875,6 +4902,33 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 
   .marketing-hero-tc {
     padding-block: 28px 20px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .marketing-hero-animate {
+      animation-duration: 560ms;
+    }
+
+    .marketing-hero-animate-delay {
+      animation-delay: 90ms;
+    }
+
+    .marketing-hero-animate-delay-2 {
+      animation-delay: 180ms;
+    }
+
+    .marketing-hero-animate-delay-3 {
+      animation-delay: 260ms;
+    }
+
+    .marketing-hero-media.marketing-hero-animate {
+      animation-duration: 640ms;
+      animation-delay: 200ms;
+    }
+
+    .marketing-process-line.marketing-hero-animate {
+      animation-delay: 130ms;
+    }
   }
 
   .marketing-hero-brand-name {
@@ -5569,6 +5623,47 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   display: grid;
   gap: 24px;
   margin-bottom: 20px;
+}
+
+/* Mobile: brand full-width, link columns in a readable 2+1 grid. */
+@media (max-width: 799px) {
+  .marketing-footer {
+    padding-block: 28px 36px;
+  }
+
+  .marketing-footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 22px 16px;
+    margin-bottom: 18px;
+  }
+
+  .marketing-footer-brand-block {
+    grid-column: 1 / -1;
+    gap: 8px;
+  }
+
+  .marketing-footer-tag {
+    max-width: 28rem;
+  }
+
+  .marketing-footer-col:last-child {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 16px;
+    row-gap: 8px;
+  }
+
+  .marketing-footer-col:last-child .marketing-footer-col-title {
+    grid-column: 1 / -1;
+  }
+
+  .marketing-footer-copy {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding-top: 14px;
+  }
 }
 
 @media (min-width: 800px) {
@@ -8526,12 +8621,18 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   }
 }
 
+/* Visible by default; only hide when JS arms motion (data-armed). */
 .marketing-reveal {
-  opacity: 0;
-  transform: translateY(14px);
+  opacity: 1;
+  transform: none;
   transition:
     opacity var(--motion-reveal) var(--ease-out),
     transform var(--motion-reveal) var(--ease-out);
+}
+
+.marketing-reveal[data-armed="true"]:not([data-in="true"]) {
+  opacity: 0;
+  transform: translateY(14px);
 }
 
 .marketing-reveal[data-in="true"] {
