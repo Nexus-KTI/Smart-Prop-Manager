@@ -5146,6 +5146,70 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   flex-shrink: 0;
   margin-top: 2px;
   color: var(--accent);
+  transform-origin: center;
+  will-change: transform;
+}
+
+@keyframes marketing-os-icon-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes marketing-os-icon-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(6px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* After MarketingReveal arms data-in, icons settle then float gently. */
+  .marketing-reveal[data-in="true"] .marketing-os-pillar-icon {
+    animation:
+      marketing-os-icon-in 480ms var(--ease-out) both,
+      marketing-os-icon-float 2.8s var(--ease-out) 480ms infinite;
+  }
+
+  .marketing-os-pillar-grid > :nth-child(1) .marketing-os-pillar-icon {
+    animation-delay: 0ms, 480ms;
+  }
+
+  .marketing-os-pillar-grid > :nth-child(2) .marketing-os-pillar-icon {
+    animation-delay: 70ms, 550ms;
+  }
+
+  .marketing-os-pillar-grid > :nth-child(3) .marketing-os-pillar-icon {
+    animation-delay: 140ms, 620ms;
+  }
+
+  .marketing-os-pillar-grid > :nth-child(4) .marketing-os-pillar-icon {
+    animation-delay: 210ms, 690ms;
+  }
+
+  .marketing-os-pillar-grid > :nth-child(5) .marketing-os-pillar-icon {
+    animation-delay: 280ms, 760ms;
+  }
+
+  .marketing-os-pillar-grid > :nth-child(6) .marketing-os-pillar-icon {
+    animation-delay: 350ms, 830ms;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .marketing-os-pillar:hover .marketing-os-pillar-icon {
+      animation-play-state: paused;
+      transform: translateY(-2px) scale(1.06);
+      transition: transform var(--motion-ui) var(--ease-out);
+    }
+  }
 }
 
 .marketing-os-pillar-title {
@@ -8941,6 +9005,14 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 
   .marketing-arrow-box .marketing-arrow {
     animation: none;
+  }
+
+  .marketing-os-pillar-icon,
+  .marketing-reveal[data-in="true"] .marketing-os-pillar-icon,
+  .marketing-os-pillar:hover .marketing-os-pillar-icon {
+    animation: none;
+    transform: none;
+    transition: none;
   }
 
   .marketing-audience-cta .marketing-arrow,
