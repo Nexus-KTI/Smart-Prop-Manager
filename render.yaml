@@ -40,7 +40,7 @@ services:
       - key: MAILGUN_SENDER_EMAIL
         sync: false
       - key: EMAIL_FROM_NAME
-        value: Smart Prop
+        value: Nexora
       - key: FROM_EMAIL
         sync: false
       - key: SMTP_HOST

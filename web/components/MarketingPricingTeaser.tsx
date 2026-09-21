@@ -31,7 +31,7 @@ export function MarketingPricingTeaser({ primaryLabel }: Props = {}) {
         </p>
         <ul className="marketing-pricing-list">
           <li>Money &amp; chase (cash, transfer, card)</li>
-          <li>Occupancy: applications, docs, renewals</li>
+          <li>Occupancy: applications, renewals (docs Later)</li>
           <li>Portal, messages, work orders &amp; artisans</li>
           <li>Access passes, staff scopes, expenses &amp; rent roll</li>
         </ul>

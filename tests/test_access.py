@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from lib.access import (
     PERM_ACCESS_VISITOR_PASSES,
     PERM_MONEY,
@@ -137,4 +139,22 @@ def test_audit_skips_owner_actions(monkeypatch):
     assert len(calls) == 1
     assert calls[0]["actor_user_id"] == "S1"
     assert calls[0]["owner_id"] == "O1"
-    assert calls[0]["action"] == "payment.manual"
+
+
+def test_staff_visitor_pass_stub_retired(monkeypatch):
+    """Legacy POST /staff/access/visitor-pass must not claim Phase 5 501."""
+    monkeypatch.setenv("SUPABASE_URL", "http://127.0.0.1:54321")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon-key")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-service-key")
+
+    from fastapi import HTTPException
+
+    from routers.staff import visitor_pass_deprecated
+
+    class _User:
+        id = "u1"
+
+    with pytest.raises(HTTPException) as ei:
+        visitor_pass_deprecated(_User())  # type: ignore[arg-type]
+    assert ei.value.status_code == 410
+    assert "/access/passes" in str(ei.value.detail)

@@ -31,7 +31,7 @@ export default function MarketingPage() {
     {
       question: "Is it only a rent collector?",
       answer:
-        "No. Rent chase is the Friday wedge. Applications, docs, renewals, portal, messages, work orders, gate passes, staff, expenses, and rent roll are live today.",
+        "No. Rent chase is the Friday wedge. Applications, renewals, portal, messages, work orders, gate passes, staff, expenses, and rent roll are live today. Docs & acknowledge stay Later until the privacy gate opens.",
     },
     {
       question: "How much does it cost?",

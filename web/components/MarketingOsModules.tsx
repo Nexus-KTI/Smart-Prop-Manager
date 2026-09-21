@@ -29,7 +29,7 @@ const PILLARS: Pillar[] = [
   {
     id: "occupancy",
     title: "Occupancy",
-    body: "Applications, tenancy checklist, docs to acknowledge, renewals on the unit.",
+    body: "Applications, tenancy checklist, renewals on the unit. Docs & acknowledge Later.",
     Icon: ClipboardList,
   },
   {

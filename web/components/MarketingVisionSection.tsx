@@ -51,7 +51,7 @@ const CAPABILITIES: Capability[] = [
     title: "Compliance",
     items: [
       { label: "Renewals on the unit", status: "LIVE" },
-      { label: "Docs & acknowledge", status: "LIVE" },
+      { label: "Docs & acknowledge", status: "LATER" },
       { label: "Applications", status: "LIVE" },
       { label: "Background check (partner)", status: "LATER" },
     ],
@@ -103,8 +103,8 @@ const PHASES: Phase[] = [
   },
   {
     phase: "3",
-    title: "Docs & tenant pay",
-    blurb: "Agreements, checklist, tenant portal, messages.",
+    title: "Tenant portal & checklist",
+    blurb: "Checklist, tenant pay, messages. Docs & acknowledge stay Later until the privacy gate opens.",
     status: "LIVE",
   },
   {

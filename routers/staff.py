@@ -433,9 +433,10 @@ def portfolio_overdue_ops(
 
 
 @router.post("/access/visitor-pass")
-def visitor_pass_noop(user: AuthedUser = Depends(get_current_user)):
+def visitor_pass_deprecated(user: AuthedUser = Depends(get_current_user)):
+    """Deprecated stub — real passes live under Access."""
     del user
     raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Visitor passes ship in Phase 5",
+        status_code=status.HTTP_410_GONE,
+        detail="Visitor passes live at POST /access/passes. This staff stub is retired.",
     )

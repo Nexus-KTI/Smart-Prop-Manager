@@ -1,4 +1,4 @@
-# Smart Prop — Production ops checklist
+# Nexora — Production ops checklist
 
 **Purpose:** Feature Now is green; outages come from misconfig. Run this before / after each deploy.  
 **Related:** [`render.yaml`](../render.yaml) · [`.env.example`](../.env.example) · [`sql/`](../sql/)
@@ -44,7 +44,7 @@ Required:
 - `FRONTEND_URL`, `CORS_ORIGINS` (include production web origin)
 - `PAYSTACK_SECRET_KEY` (+ web public key on Next)
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM` (and `TWILIO_WHATSAPP_FROM` only if using WA)
-- Mailgun: `EMAIL_SERVICE_PROVIDER=mailgun`, `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_SENDER_EMAIL`, `EMAIL_FROM_NAME=Smart Prop`, `FROM_EMAIL`
+- Mailgun: `EMAIL_SERVICE_PROVIDER=mailgun`, `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_SENDER_EMAIL`, `EMAIL_FROM_NAME=Nexora`, `FROM_EMAIL`
 - `CRON_SECRET` (HTTP due job) · cron service inherits Mailgun + Twilio from web in `render.yaml`
 - `ADMIN_EMAILS`
 

@@ -35,7 +35,7 @@ export default function PricingPage() {
     },
     {
       question: "What’s included today?",
-      answer: `${BRAND_NAME} Estate OS LIVE today: money & chase, occupancy (applications, docs, renewals), tenant portal, messages, work orders & artisans, access, staff scopes, expenses, and rent roll. Bank feeds and NIN/BVN checks are Later.`,
+      answer: `${BRAND_NAME} Estate OS LIVE today: money & chase, occupancy (applications, renewals), tenant portal, messages, work orders & artisans, access, staff scopes, expenses, and rent roll. Docs & acknowledge, bank feeds, and NIN/BVN checks are Later.`,
     },
     {
       question: "Do tenants pay fees?",
