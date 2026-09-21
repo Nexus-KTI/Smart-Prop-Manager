@@ -4809,6 +4809,13 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   font-weight: 650;
 }
 
+/* Touch / coarse: settled arrow gently nudges so the box isn’t static. */
+@media (prefers-reduced-motion: no-preference) {
+  .marketing-arrow-box .marketing-arrow {
+    animation: marketing-arrow-nudge 1.8s var(--ease-out) infinite;
+  }
+}
+
 /* Brief press feedback on any pointer. */
 .marketing-hero-secondary:active .marketing-arrow-box {
   border-color: var(--accent);
@@ -4822,6 +4829,11 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
     transform: translateX(-100%);
   }
 
+  /* Don’t burn cycles nudging off-screen glyphs while the box is empty. */
+  .marketing-arrow-box .marketing-arrow {
+    animation: none;
+  }
+
   .marketing-hero-secondary:hover .marketing-arrow-box,
   .marketing-hero-secondary:focus-visible .marketing-arrow-box {
     border-color: var(--accent);
@@ -4832,6 +4844,13 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   .marketing-hero-secondary:focus-visible .marketing-arrow-box-track {
     /* First arrow crosses the box; second settles inside. */
     transform: translateX(-50%);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .marketing-hero-secondary:hover .marketing-arrow-box .marketing-arrow,
+    .marketing-hero-secondary:focus-visible .marketing-arrow-box .marketing-arrow {
+      animation: marketing-arrow-nudge 1.8s var(--ease-out) infinite;
+    }
   }
 }
 
@@ -8918,6 +8937,10 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   .marketing-arrow-box-track {
     transition: none;
     transform: translateX(-50%);
+  }
+
+  .marketing-arrow-box .marketing-arrow {
+    animation: none;
   }
 
   .marketing-audience-cta .marketing-arrow,
