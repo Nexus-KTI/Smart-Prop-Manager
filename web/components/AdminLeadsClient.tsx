@@ -121,7 +121,7 @@ export function AdminLeadsClient() {
       }
       if (result.invite_sent) {
         showToast(
-          `Invite sent via ${result.invite_channel ?? "SMS"}. Link copied. They must open that SMS link to sign up.`,
+          `Invite queued via ${result.invite_channel ?? "SMS"}. Link copied. They must open the invite link to sign up.`,
         );
       } else {
         showToast(

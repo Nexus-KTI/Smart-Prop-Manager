@@ -187,7 +187,7 @@ function RemindersPageInner() {
         .filter(Boolean);
       const errSuffix = errBits.length ? `, ${errBits.join("; ")}` : "";
       showToast(
-        `Reminders: ${result.sent} sent, ${result.failed} failed, ${result.skipped} skipped${channel}${errSuffix}.`,
+        `Reminders: ${result.sent} queued, ${result.failed} failed, ${result.skipped} skipped${channel}${errSuffix}.`,
         result.failed > 0 && result.sent === 0
           ? "error"
           : result.failed > 0
@@ -224,7 +224,7 @@ function RemindersPageInner() {
     setRetryingId(item.id);
     try {
       await retryReminder(item.reminder_id);
-      showToast("Notice resent", "success");
+      showToast("Notice retry queued", "success");
       setReloadKey((k) => k + 1);
     } catch (err) {
       showToast(

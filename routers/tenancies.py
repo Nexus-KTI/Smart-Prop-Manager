@@ -629,7 +629,7 @@ def upload_document(tenancy_id: str, payload: dict, user: AuthedUser = Depends(g
     if not docs_upload_enabled():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Document upload is disabled (NEXT_PUBLIC_DOCS_UPLOAD_ENABLED)",
+            detail="Document upload is disabled (set DOCS_READ_ENABLED and DOCS_UPLOAD_ENABLED on the API)",
         )
     tenancy = _load_tenancy_for_landlord(user, tenancy_id)
     doc_type = (payload.get("doc_type") or "").strip().lower()

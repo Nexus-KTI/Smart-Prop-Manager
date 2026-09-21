@@ -76,7 +76,7 @@ export function OpsOverdueClient() {
         contact,
         message: `Rent reminder for ${row.property_name} · ${row.unit.label}`,
       });
-      showToast(`Reminder sent for ${row.unit.label}`, "success");
+      showToast(`Reminder queued for ${row.unit.label}`, "success");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Reminder failed");
       showToast(

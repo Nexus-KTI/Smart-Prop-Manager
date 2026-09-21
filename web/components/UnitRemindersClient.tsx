@@ -122,7 +122,7 @@ export function UnitRemindersClient({
     try {
       await retryReminder(reminder.id);
       await refreshLog();
-      showToast("Notice resent", "success");
+      showToast("Notice retry queued", "success");
     } catch (err) {
       try {
         await refreshLog();
@@ -209,7 +209,7 @@ export function UnitRemindersClient({
               type="text"
               required
               defaultValue={tenantContact ?? ""}
-              placeholder="whatsapp:+234…"
+              placeholder="+234…"
               autoComplete="tel"
             />
           </label>

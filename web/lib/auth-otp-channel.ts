@@ -23,16 +23,16 @@ export function authOtpChannelSendHelp(
 ): string {
   const label = authOtpChannelLabel(channel);
   return channel === "whatsapp"
-    ? `We’ll send a 6-digit code on ${label}.`
-    : `We’ll send a 6-digit code by ${label}.`;
+    ? `We’ll try to send a 6-digit code on ${label}.`
+    : `We’ll try to send a 6-digit code by ${label}.`;
 }
 
-/** Muted success/info line after a code is sent. */
+/** Muted success/info line after a code is requested. */
 export function authOtpChannelCodeSentHelp(
   phone: string,
   channel: AuthOtpChannel = getAuthOtpChannel(),
 ): string {
-  return `Enter the 6-digit code sent to ${phone} via ${authOtpChannelLabel(channel)}.`;
+  return `Enter the 6-digit code if it arrives at ${phone} via ${authOtpChannelLabel(channel)}.`;
 }
 
 /** Validation / OTP-step helper when the code field is incomplete. */

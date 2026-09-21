@@ -129,8 +129,8 @@ export function UnitTenantInviteCard({
       setClaimPath(result.claim_path);
       if (result.invite_sent) {
         const ch = result.invite_channel || "notification";
-        setNotifyNote(`Invite link created · ${ch} sent to ${contact}`);
-        showToast(`Invite sent via ${ch}`);
+        setNotifyNote(`Invite link created · ${ch} queued for ${contact}`);
+        showToast(`Invite queued via ${ch}`);
       } else {
         setNotifyNote(
           result.invite_error

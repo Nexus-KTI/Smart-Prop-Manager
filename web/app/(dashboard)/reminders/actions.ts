@@ -31,7 +31,7 @@ export async function sendReminderAction(
       message,
     });
     revalidatePath(`/reminders/${unitId}`);
-    return { success: "Reminder sent." };
+    return { success: "Reminder queued." };
   } catch (error) {
     revalidatePath(`/reminders/${unitId}`);
     return {

@@ -362,9 +362,10 @@ export function TenancyDossierClient({
           </p>
           {!docsEnabled ? (
             <p className="table-muted">
-              Upload is off until landlord ToS/DPA is live (
-              <span className="mono-data">NEXT_PUBLIC_DOCS_UPLOAD_ENABLED</span>
-              ).
+              Secure documents are not available yet. Upload stays off until the
+              landlord privacy gate is live (
+              <span className="mono-data">DOCS_READ_ENABLED</span> /{" "}
+              <span className="mono-data">DOCS_UPLOAD_ENABLED</span> on the API).
             </p>
           ) : (
             <div className="form-card" style={{ maxWidth: 420 }}>
@@ -409,7 +410,9 @@ export function TenancyDossierClient({
             <div className="dashboard-empty" role="status">
               <p className="dashboard-empty-title mono-data">No documents yet.</p>
               <p className="dashboard-empty-copy">
-                Upload a PDF or photo above for the lease agreement or ID.
+                {docsEnabled
+                  ? "Upload a PDF or photo above for the lease agreement or ID."
+                  : "Nothing to show here until document storage is enabled for this estate."}
               </p>
             </div>
           ) : (

@@ -45,18 +45,19 @@ const CHANNEL_OPTIONS: {
     value: "sms",
     label: "SMS",
     description:
-      "Send rent reminders and receipts as text messages (recommended).",
+      "Prefer SMS for rent reminders and receipts when notify is configured (recommended).",
   },
   {
     value: "whatsapp",
     label: "WhatsApp",
     description:
-      "Requires a production WhatsApp sender in Twilio, not the sandbox.",
+      "Prefer WhatsApp when a production Twilio sender is configured — not the sandbox.",
   },
   {
     value: "email",
     label: "Email",
-    description: "Send rent reminders and receipts by email.",
+    description:
+      "Prefer email for rent reminders and receipts when Mailgun/SMTP is configured.",
   },
 ];
 
@@ -520,10 +521,10 @@ export function SettingsPanel() {
           >
             <legend className="form-label">Reminder / receipt channel</legend>
             <p className="form-hint">
-              Outbound channel for rent chase and receipts. Every unit’s tenant
-              contact must match (phone for SMS/WhatsApp, email for Email) or
-              the send fails. Tenants can turn off rent reminders in their own
-              settings.
+              Preferred outbound channel for rent chase and receipts. Delivery
+              still needs Twilio/Mailgun live, and every unit’s tenant contact
+              must match (phone for SMS/WhatsApp, email for Email) or the queue
+              fails. Tenants can turn off rent reminders in their own settings.
             </p>
             {CHANNEL_OPTIONS.map((option) => (
               <label key={option.value} className="settings-pref">

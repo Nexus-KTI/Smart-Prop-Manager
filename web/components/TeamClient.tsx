@@ -53,9 +53,9 @@ export function TeamClient() {
       setClaimPath(result.claim_path);
       setContact("");
       if (result.notify?.sent) {
-        showToast("Staff invited — notify sent", "success");
+        showToast("Staff invited — notify queued", "success");
       } else if (result.notify?.error) {
-        showToast("Staff invited — could not notify contact", "success");
+        showToast("Staff invited — could not queue notify", "success");
       } else {
         showToast("Staff invited", "success");
       }

@@ -69,7 +69,7 @@ const ARTICLES: Record<HelpAudience, HelpArticle[]> = {
     {
       id: "l-invite",
       title: "How do I invite a tenant?",
-      body: "On Properties, open a vacant unit → Start tenancy → send the claim invite (SMS/WhatsApp/link). The tenant claims it, then you activate occupancy on the tenancy.",
+      body: "On Properties, open a vacant unit → Start tenancy → send the claim invite (queued SMS/WhatsApp when notify is configured, or copy the link). The tenant claims it, then you activate occupancy on the tenancy.",
       href: "/tenancies",
     },
     {

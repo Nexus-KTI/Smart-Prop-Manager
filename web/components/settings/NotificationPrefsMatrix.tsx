@@ -131,8 +131,8 @@ export function NotificationPrefsMatrix({
     <div className="settings-notify-matrix-wrap">
       <p className="form-hint">
         {audience === "landlord"
-          ? "Events that reach you. Rent chase notices use each tenant’s own “Rent due / reminders” prefs — not this matrix."
-          : "Choose which events reach you on each channel. Your preferred channel above is still used first when a notice is sent."}
+          ? "Events that may reach you when notify is configured. Rent chase notices use each tenant’s own “Rent due / reminders” prefs — not this matrix."
+          : "Choose which events may reach you on each channel. Prefs don’t guarantee delivery — your preferred channel is tried first when notify is configured."}
       </p>
       <div className="data-table-wrap settings-notify-matrix">
         <table className="data-table">

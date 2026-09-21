@@ -42,17 +42,20 @@ const CHANNEL_OPTIONS: {
   {
     value: "sms",
     label: "SMS",
-    description: "Rent reminders and notices as text messages.",
+    description:
+      "Prefer SMS for rent reminders and notices when your landlord’s notify is configured.",
   },
   {
     value: "whatsapp",
     label: "WhatsApp",
-    description: "Requires a production WhatsApp sender on your landlord’s side.",
+    description:
+      "Prefer WhatsApp when a production sender is set on your landlord’s side.",
   },
   {
     value: "email",
     label: "Email",
-    description: "Rent reminders and notices by email.",
+    description:
+      "Prefer email for rent reminders and notices when email notify is configured.",
   },
 ];
 

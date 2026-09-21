@@ -15,6 +15,7 @@ import {
   fetchMyTenancy,
   fetchMyUtilities,
   fetchSavedCards,
+  docsUploadEnabledClient,
   type OpsTask,
   type SavedPaymentMethod,
   type Tenancy,
@@ -430,12 +431,14 @@ export function TenantHomeClient() {
           >
             {paying ? "Paying…" : payCardId ? "Pay with saved card" : "Pay rent"}
           </button>
-          <Link href="/tenant/documents" className="btn-secondary">
-            Your documents
-          </Link>
           <Link href="/tenant/receipts" className="btn-secondary">
             Receipts
           </Link>
+          {docsUploadEnabledClient() ? (
+            <Link href="/tenant/documents" className="btn-secondary">
+              Your documents
+            </Link>
+          ) : null}
         </div>
         <TenantAutopayCard
           tenancy={tenancy}

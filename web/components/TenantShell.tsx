@@ -27,6 +27,7 @@ import { NotificationsBell } from "@/components/NotificationsBell";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
 import { ToastProvider } from "@/components/ToastProvider";
 import { BrandMark } from "@/components/BrandMark";
+import { docsUploadEnabledClient } from "@/lib/api";
 import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
 import {
   formatUnreadBadge,
@@ -81,6 +82,10 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
   const [morePinnedOpen, setMorePinnedOpen] = useState(false);
   const moreOpen = morePathActive || morePinnedOpen;
   const messageUnread = useMessageUnreadCount();
+  const primaryNav = useMemo(() => {
+    if (docsUploadEnabledClient()) return NAV_PRIMARY;
+    return NAV_PRIMARY.filter((item) => item.href !== "/tenant/documents");
+  }, []);
 
   function renderNavLink(item: NavItem) {
     const active = pathActive(pathname, item.href);
@@ -144,7 +149,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
                 </span>
               </div>
               <nav className="sidebar-nav" aria-label="Tenant">
-                {NAV_PRIMARY.map(renderNavLink)}
+                {primaryNav.map(renderNavLink)}
 
                 <div className="sidebar-more">
                   <button
