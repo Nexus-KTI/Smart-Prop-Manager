@@ -16,10 +16,12 @@ Prove utilities publish, access passes, and artisan work-order loop (local).
 
 ## 2. Gate codes (F50)
 1. Landlord → **Access** → select property with an **active linked tenant**  
-2. **Issue access code** → Who = **Tenant** → pick linked tenant → set valid-until → Issue  
-3. Tenant → **Access** → sees code (linked to account)  
-4. Guest path: Who = Guest + check “Show on tenant’s Access” → tenant sees guest code  
-5. Revoke works; expired/read-time status shows correctly  
+2. **Issue access code** → Who = **Tenant** → pick linked tenant → set valid-until → Issue (move-in)  
+3. Tenant → **Access** → sees move-in code (linked to account)  
+4. Tenant → **Create guest code** (name + valid-until ≤ 48h) → guest code appears; revocable by tenant  
+5. Cap: at most 3 active tenant-minted guest codes; landlord still sees/revokes all on `/access`  
+6. Guest path (landlord): Who = Guest + check “Show on tenant’s Access” → tenant sees guest code  
+7. Revoke works; expired/read-time status shows correctly  
 
 ## 3. Artisan + work order (F51)
 1. Landlord → **Work orders** → **Invite artisan** → copy claim link  
@@ -33,6 +35,7 @@ Prove utilities publish, access passes, and artisan work-order loop (local).
 ## Pass criteria
 - Tenant utilities reflect landlord publish  
 - Tenant-linked gate codes appear on `/tenant/access` without WhatsApp as system of record  
+- Tenant can mint/revoke short guest codes (≤48h, max 3 active) after claimed tenancy  
 - Artisan claim → assign → complete works end-to-end  
 - Resolved job offers charge deep-link to Payments  
 

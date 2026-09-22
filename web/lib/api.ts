@@ -1554,12 +1554,26 @@ export type AccessPass = {
   valid_until: string;
   status: string;
   effective_status?: string;
+  created_by?: string | null;
+  source_type?: string | null;
 };
 
 export type AccessPassesPayload = {
   items: AccessPass[];
   loaded: number;
   capped: boolean;
+};
+
+export type MyAccessPassesPayload = AccessPassesPayload & {
+  can_create_guest: boolean;
+  guest_active_count: number;
+  guest_max_active: number;
+  guest_max_hours: number;
+  tenancy: {
+    id: string;
+    unit_label: string;
+    property_id: string;
+  } | null;
 };
 
 export async function fetchAccessPasses(
@@ -1637,12 +1651,12 @@ export async function revokeAccessPass(passId: string): Promise<AccessPass> {
   return data.item;
 }
 
-export async function fetchMyAccessPasses(): Promise<AccessPassesPayload> {
+export async function fetchMyAccessPasses(): Promise<MyAccessPassesPayload> {
   const res = await apiFetch("/access/me");
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load your passes"));
   }
-  const data = (await res.json()) as Partial<AccessPassesPayload> & {
+  const data = (await res.json()) as Partial<MyAccessPassesPayload> & {
     items?: AccessPass[];
   };
   const items = data.items ?? [];
@@ -1650,7 +1664,39 @@ export async function fetchMyAccessPasses(): Promise<AccessPassesPayload> {
     items,
     loaded: data.loaded ?? items.length,
     capped: Boolean(data.capped),
+    can_create_guest: Boolean(data.can_create_guest),
+    guest_active_count: data.guest_active_count ?? 0,
+    guest_max_active: data.guest_max_active ?? 3,
+    guest_max_hours: data.guest_max_hours ?? 48,
+    tenancy: data.tenancy ?? null,
   };
+}
+
+export async function createMyGuestPass(payload: {
+  subject_label: string;
+  valid_until: string;
+}): Promise<AccessPass> {
+  const res = await apiFetch("/access/me/guest-passes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not create guest code"));
+  }
+  const data = (await res.json()) as { item: AccessPass };
+  return data.item;
+}
+
+export async function revokeMyGuestPass(passId: string): Promise<AccessPass> {
+  const res = await apiFetch(`/access/me/passes/${passId}/revoke`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not revoke guest code"));
+  }
+  const data = (await res.json()) as { item: AccessPass };
+  return data.item;
 }
 
 export type ArtisanRosterItem = {

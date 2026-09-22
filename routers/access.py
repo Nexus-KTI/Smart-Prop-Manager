@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from lib.access import PERM_ACCESS_VISITOR_PASSES, require_property_access
 from lib.auth import AuthedUser, get_current_user
+from lib.db import create_service_client
 
 router = APIRouter(prefix="/access", tags=["access"])
 
 VALID_SUBJECTS = frozenset({"tenant", "guest", "artisan", "contractor"})
+
+# Tenant self-serve guest codes (after landlord move-in pass).
+TENANT_GUEST_MAX_HOURS = 48
+TENANT_GUEST_MAX_ACTIVE = 3
+TENANT_GUEST_SOURCE = "tenant_self"
 
 
 def _first_row(data: Any) -> dict | None:
@@ -29,15 +35,20 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _parse_dt(value: str) -> datetime:
+    dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _serialize_pass(row: dict) -> dict:
     out = dict(row)
     until = row.get("valid_until")
     status_val = row.get("status") or "active"
     if status_val == "active" and until:
         try:
-            until_dt = datetime.fromisoformat(str(until).replace("Z", "+00:00"))
-            if until_dt.tzinfo is None:
-                until_dt = until_dt.replace(tzinfo=timezone.utc)
+            until_dt = _parse_dt(str(until))
             if until_dt < _now():
                 out["status"] = "expired"
                 out["effective_status"] = "expired"
@@ -52,6 +63,79 @@ def _serialize_pass(row: dict) -> dict:
 
 def _gen_code() -> str:
     return secrets.token_hex(3).upper()  # 6 hex chars
+
+
+def _active_tenancy_for_tenant(user: AuthedUser) -> dict | None:
+    """First active claimed tenancy for this user (service read for unit/property)."""
+    svc = create_service_client()
+    rows = (
+        svc.table("tenancies")
+        .select("id, unit_id, landlord_id, tenant_user_id, tenant_name, status")
+        .eq("tenant_user_id", user.id)
+        .eq("status", "active")
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        return None
+    tenancy = dict(rows[0])
+    unit_id = str(tenancy.get("unit_id") or "")
+    if not unit_id:
+        return None
+    unit_rows = (
+        svc.table("units")
+        .select("id, property_id, label")
+        .eq("id", unit_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    unit = dict(unit_rows[0]) if unit_rows else {}
+    property_id = str(unit.get("property_id") or "")
+    if not property_id:
+        return None
+    return {
+        "tenancy_id": str(tenancy.get("id")),
+        "unit_id": unit_id,
+        "unit_label": unit.get("label") or unit_id[:8],
+        "landlord_id": str(tenancy.get("landlord_id")),
+        "property_id": property_id,
+        "tenant_name": tenancy.get("tenant_name") or "Tenant",
+    }
+
+
+def _count_active_tenant_guests(
+    *, landlord_id: str, unit_id: str, created_by: str
+) -> int:
+    svc = create_service_client()
+    rows = (
+        svc.table("access_passes")
+        .select("id, valid_until, status")
+        .eq("landlord_id", landlord_id)
+        .eq("unit_id", unit_id)
+        .eq("subject_type", "guest")
+        .eq("created_by", created_by)
+        .eq("status", "active")
+        .execute()
+        .data
+        or []
+    )
+    now = _now()
+    count = 0
+    for row in rows:
+        until = row.get("valid_until")
+        if not until:
+            count += 1
+            continue
+        try:
+            if _parse_dt(str(until)) >= now:
+                count += 1
+        except ValueError:
+            count += 1
+    return count
 
 
 @router.get("/occupants")
@@ -180,9 +264,9 @@ def create_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
     if landlord_id == user.id:
         inserted = user.db.table("access_passes").insert(row).execute().data
     else:
-        from lib.db import create_service_client
-
-        inserted = create_service_client().table("access_passes").insert(row).execute().data
+        inserted = (
+            create_service_client().table("access_passes").insert(row).execute().data
+        )
 
     created = _first_row(inserted)
     if not created:
@@ -203,8 +287,6 @@ def revoke_pass(pass_id: str, user: AuthedUser = Depends(get_current_user)):
     )
     if not rows:
         # Staff may need service lookup
-        from lib.db import create_service_client
-
         rows = (
             create_service_client()
             .table("access_passes")
@@ -238,8 +320,6 @@ def revoke_pass(pass_id: str, user: AuthedUser = Depends(get_current_user)):
             .data
         )
     else:
-        from lib.db import create_service_client
-
         updated = (
             create_service_client()
             .table("access_passes")
@@ -270,8 +350,128 @@ def list_my_passes(user: AuthedUser = Depends(get_current_user)):
     active = [i for i in items if i.get("effective_status") == "active"]
     other = [i for i in items if i.get("effective_status") != "active"]
     ordered = active + other
+    tenancy = _active_tenancy_for_tenant(user)
+    guest_active = 0
+    if tenancy:
+        guest_active = _count_active_tenant_guests(
+            landlord_id=tenancy["landlord_id"],
+            unit_id=tenancy["unit_id"],
+            created_by=user.id,
+        )
     return {
         "items": ordered,
         "loaded": len(ordered),
         "capped": len(items) >= MY_PASSES_LIMIT,
+        "can_create_guest": bool(tenancy),
+        "guest_active_count": guest_active,
+        "guest_max_active": TENANT_GUEST_MAX_ACTIVE,
+        "guest_max_hours": TENANT_GUEST_MAX_HOURS,
+        "tenancy": (
+            {
+                "id": tenancy["tenancy_id"],
+                "unit_label": tenancy["unit_label"],
+                "property_id": tenancy["property_id"],
+            }
+            if tenancy
+            else None
+        ),
     }
+
+
+@router.post("/me/guest-passes", status_code=status.HTTP_201_CREATED)
+def create_my_guest_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
+    """Tenant mints a short-lived guest gate code for their active unit."""
+    tenancy = _active_tenancy_for_tenant(user)
+    if not tenancy:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Active claimed tenancy required to create guest codes",
+        )
+
+    subject_label = (payload.get("subject_label") or "").strip()
+    if not subject_label:
+        raise HTTPException(status_code=400, detail="subject_label is required")
+
+    valid_until_raw = (payload.get("valid_until") or "").strip()
+    if not valid_until_raw:
+        raise HTTPException(status_code=400, detail="valid_until is required")
+
+    try:
+        valid_until_dt = _parse_dt(valid_until_raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid valid_until") from exc
+
+    now = _now()
+    max_until = now + timedelta(hours=TENANT_GUEST_MAX_HOURS)
+    if valid_until_dt <= now:
+        raise HTTPException(status_code=400, detail="valid_until must be in the future")
+    if valid_until_dt > max_until:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Guest codes may last at most {TENANT_GUEST_MAX_HOURS} hours",
+        )
+
+    active_count = _count_active_tenant_guests(
+        landlord_id=tenancy["landlord_id"],
+        unit_id=tenancy["unit_id"],
+        created_by=user.id,
+    )
+    if active_count >= TENANT_GUEST_MAX_ACTIVE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"At most {TENANT_GUEST_MAX_ACTIVE} active guest codes at a time",
+        )
+
+    row = {
+        "landlord_id": tenancy["landlord_id"],
+        "property_id": tenancy["property_id"],
+        "unit_id": tenancy["unit_id"],
+        "subject_type": "guest",
+        "subject_user_id": user.id,
+        "subject_label": subject_label[:120],
+        "code": _gen_code(),
+        "valid_from": now.isoformat(),
+        "valid_until": valid_until_dt.isoformat(),
+        "status": "active",
+        "source_type": TENANT_GUEST_SOURCE,
+        "source_id": tenancy["tenancy_id"],
+        "created_by": user.id,
+        "updated_at": now.isoformat(),
+    }
+    inserted = create_service_client().table("access_passes").insert(row).execute().data
+    created = _first_row(inserted)
+    if not created:
+        raise HTTPException(status_code=500, detail="Could not create guest pass")
+    return {"item": _serialize_pass(dict(created))}
+
+
+@router.post("/me/passes/{pass_id}/revoke")
+def revoke_my_guest_pass(pass_id: str, user: AuthedUser = Depends(get_current_user)):
+    """Tenant revokes a guest pass they created."""
+    svc = create_service_client()
+    rows = (
+        svc.table("access_passes")
+        .select("*")
+        .eq("id", pass_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pass not found")
+    current = dict(rows[0])
+    if current.get("created_by") != user.id or current.get("subject_type") != "guest":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only revoke guest codes you created",
+        )
+    if current.get("status") == "revoked":
+        return {"item": _serialize_pass(current)}
+
+    patch = {"status": "revoked", "updated_at": _now().isoformat()}
+    updated = (
+        svc.table("access_passes").update(patch).eq("id", pass_id).execute().data
+    )
+    row = _first_row(updated) or {**current, **patch}
+    return {"item": _serialize_pass(dict(row))}

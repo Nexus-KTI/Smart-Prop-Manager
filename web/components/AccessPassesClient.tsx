@@ -164,8 +164,9 @@ export function AccessPassesClient() {
         <div>
           <h1 className="page-title">Gate codes</h1>
           <p className="page-subtitle">
-            Software access passes for guests, tenants, and contractors. Link a
-            tenant account so the code appears on their Access page.
+            Issue a tenant move-in code first so it shows on their Access page.
+            After that, tenants can mint short guest codes themselves. You can
+            still issue and revoke any pass here.
           </p>
         </div>
         <div className="dashboard-header-actions">
