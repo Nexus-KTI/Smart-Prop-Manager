@@ -1,47 +1,32 @@
-# Current initiative — Residual resilience wave
+# Current initiative — Tenant guest invite modes
 
-**Updated:** 2026-09-17  
-**Owner:** Engineering (Cursor agents)  
-**Status:** closed (code + remote DDL stamps); Render outbox cron not yet live
+**Updated:** 2026-09-22  
+**Owner:** Engineering  
+**Status:** in progress
 
 ## Goal
 
-Close the remaining gaps after the first resilience hardening waves: sync
-notification call sites that bypass the outbox, partial receipt replay risk,
-and server/marketing fetches without abort timeouts.
+Replace single-entry “duration from now” guest codes with two invite modes
+(Visit / Open), a scheduled validity window (date + time), unlimited scans
+inside that window (in/out at the gate), and a QR on the tenant Access card
+for estate staff to scan from the guest’s phone.
 
 ## Acceptance
 
-- [x] Interactive reminders, invites, and claim notifications enqueue through
-  the leased delivery outbox (same retry/backoff as cron due reminders)
-- [x] Payment receipt delivery is step-idempotent (landlord notice, tenant
-  receipt, and chat post do not re-send after partial success)
-- [x] `web/lib/api-server.ts` and `web/lib/public-leads.ts` use AbortSignal
-  timeouts aligned with browser `apiFetch`
-- [x] Targeted regression tests cover enqueue paths and receipt step guards
-- [x] Spec/backlog and ops notes reflect residual wave status
-- [x] Apply/reconcile `032` + `033` (verify-only migration stamps; DDL was
-  already live)
-- [x] JWT transport retry uses 150ms backoff between attempts
-- [x] Landlord payment-retry and renewal-retry enqueue through the outbox
-- [ ] Deploy `smart-prop-delivery-outbox` cron on Render (defined in
-  `render.yaml`; not present in the accessible Render workspace yet)
+- [x] Tenant picks **Visit** (named one-off) or **Open** (reusable in window)
+- [x] Tenant sets **start + end** (or quick 1/2/4/6h from now); window ≤ 6h;
+      start at most 7 days ahead
+- [x] `max_uses` null for tenant-minted guests (no single-entry burn)
+- [x] Pass card shows 6-digit code + QR encoding the same pass
+- [x] `effective_status` includes `scheduled` when `valid_from` is in the future
+- [x] Tests + phase5 smoke updated; migration `036` applied
 
 ## Guardrails
 
-- Reuse existing `delivery_outbox` / `enqueue_notification` — no Redis/Celery.
-- Do not re-apply full `sql/032` financial DDL (objects already live).
-- Do not auto-retry Paystack charge POSTs.
-- Prefer stable idempotency keys per notice kind + entity.
-
-## Advisors (post-stamp)
-
-- INFO: `delivery_outbox` and `rate_limit_buckets` have RLS with no policies
-  (intentional service-role-only, same pattern as `product_events`).
-- WARN: Auth leaked-password protection disabled (pre-existing Auth setting).
+- No gate hardware / Admit API yet — QR is presentation only
+- Do not invent US visitor-CRM features; keep Nigerian estate gate copy
+- Cap active tenant-minted guests (Visit + Open combined); Open soft-cap = 1
 
 ## Next
 
-Create/sync the Nexora Render services from `render.yaml` so
-`smart-prop-delivery-outbox` runs every five minutes, then smoke paid receipt
-and chase enqueue → deliver.
+Staff Admit endpoint that increments `uses_count` from scanned QR / typed code.

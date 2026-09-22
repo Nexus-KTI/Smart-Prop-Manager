@@ -1556,6 +1556,7 @@ export type AccessPass = {
   effective_status?: string;
   created_by?: string | null;
   source_type?: string | null;
+  invite_mode?: string | null;
   max_uses?: number | null;
   uses_count?: number | null;
 };
@@ -1570,9 +1571,12 @@ export type MyAccessPassesPayload = AccessPassesPayload & {
   can_create_guest: boolean;
   guest_active_count: number;
   guest_max_active: number;
+  guest_max_open_active: number;
+  guest_open_active_count: number;
   guest_max_hours: number;
   guest_duration_hours: number[];
-  guest_max_uses: number;
+  guest_max_start_ahead_days: number;
+  guest_invite_modes: string[];
   tenancy: {
     id: string;
     unit_label: string;
@@ -1670,17 +1674,23 @@ export async function fetchMyAccessPasses(): Promise<MyAccessPassesPayload> {
     capped: Boolean(data.capped),
     can_create_guest: Boolean(data.can_create_guest),
     guest_active_count: data.guest_active_count ?? 0,
-    guest_max_active: data.guest_max_active ?? 2,
+    guest_max_active: data.guest_max_active ?? 3,
+    guest_max_open_active: data.guest_max_open_active ?? 1,
+    guest_open_active_count: data.guest_open_active_count ?? 0,
     guest_max_hours: data.guest_max_hours ?? 6,
     guest_duration_hours: data.guest_duration_hours ?? [1, 2, 4, 6],
-    guest_max_uses: data.guest_max_uses ?? 1,
+    guest_max_start_ahead_days: data.guest_max_start_ahead_days ?? 7,
+    guest_invite_modes: data.guest_invite_modes ?? ["open", "visit"],
     tenancy: data.tenancy ?? null,
   };
 }
 
 export async function createMyGuestPass(payload: {
   subject_label: string;
-  duration_hours: number;
+  invite_mode?: "visit" | "open";
+  duration_hours?: number;
+  valid_from?: string;
+  valid_until?: string;
 }): Promise<AccessPass> {
   const res = await apiFetch("/access/me/guest-passes", {
     method: "POST",

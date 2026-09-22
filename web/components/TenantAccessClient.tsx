@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { AccessPassQr } from "@/components/AccessPassQr";
 import { FetchErrorState } from "@/components/FetchErrorState";
 import { useToast } from "@/components/ToastProvider";
 import {
@@ -14,6 +15,27 @@ import {
 
 const DEFAULT_DURATIONS = [1, 2, 4, 6] as const;
 
+type ScheduleMode = "now" | "later";
+type InviteMode = "visit" | "open";
+
+function toLocalInputValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function defaultStart(): string {
+  const d = new Date();
+  d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
+  return toLocalInputValue(d);
+}
+
+function defaultEnd(startLocal: string, hours: number): string {
+  const start = new Date(startLocal);
+  if (Number.isNaN(start.getTime())) return startLocal;
+  start.setHours(start.getHours() + hours);
+  return toLocalInputValue(start);
+}
+
 export function TenantAccessClient() {
   const { showToast } = useToast();
   const [items, setItems] = useState<AccessPass[]>([]);
@@ -21,19 +43,26 @@ export function TenantAccessClient() {
   const [listLoaded, setListLoaded] = useState(0);
   const [canCreateGuest, setCanCreateGuest] = useState(false);
   const [guestActiveCount, setGuestActiveCount] = useState(0);
-  const [guestMaxActive, setGuestMaxActive] = useState(2);
+  const [guestMaxActive, setGuestMaxActive] = useState(3);
+  const [guestOpenActive, setGuestOpenActive] = useState(0);
+  const [guestMaxOpen, setGuestMaxOpen] = useState(1);
   const [guestMaxHours, setGuestMaxHours] = useState(6);
   const [guestDurations, setGuestDurations] = useState<number[]>([
     ...DEFAULT_DURATIONS,
   ]);
-  const [guestMaxUses, setGuestMaxUses] = useState(1);
   const [unitLabel, setUnitLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [guestLabel, setGuestLabel] = useState("");
+  const [inviteMode, setInviteMode] = useState<InviteMode>("visit");
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("now");
   const [durationHours, setDurationHours] = useState(2);
+  const [validFromLocal, setValidFromLocal] = useState(defaultStart);
+  const [validUntilLocal, setValidUntilLocal] = useState(() =>
+    defaultEnd(defaultStart(), 2),
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,13 +75,14 @@ export function TenantAccessClient() {
       setCanCreateGuest(data.can_create_guest);
       setGuestActiveCount(data.guest_active_count);
       setGuestMaxActive(data.guest_max_active);
+      setGuestOpenActive(data.guest_open_active_count);
+      setGuestMaxOpen(data.guest_max_open_active);
       setGuestMaxHours(data.guest_max_hours);
       const durations =
         data.guest_duration_hours?.length > 0
           ? data.guest_duration_hours
           : [...DEFAULT_DURATIONS];
       setGuestDurations(durations);
-      setGuestMaxUses(data.guest_max_uses ?? 1);
       setUnitLabel(data.tenancy?.unit_label ?? null);
       setDurationHours((prev) =>
         durations.includes(prev) ? prev : durations[1] ?? durations[0] ?? 2,
@@ -68,8 +98,12 @@ export function TenantAccessClient() {
     void load();
   }, [load]);
 
-  const active = useMemo(
-    () => items.filter((i) => (i.effective_status || i.status) === "active"),
+  const usable = useMemo(
+    () =>
+      items.filter((i) => {
+        const s = i.effective_status || i.status;
+        return s === "active" || s === "scheduled";
+      }),
     [items],
   );
 
@@ -79,10 +113,25 @@ export function TenantAccessClient() {
     if (!label) return;
     setSubmitting(true);
     try {
-      await createMyGuestPass({
-        subject_label: label,
-        duration_hours: durationHours,
-      });
+      if (scheduleMode === "now") {
+        await createMyGuestPass({
+          subject_label: label,
+          invite_mode: inviteMode,
+          duration_hours: durationHours,
+        });
+      } else {
+        const from = new Date(validFromLocal);
+        const until = new Date(validUntilLocal);
+        if (Number.isNaN(from.getTime()) || Number.isNaN(until.getTime())) {
+          throw new Error("Pick a valid start and end time");
+        }
+        await createMyGuestPass({
+          subject_label: label,
+          invite_mode: inviteMode,
+          valid_from: from.toISOString(),
+          valid_until: until.toISOString(),
+        });
+      }
       showToast("Guest code created", "success");
       setGuestLabel("");
       await load();
@@ -124,14 +173,16 @@ export function TenantAccessClient() {
   }
 
   const atGuestCap = guestActiveCount >= guestMaxActive;
+  const atOpenCap = inviteMode === "open" && guestOpenActive >= guestMaxOpen;
+  const formBlocked = submitting || atGuestCap || atOpenCap;
 
   return (
     <section className="dashboard">
       <h1 className="page-title">Gate codes</h1>
       <p className="page-subtitle">
         Your landlord issues the move-in code. After you’re settled, create
-        short guest codes for visitors — one entry, don’t share. Show the code
-        at the estate gate.
+        guest codes for visitors — show the digits or QR at the estate gate
+        (works for entry and exit).
         {unitLabel ? (
           <>
             {" "}
@@ -154,43 +205,147 @@ export function TenantAccessClient() {
         >
           <p className="form-kicker">Guest code</p>
           <p className="form-hint">
-            Single entry · expires in up to {guestMaxHours}h ·{" "}
-            {guestActiveCount}/{guestMaxActive} active.
+            Window up to {guestMaxHours}h · {guestActiveCount}/{guestMaxActive}{" "}
+            active
+            {inviteMode === "open"
+              ? ` · open ${guestOpenActive}/${guestMaxOpen}`
+              : ""}
+            .
           </p>
+
+          <fieldset className="form-field" disabled={formBlocked}>
+            <legend className="form-label">Invite type</legend>
+            <div className="access-duration-chips" role="group">
+              <button
+                type="button"
+                className="btn-secondary access-duration-chip"
+                data-active={inviteMode === "visit" ? "true" : undefined}
+                aria-pressed={inviteMode === "visit"}
+                onClick={() => setInviteMode("visit")}
+              >
+                Visit
+              </button>
+              <button
+                type="button"
+                className="btn-secondary access-duration-chip"
+                data-active={inviteMode === "open" ? "true" : undefined}
+                aria-pressed={inviteMode === "open"}
+                onClick={() => setInviteMode("open")}
+              >
+                Open
+              </button>
+            </div>
+            <p className="form-hint" style={{ marginTop: 8 }}>
+              {inviteMode === "visit"
+                ? "One named guest for a set window — in and out OK."
+                : "Reusable in the window (helper / same guest multiple trips). Max one open code."}
+            </p>
+          </fieldset>
+
           <label className="form-field">
-            <span className="form-label">Guest name</span>
+            <span className="form-label">
+              {inviteMode === "visit" ? "Guest name" : "Label"}
+            </span>
             <input
               className="form-input"
               value={guestLabel}
               onChange={(e) => setGuestLabel(e.target.value)}
-              placeholder="e.g. Mama visiting"
+              placeholder={
+                inviteMode === "visit" ? "e.g. Mama visiting" : "e.g. Driver today"
+              }
               required
-              disabled={submitting || atGuestCap}
+              disabled={formBlocked}
               maxLength={120}
             />
           </label>
-          <fieldset className="form-field" disabled={submitting || atGuestCap}>
-            <legend className="form-label">Valid for</legend>
+
+          <fieldset className="form-field" disabled={formBlocked}>
+            <legend className="form-label">When</legend>
             <div className="access-duration-chips" role="group">
-              {guestDurations.map((h) => (
-                <button
-                  key={h}
-                  type="button"
-                  className="btn-secondary access-duration-chip"
-                  data-active={durationHours === h ? "true" : undefined}
-                  aria-pressed={durationHours === h}
-                  onClick={() => setDurationHours(h)}
-                >
-                  {h}h
-                </button>
-              ))}
+              <button
+                type="button"
+                className="btn-secondary access-duration-chip"
+                data-active={scheduleMode === "now" ? "true" : undefined}
+                aria-pressed={scheduleMode === "now"}
+                onClick={() => setScheduleMode("now")}
+              >
+                Starts now
+              </button>
+              <button
+                type="button"
+                className="btn-secondary access-duration-chip"
+                data-active={scheduleMode === "later" ? "true" : undefined}
+                aria-pressed={scheduleMode === "later"}
+                onClick={() => {
+                  setScheduleMode("later");
+                  const start = defaultStart();
+                  setValidFromLocal(start);
+                  setValidUntilLocal(defaultEnd(start, durationHours));
+                }}
+              >
+                Pick date & time
+              </button>
             </div>
           </fieldset>
+
+          {scheduleMode === "now" ? (
+            <fieldset className="form-field" disabled={formBlocked}>
+              <legend className="form-label">Valid for</legend>
+              <div className="access-duration-chips" role="group">
+                {guestDurations.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    className="btn-secondary access-duration-chip"
+                    data-active={durationHours === h ? "true" : undefined}
+                    aria-pressed={durationHours === h}
+                    onClick={() => setDurationHours(h)}
+                  >
+                    {h}h
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          ) : (
+            <>
+              <label className="form-field">
+                <span className="form-label">Starts</span>
+                <input
+                  className="form-input mono-data"
+                  type="datetime-local"
+                  value={validFromLocal}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setValidFromLocal(next);
+                    setValidUntilLocal(defaultEnd(next, durationHours));
+                  }}
+                  required
+                  disabled={formBlocked}
+                />
+              </label>
+              <label className="form-field">
+                <span className="form-label">Ends</span>
+                <input
+                  className="form-input mono-data"
+                  type="datetime-local"
+                  value={validUntilLocal}
+                  onChange={(e) => setValidUntilLocal(e.target.value)}
+                  required
+                  disabled={formBlocked}
+                />
+              </label>
+              <p className="form-hint">
+                Max {guestMaxHours} hours between start and end. Code stays
+                inactive until start.
+              </p>
+            </>
+          )}
+
           <div className="form-actions">
             <button
               type="submit"
               className="btn-primary"
-              disabled={submitting || atGuestCap || !guestLabel.trim()}
+              disabled={formBlocked || !guestLabel.trim()}
             >
               {submitting ? "Creating…" : "Create guest code"}
             </button>
@@ -199,10 +354,14 @@ export function TenantAccessClient() {
             <p className="form-hint" role="status">
               Revoke an active guest code before creating another.
             </p>
+          ) : atOpenCap ? (
+            <p className="form-hint" role="status">
+              Revoke your open code before creating another open invite.
+            </p>
           ) : (
             <p className="form-hint">
-              One entry only — don’t forward the code. Gate admission tracking
-              comes later; revoke if it leaks.
+              Don’t forward the code. Revoke if it leaks. Gate scan logging
+              comes later.
             </p>
           )}
         </form>
@@ -216,7 +375,7 @@ export function TenantAccessClient() {
         </div>
       )}
 
-      {active.length === 0 ? (
+      {usable.length === 0 ? (
         canCreateGuest ? (
           <div className="tenant-module-banner" data-tone="wait" role="status">
             <p className="tenant-module-banner-title">No active codes yet</p>
@@ -228,34 +387,44 @@ export function TenantAccessClient() {
         ) : null
       ) : (
         <ul className="tenant-notice-list">
-          {active.map((row) => {
+          {usable.map((row) => {
             const canRevoke = row.source_type === "tenant_self";
+            const status = row.effective_status || row.status;
+            const modeLabel =
+              row.invite_mode === "open"
+                ? "Open"
+                : row.invite_mode === "visit"
+                  ? "Visit"
+                  : null;
             const kind =
               row.subject_type === "tenant"
                 ? "Move-in / resident"
                 : row.subject_type === "guest"
-                  ? "Guest"
+                  ? modeLabel
+                    ? `Guest · ${modeLabel}`
+                    : "Guest"
                   : row.subject_type;
-            const usesLabel =
-              row.max_uses != null
-                ? ` · ${row.uses_count ?? 0}/${row.max_uses} entries`
-                : "";
             return (
               <li key={row.id} className="tenant-notice-card">
                 <p className="form-kicker" style={{ marginBottom: 4 }}>
                   {kind}
-                  {canRevoke && guestMaxUses === 1 ? " · single entry" : ""}
+                  {status === "scheduled" ? " · scheduled" : ""}
                 </p>
                 <h2 className="tenant-notice-title">{row.subject_label}</h2>
-                <p
-                  className="stat-value mono-data"
-                  style={{ fontSize: "1.5rem" }}
-                >
-                  {row.code}
-                </p>
+                <div className="access-pass-code-row">
+                  <p
+                    className="stat-value mono-data"
+                    style={{ fontSize: "1.5rem", margin: 0 }}
+                  >
+                    {row.code}
+                  </p>
+                  {row.subject_type === "guest" ? (
+                    <AccessPassQr code={row.code} passId={row.id} />
+                  ) : null}
+                </div>
                 <p className="table-muted">
-                  Valid until {new Date(row.valid_until).toLocaleString()}
-                  {usesLabel}
+                  {new Date(row.valid_from).toLocaleString()} →{" "}
+                  {new Date(row.valid_until).toLocaleString()}
                 </p>
                 {canRevoke ? (
                   <button

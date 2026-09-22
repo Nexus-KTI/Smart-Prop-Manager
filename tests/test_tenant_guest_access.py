@@ -151,35 +151,100 @@ def test_create_guest_rejects_invalid_duration(store, svc):
     assert "1, 2, 4, or 6" in str(ei.value.detail)
 
 
-def test_create_guest_rejects_over_6h_legacy_until(store, svc):
+def test_create_guest_rejects_overlong_window(store, svc):
     with pytest.raises(HTTPException) as ei:
         access.create_my_guest_pass(
-            {"subject_label": "Visitor", "valid_until": _future(hours=12)},
+            {
+                "subject_label": "Visitor",
+                "valid_from": _future(hours=1),
+                "valid_until": _future(hours=10),
+            },
             _User(),  # type: ignore[arg-type]
         )
     assert ei.value.status_code == 400
     assert "6" in str(ei.value.detail)
 
 
-def test_create_guest_ok(store, svc):
+def test_create_guest_visit_ok(store, svc):
     result = access.create_my_guest_pass(
-        {"subject_label": "Cousin visit", "duration_hours": 2},
+        {
+            "subject_label": "Cousin visit",
+            "invite_mode": "visit",
+            "duration_hours": 2,
+        },
         _User(),  # type: ignore[arg-type]
     )
     item = result["item"]
     assert item["subject_type"] == "guest"
+    assert item["invite_mode"] == "visit"
     assert item["source_type"] == "tenant_self"
     assert item["created_by"] == "tenant-1"
     assert item["subject_user_id"] == "tenant-1"
     assert item["unit_id"] == "unit-1"
-    assert item["max_uses"] == 1
+    assert item["max_uses"] is None
     assert item["uses_count"] == 0
+    assert item["effective_status"] == "active"
     assert len(item["code"]) == 6
+
+
+def test_create_guest_scheduled(store, svc):
+    result = access.create_my_guest_pass(
+        {
+            "subject_label": "Saturday guest",
+            "invite_mode": "visit",
+            "valid_from": _future(hours=24),
+            "valid_until": _future(hours=26),
+        },
+        _User(),  # type: ignore[arg-type]
+    )
+    item = result["item"]
+    assert item["effective_status"] == "scheduled"
+    assert item["invite_mode"] == "visit"
+
+
+def test_create_guest_open_ok(store, svc):
+    result = access.create_my_guest_pass(
+        {
+            "subject_label": "Driver",
+            "invite_mode": "open",
+            "duration_hours": 4,
+        },
+        _User(),  # type: ignore[arg-type]
+    )
+    assert result["item"]["invite_mode"] == "open"
+    assert result["item"]["max_uses"] is None
+
+
+def test_create_guest_caps_open(store, svc):
+    until = _future(hours=3)
+    store["access_passes"].append(
+        {
+            "id": "g-open",
+            "landlord_id": "landlord-1",
+            "unit_id": "unit-1",
+            "subject_type": "guest",
+            "created_by": "tenant-1",
+            "status": "active",
+            "valid_until": until,
+            "invite_mode": "open",
+        }
+    )
+    with pytest.raises(HTTPException) as ei:
+        access.create_my_guest_pass(
+            {
+                "subject_label": "Another open",
+                "invite_mode": "open",
+                "duration_hours": 1,
+            },
+            _User(),  # type: ignore[arg-type]
+        )
+    assert ei.value.status_code == 400
+    assert "open" in str(ei.value.detail).lower()
 
 
 def test_create_guest_caps_active(store, svc):
     until = _future(hours=3)
-    for i in range(2):
+    for i in range(3):
         store["access_passes"].append(
             {
                 "id": f"g-{i}",
@@ -189,6 +254,7 @@ def test_create_guest_caps_active(store, svc):
                 "created_by": "tenant-1",
                 "status": "active",
                 "valid_until": until,
+                "invite_mode": "visit",
             }
         )
     with pytest.raises(HTTPException) as ei:
@@ -197,7 +263,7 @@ def test_create_guest_caps_active(store, svc):
             _User(),  # type: ignore[arg-type]
         )
     assert ei.value.status_code == 400
-    assert "2" in str(ei.value.detail)
+    assert "3" in str(ei.value.detail)
 
 
 def test_revoke_own_guest(store, svc):
@@ -249,6 +315,7 @@ def test_expired_guest_does_not_count_toward_cap(store, svc):
             "created_by": "tenant-1",
             "status": "active",
             "valid_until": _past(hours=2),
+            "invite_mode": "visit",
         }
     )
     result = access.create_my_guest_pass(
@@ -256,4 +323,4 @@ def test_expired_guest_does_not_count_toward_cap(store, svc):
         _User(),  # type: ignore[arg-type]
     )
     assert result["item"]["subject_label"] == "Fresh"
-    assert result["item"]["max_uses"] == 1
+    assert result["item"]["max_uses"] is None

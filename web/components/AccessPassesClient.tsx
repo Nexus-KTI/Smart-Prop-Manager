@@ -165,8 +165,9 @@ export function AccessPassesClient() {
           <h1 className="page-title">Gate codes</h1>
           <p className="page-subtitle">
             Issue a tenant move-in code first so it shows on their Access page.
-            After that, tenants can mint short guest codes themselves. You can
-            still issue and revoke any pass here.
+            After that, tenants can mint Visit or Open guest codes (with a
+            start/end window and QR). You can still issue and revoke any pass
+            here.
           </p>
         </div>
         <div className="dashboard-header-actions">
