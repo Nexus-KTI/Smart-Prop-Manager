@@ -7020,10 +7020,8 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 
 .help-fab {
   appearance: none;
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 70;
+  position: relative;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -7035,6 +7033,8 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   background: var(--accent);
   color: #fff;
   cursor: pointer;
+  text-decoration: none;
+  flex-shrink: 0;
 }
 
 .help-fab:hover {
@@ -7046,17 +7046,50 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   outline-offset: 3px;
 }
 
-/* Auth “Let’s talk” WhatsApp signature (signup / login) */
-.lets-talk {
+/* GoodTenants-style “Let’s talk” signature + chat FAB */
+.lets-talk-wrap {
   position: fixed;
   right: 16px;
   bottom: 16px;
-  z-index: 40;
+  z-index: 70;
+  display: grid;
+  grid-template-columns: minmax(0, auto) 52px;
+  grid-template-rows: auto 52px;
+  align-items: end;
+  column-gap: 2px;
+  pointer-events: none;
+}
+
+.lets-talk-wrap > .help-fab {
+  grid-column: 2;
+  grid-row: 2;
+  pointer-events: auto;
+}
+
+.lets-talk-wrap:not(.is-hint-visible) {
+  grid-template-columns: 52px;
+}
+
+.lets-talk-wrap:not(.is-hint-visible) > .help-fab {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.lets-talk-signature {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1 / -1;
+  align-self: center;
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 2px;
-  pointer-events: none;
+  padding: 0 4px 18px 0;
+  min-width: 0;
+}
+
+.lets-talk-wrap.is-hint-visible .lets-talk-signature {
+  pointer-events: auto;
 }
 
 .lets-talk-dismiss {
@@ -7065,15 +7098,16 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  margin: 0 8px 0 0;
+  width: 18px;
+  height: 18px;
+  margin: 0 2px 0 0;
   padding: 0;
   border: none;
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+  align-self: flex-end;
 }
 
 .lets-talk-dismiss:hover {
@@ -7085,79 +7119,44 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   outline-offset: 2px;
 }
 
-.lets-talk-link {
-  pointer-events: auto;
-  position: relative;
-  display: grid;
-  grid-template-columns: auto 52px;
-  grid-template-rows: auto 52px;
-  align-items: end;
-  column-gap: 4px;
-  row-gap: 0;
-  text-decoration: none;
-  color: var(--ink);
-}
-
 .lets-talk-script {
-  grid-column: 1;
-  grid-row: 1;
-  justify-self: end;
-  align-self: end;
-  padding-right: 4px;
-  font-family: "Segoe Script", "Apple Chancery", "Snell Roundhand", cursive;
-  font-size: 1.35rem;
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: 0.01em;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-signature), "Segoe Script", "Apple Chancery", cursive;
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 0.9;
+  letter-spacing: 0.015em;
+  color: var(--ink);
   white-space: nowrap;
+  user-select: none;
 }
 
 .lets-talk-swoop {
-  grid-column: 1 / -1;
-  grid-row: 1 / -1;
-  width: 128px;
-  height: 52px;
-  justify-self: end;
-  align-self: end;
+  position: absolute;
+  right: -40px;
+  bottom: -8px;
+  width: 172px;
+  height: 66px;
   color: var(--ink);
-  opacity: 0.55;
+  opacity: 0.9;
   pointer-events: none;
-}
-
-.lets-talk-fab {
-  grid-column: 2;
-  grid-row: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-}
-
-.lets-talk-link:hover .lets-talk-fab {
-  filter: brightness(1.05);
-}
-
-.lets-talk-link:focus-visible {
-  outline: none;
-}
-
-.lets-talk-link:focus-visible .lets-talk-fab {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  overflow: visible;
 }
 
 @media (max-width: 480px) {
-  .lets-talk {
+  .lets-talk-wrap {
     right: 12px;
     bottom: 12px;
   }
 
   .lets-talk-script {
-    font-size: 1.15rem;
+    font-size: 1.45rem;
+  }
+
+  .lets-talk-swoop {
+    width: 150px;
+    right: -32px;
   }
 }
 

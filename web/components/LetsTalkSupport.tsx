@@ -1,8 +1,9 @@
 "use client";
 
-import { MessageCircle, X } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { LetsTalkSignature } from "@/components/LetsTalkSignature";
 import { BRAND_NAME, supportWhatsAppUrl } from "@/lib/brand";
 
 const STORAGE_KEY = "nexora_lets_talk_dismissed";
@@ -13,8 +14,8 @@ type LetsTalkSupportProps = {
 };
 
 /**
- * Auth-page support cue — cursive “Let’s talk” signature that opens WhatsApp.
- * Hidden when NEXT_PUBLIC_SUPPORT_WHATSAPP is unset, or after dismiss (session).
+ * Auth-page support cue — GoodTenants-style signature opening WhatsApp.
+ * Hidden when NEXT_PUBLIC_SUPPORT_WHATSAPP is unset.
  */
 export function LetsTalkSupport({ message }: LetsTalkSupportProps) {
   const href = supportWhatsAppUrl(
@@ -45,47 +46,20 @@ export function LetsTalkSupport({ message }: LetsTalkSupportProps) {
   }
 
   return (
-    <div className="lets-talk" role="complementary" aria-label="Chat support">
-      <button
-        type="button"
-        className="lets-talk-dismiss"
-        aria-label="Dismiss support hint"
-        onClick={dismiss}
-      >
-        <X size={14} strokeWidth={2} aria-hidden />
-      </button>
+    <div
+      className="lets-talk-wrap is-hint-visible"
+      role="complementary"
+      aria-label="Chat support"
+    >
+      <LetsTalkSignature onDismiss={dismiss} />
       <a
-        className="lets-talk-link"
+        className="help-fab"
         href={href}
         target="_blank"
         rel="noopener noreferrer"
+        aria-label={`Message ${BRAND_NAME} support on WhatsApp`}
       >
-        <span className="lets-talk-script" aria-hidden>
-          Let&apos;s talk....
-        </span>
-        <svg
-          className="lets-talk-swoop"
-          viewBox="0 0 120 48"
-          fill="none"
-          aria-hidden
-        >
-          <path
-            d="M4 28 C 36 8, 72 6, 108 22"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-          <path
-            d="M98 18 C 108 22, 112 28, 110 36"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-        <span className="lets-talk-fab" aria-hidden>
-          <MessageCircle size={22} strokeWidth={2} />
-        </span>
-        <span className="sr-only">Message {BRAND_NAME} support on WhatsApp</span>
+        <MessageCircle size={22} strokeWidth={2} aria-hidden />
       </a>
     </div>
   );

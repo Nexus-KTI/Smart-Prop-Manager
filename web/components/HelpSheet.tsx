@@ -23,6 +23,7 @@ import {
 } from "react";
 
 import { useOptionalUserMenuProfile } from "@/components/UserMenu";
+import { LetsTalkSignature } from "@/components/LetsTalkSignature";
 import { BRAND_NAME, supportWhatsAppUrl } from "@/lib/brand";
 
 export type HelpAudience = "landlord" | "tenant" | "artisan" | "admin";
@@ -539,24 +540,54 @@ export function HelpIconButton() {
   );
 }
 
-/** Circular FAB, chat when closed, chevron-down when open (TenantCloud pattern). */
+/** Circular FAB with GoodTenants-style “Let’s talk” signature. */
 export function HelpFab() {
   const { isOpen, toggle, open } = useHelp();
+  const [hintDismissed, setHintDismissed] = useState(false);
+  const [hintReady, setHintReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      setHintDismissed(sessionStorage.getItem("nexora_lets_talk_dismissed") === "1");
+    } catch {
+      /* private mode */
+    }
+    setHintReady(true);
+  }, []);
+
+  function dismissHint() {
+    setHintDismissed(true);
+    try {
+      sessionStorage.setItem("nexora_lets_talk_dismissed", "1");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const showHint = hintReady && !hintDismissed && !isOpen;
+
   return (
-    <button
-      type="button"
-      className="help-fab"
-      aria-label={isOpen ? "Close help" : "Open help"}
-      aria-haspopup="dialog"
-      aria-expanded={isOpen}
-      onClick={() => (isOpen ? toggle() : open())}
+    <div
+      className={
+        showHint ? "lets-talk-wrap is-hint-visible" : "lets-talk-wrap"
+      }
     >
-      {isOpen ? (
-        <ChevronDown size={22} strokeWidth={2} aria-hidden />
-      ) : (
-        <MessageCircle size={22} strokeWidth={2} aria-hidden />
-      )}
-    </button>
+      <LetsTalkSignature hidden={!showHint} onDismiss={dismissHint} />
+      <button
+        type="button"
+        className="help-fab"
+        aria-label={isOpen ? "Close help" : "Open help"}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={() => (isOpen ? toggle() : open())}
+      >
+        {isOpen ? (
+          <ChevronDown size={22} strokeWidth={2} aria-hidden />
+        ) : (
+          <MessageCircle size={22} strokeWidth={2} aria-hidden />
+        )}
+      </button>
+    </div>
   );
 }
 
