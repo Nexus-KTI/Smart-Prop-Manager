@@ -28,6 +28,7 @@ export function LoginForm() {
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("error") === "auth_callback") {
@@ -235,14 +236,25 @@ export function LoginForm() {
           <label className="form-field">
             <div className="form-label-row">
               <span className="form-label">Password</span>
-              <Link href={forgotHref} className="auth-alt-link">
-                Forgot password?
-              </Link>
+              <span className="form-label-actions">
+                <button
+                  type="button"
+                  className="auth-alt-link"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-pressed={showPassword}
+                  tabIndex={-1}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+                <Link href={forgotHref} className="auth-alt-link">
+                  Forgot password?
+                </Link>
+              </span>
             </div>
             <input
               className="form-input"
               name="password"
-              type="password"
+              type={showPassword ? "text" : "password"}
               required
               autoComplete="current-password"
               placeholder="••••••••"
