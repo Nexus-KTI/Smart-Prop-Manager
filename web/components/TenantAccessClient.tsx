@@ -12,11 +12,7 @@ import {
   type AccessPass,
 } from "@/lib/api";
 
-function defaultValidUntilLocal(hours: number): string {
-  const d = new Date(Date.now() + hours * 60 * 60 * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+const DEFAULT_DURATIONS = [1, 2, 4, 6] as const;
 
 export function TenantAccessClient() {
   const { showToast } = useToast();
@@ -25,15 +21,19 @@ export function TenantAccessClient() {
   const [listLoaded, setListLoaded] = useState(0);
   const [canCreateGuest, setCanCreateGuest] = useState(false);
   const [guestActiveCount, setGuestActiveCount] = useState(0);
-  const [guestMaxActive, setGuestMaxActive] = useState(3);
-  const [guestMaxHours, setGuestMaxHours] = useState(48);
+  const [guestMaxActive, setGuestMaxActive] = useState(2);
+  const [guestMaxHours, setGuestMaxHours] = useState(6);
+  const [guestDurations, setGuestDurations] = useState<number[]>([
+    ...DEFAULT_DURATIONS,
+  ]);
+  const [guestMaxUses, setGuestMaxUses] = useState(1);
   const [unitLabel, setUnitLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [guestLabel, setGuestLabel] = useState("");
-  const [validUntil, setValidUntil] = useState(() => defaultValidUntilLocal(24));
+  const [durationHours, setDurationHours] = useState(2);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,8 +47,16 @@ export function TenantAccessClient() {
       setGuestActiveCount(data.guest_active_count);
       setGuestMaxActive(data.guest_max_active);
       setGuestMaxHours(data.guest_max_hours);
+      const durations =
+        data.guest_duration_hours?.length > 0
+          ? data.guest_duration_hours
+          : [...DEFAULT_DURATIONS];
+      setGuestDurations(durations);
+      setGuestMaxUses(data.guest_max_uses ?? 1);
       setUnitLabel(data.tenancy?.unit_label ?? null);
-      setValidUntil(defaultValidUntilLocal(Math.min(24, data.guest_max_hours)));
+      setDurationHours((prev) =>
+        durations.includes(prev) ? prev : durations[1] ?? durations[0] ?? 2,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
     } finally {
@@ -65,19 +73,16 @@ export function TenantAccessClient() {
     [items],
   );
 
-  const maxValidUntilLocal = useMemo(
-    () => defaultValidUntilLocal(guestMaxHours),
-    [guestMaxHours],
-  );
-
   async function onCreateGuest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const label = guestLabel.trim();
-    if (!label || !validUntil) return;
+    if (!label) return;
     setSubmitting(true);
     try {
-      const iso = new Date(validUntil).toISOString();
-      await createMyGuestPass({ subject_label: label, valid_until: iso });
+      await createMyGuestPass({
+        subject_label: label,
+        duration_hours: durationHours,
+      });
       showToast("Guest code created", "success");
       setGuestLabel("");
       await load();
@@ -125,7 +130,8 @@ export function TenantAccessClient() {
       <h1 className="page-title">Gate codes</h1>
       <p className="page-subtitle">
         Your landlord issues the move-in code. After you’re settled, create
-        short guest codes here for visitors — show the code at the estate gate.
+        short guest codes for visitors — one entry, don’t share. Show the code
+        at the estate gate.
         {unitLabel ? (
           <>
             {" "}
@@ -148,8 +154,8 @@ export function TenantAccessClient() {
         >
           <p className="form-kicker">Guest code</p>
           <p className="form-hint">
-            Max {guestMaxHours} hours · up to {guestMaxActive} active at once (
-            {guestActiveCount}/{guestMaxActive} used).
+            Single entry · expires in up to {guestMaxHours}h ·{" "}
+            {guestActiveCount}/{guestMaxActive} active.
           </p>
           <label className="form-field">
             <span className="form-label">Guest name</span>
@@ -163,18 +169,23 @@ export function TenantAccessClient() {
               maxLength={120}
             />
           </label>
-          <label className="form-field">
-            <span className="form-label">Valid until</span>
-            <input
-              className="form-input"
-              type="datetime-local"
-              value={validUntil}
-              max={maxValidUntilLocal}
-              onChange={(e) => setValidUntil(e.target.value)}
-              required
-              disabled={submitting || atGuestCap}
-            />
-          </label>
+          <fieldset className="form-field" disabled={submitting || atGuestCap}>
+            <legend className="form-label">Valid for</legend>
+            <div className="access-duration-chips" role="group">
+              {guestDurations.map((h) => (
+                <button
+                  key={h}
+                  type="button"
+                  className="btn-secondary access-duration-chip"
+                  data-active={durationHours === h ? "true" : undefined}
+                  aria-pressed={durationHours === h}
+                  onClick={() => setDurationHours(h)}
+                >
+                  {h}h
+                </button>
+              ))}
+            </div>
+          </fieldset>
           <div className="form-actions">
             <button
               type="submit"
@@ -188,7 +199,12 @@ export function TenantAccessClient() {
             <p className="form-hint" role="status">
               Revoke an active guest code before creating another.
             </p>
-          ) : null}
+          ) : (
+            <p className="form-hint">
+              One entry only — don’t forward the code. Gate admission tracking
+              comes later; revoke if it leaks.
+            </p>
+          )}
         </form>
       ) : (
         <div className="tenant-module-banner" data-tone="wait" role="status">
@@ -220,10 +236,15 @@ export function TenantAccessClient() {
                 : row.subject_type === "guest"
                   ? "Guest"
                   : row.subject_type;
+            const usesLabel =
+              row.max_uses != null
+                ? ` · ${row.uses_count ?? 0}/${row.max_uses} entries`
+                : "";
             return (
               <li key={row.id} className="tenant-notice-card">
                 <p className="form-kicker" style={{ marginBottom: 4 }}>
                   {kind}
+                  {canRevoke && guestMaxUses === 1 ? " · single entry" : ""}
                 </p>
                 <h2 className="tenant-notice-title">{row.subject_label}</h2>
                 <p
@@ -234,6 +255,7 @@ export function TenantAccessClient() {
                 </p>
                 <p className="table-muted">
                   Valid until {new Date(row.valid_until).toLocaleString()}
+                  {usesLabel}
                 </p>
                 {canRevoke ? (
                   <button

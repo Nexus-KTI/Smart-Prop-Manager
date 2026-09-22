@@ -135,25 +135,35 @@ def test_create_guest_requires_active_tenancy(store, svc):
     store["tenancies"] = []
     with pytest.raises(HTTPException) as ei:
         access.create_my_guest_pass(
-            {"subject_label": "Visitor", "valid_until": _future()},
+            {"subject_label": "Visitor", "duration_hours": 2},
             _User(),  # type: ignore[arg-type]
         )
     assert ei.value.status_code == 403
 
 
-def test_create_guest_rejects_over_48h(store, svc):
+def test_create_guest_rejects_invalid_duration(store, svc):
     with pytest.raises(HTTPException) as ei:
         access.create_my_guest_pass(
-            {"subject_label": "Visitor", "valid_until": _future(hours=72)},
+            {"subject_label": "Visitor", "duration_hours": 24},
             _User(),  # type: ignore[arg-type]
         )
     assert ei.value.status_code == 400
-    assert "48" in str(ei.value.detail)
+    assert "1, 2, 4, or 6" in str(ei.value.detail)
+
+
+def test_create_guest_rejects_over_6h_legacy_until(store, svc):
+    with pytest.raises(HTTPException) as ei:
+        access.create_my_guest_pass(
+            {"subject_label": "Visitor", "valid_until": _future(hours=12)},
+            _User(),  # type: ignore[arg-type]
+        )
+    assert ei.value.status_code == 400
+    assert "6" in str(ei.value.detail)
 
 
 def test_create_guest_ok(store, svc):
     result = access.create_my_guest_pass(
-        {"subject_label": "Cousin visit", "valid_until": _future(hours=6)},
+        {"subject_label": "Cousin visit", "duration_hours": 2},
         _User(),  # type: ignore[arg-type]
     )
     item = result["item"]
@@ -162,12 +172,14 @@ def test_create_guest_ok(store, svc):
     assert item["created_by"] == "tenant-1"
     assert item["subject_user_id"] == "tenant-1"
     assert item["unit_id"] == "unit-1"
+    assert item["max_uses"] == 1
+    assert item["uses_count"] == 0
     assert len(item["code"]) == 6
 
 
 def test_create_guest_caps_active(store, svc):
-    until = _future(hours=10)
-    for i in range(3):
+    until = _future(hours=3)
+    for i in range(2):
         store["access_passes"].append(
             {
                 "id": f"g-{i}",
@@ -181,11 +193,11 @@ def test_create_guest_caps_active(store, svc):
         )
     with pytest.raises(HTTPException) as ei:
         access.create_my_guest_pass(
-            {"subject_label": "One more", "valid_until": _future(hours=4)},
+            {"subject_label": "One more", "duration_hours": 1},
             _User(),  # type: ignore[arg-type]
         )
     assert ei.value.status_code == 400
-    assert "3" in str(ei.value.detail)
+    assert "2" in str(ei.value.detail)
 
 
 def test_revoke_own_guest(store, svc):
@@ -240,7 +252,8 @@ def test_expired_guest_does_not_count_toward_cap(store, svc):
         }
     )
     result = access.create_my_guest_pass(
-        {"subject_label": "Fresh", "valid_until": _future(hours=4)},
+        {"subject_label": "Fresh", "duration_hours": 1},
         _User(),  # type: ignore[arg-type]
     )
     assert result["item"]["subject_label"] == "Fresh"
+    assert result["item"]["max_uses"] == 1

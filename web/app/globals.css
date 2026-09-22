@@ -7539,6 +7539,23 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   font-size: 0.98rem;
 }
 
+.access-duration-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.access-duration-chip {
+  min-width: 3.25rem;
+  padding: 8px 12px;
+}
+
+.access-duration-chip[data-active="true"] {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--ink);
+}
+
 .tenant-action-cards {
   display: grid;
   gap: 12px;

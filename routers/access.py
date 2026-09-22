@@ -17,8 +17,10 @@ router = APIRouter(prefix="/access", tags=["access"])
 VALID_SUBJECTS = frozenset({"tenant", "guest", "artisan", "contractor"})
 
 # Tenant self-serve guest codes (after landlord move-in pass).
-TENANT_GUEST_MAX_HOURS = 48
-TENANT_GUEST_MAX_ACTIVE = 3
+TENANT_GUEST_MAX_HOURS = 6
+TENANT_GUEST_DURATION_HOURS = (1, 2, 4, 6)
+TENANT_GUEST_MAX_ACTIVE = 2
+TENANT_GUEST_MAX_USES = 1  # single entry until gate Admit exists
 TENANT_GUEST_SOURCE = "tenant_self"
 
 
@@ -366,6 +368,8 @@ def list_my_passes(user: AuthedUser = Depends(get_current_user)):
         "guest_active_count": guest_active,
         "guest_max_active": TENANT_GUEST_MAX_ACTIVE,
         "guest_max_hours": TENANT_GUEST_MAX_HOURS,
+        "guest_duration_hours": list(TENANT_GUEST_DURATION_HOURS),
+        "guest_max_uses": TENANT_GUEST_MAX_USES,
         "tenancy": (
             {
                 "id": tenancy["tenancy_id"],
@@ -380,7 +384,7 @@ def list_my_passes(user: AuthedUser = Depends(get_current_user)):
 
 @router.post("/me/guest-passes", status_code=status.HTTP_201_CREATED)
 def create_my_guest_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
-    """Tenant mints a short-lived guest gate code for their active unit."""
+    """Tenant mints a short-lived single-entry guest gate code for their unit."""
     tenancy = _active_tenancy_for_tenant(user)
     if not tenancy:
         raise HTTPException(
@@ -392,24 +396,44 @@ def create_my_guest_pass(payload: dict, user: AuthedUser = Depends(get_current_u
     if not subject_label:
         raise HTTPException(status_code=400, detail="subject_label is required")
 
-    valid_until_raw = (payload.get("valid_until") or "").strip()
-    if not valid_until_raw:
-        raise HTTPException(status_code=400, detail="valid_until is required")
-
-    try:
-        valid_until_dt = _parse_dt(valid_until_raw)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid valid_until") from exc
+    raw_hours = payload.get("duration_hours")
+    if raw_hours is None and payload.get("valid_until"):
+        # Legacy clients: map absolute expiry onto the nearest allowed preset ≤ max.
+        try:
+            until_dt = _parse_dt(str(payload.get("valid_until") or "").strip())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid valid_until") from exc
+        delta_h = (until_dt - _now()).total_seconds() / 3600
+        if delta_h <= 0:
+            raise HTTPException(status_code=400, detail="valid_until must be in the future")
+        if delta_h > TENANT_GUEST_MAX_HOURS + 0.05:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Guest codes may last at most {TENANT_GUEST_MAX_HOURS} hours",
+            )
+        # Snap up to the smallest allowed preset that covers the requested window.
+        chosen = None
+        for h in TENANT_GUEST_DURATION_HOURS:
+            if delta_h <= h + 0.05:
+                chosen = h
+                break
+        duration_hours = chosen or TENANT_GUEST_MAX_HOURS
+    else:
+        try:
+            duration_hours = int(raw_hours)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="duration_hours must be one of 1, 2, 4, or 6",
+            ) from exc
+        if duration_hours not in TENANT_GUEST_DURATION_HOURS:
+            raise HTTPException(
+                status_code=400,
+                detail="duration_hours must be one of 1, 2, 4, or 6",
+            )
 
     now = _now()
-    max_until = now + timedelta(hours=TENANT_GUEST_MAX_HOURS)
-    if valid_until_dt <= now:
-        raise HTTPException(status_code=400, detail="valid_until must be in the future")
-    if valid_until_dt > max_until:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Guest codes may last at most {TENANT_GUEST_MAX_HOURS} hours",
-        )
+    valid_until_dt = now + timedelta(hours=duration_hours)
 
     active_count = _count_active_tenant_guests(
         landlord_id=tenancy["landlord_id"],
@@ -436,6 +460,8 @@ def create_my_guest_pass(payload: dict, user: AuthedUser = Depends(get_current_u
         "source_type": TENANT_GUEST_SOURCE,
         "source_id": tenancy["tenancy_id"],
         "created_by": user.id,
+        "max_uses": TENANT_GUEST_MAX_USES,
+        "uses_count": 0,
         "updated_at": now.isoformat(),
     }
     inserted = create_service_client().table("access_passes").insert(row).execute().data
