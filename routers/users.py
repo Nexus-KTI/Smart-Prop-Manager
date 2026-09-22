@@ -45,6 +45,14 @@ SignupPersona = Literal[
     "broker",
 ]
 SignupYears = Literal["less_1", "1_4", "5_10", "more_10", "none_yet"]
+SignupAttribution = Literal[
+    "whatsapp",
+    "instagram",
+    "friend",
+    "google",
+    "agent",
+    "other",
+]
 
 
 class UserProfileUpdate(BaseModel):
@@ -86,6 +94,20 @@ class UserProfileUpdate(BaseModel):
     signup_years: SignupYears | None = Field(
         default=None,
         description="Self-reported years managing rentals",
+    )
+    signup_referral_code: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Optional referral code captured at signup",
+    )
+    signup_attribution: SignupAttribution | None = Field(
+        default=None,
+        description="Optional how-heard attribution at signup",
+    )
+    company_name: str | None = Field(
+        default=None,
+        max_length=120,
+        description="Company/agency name for PM personas at signup",
     )
 
 
@@ -184,6 +206,9 @@ def _serialize(auth_user: Any, profile: dict[str, Any]) -> dict[str, Any]:
         "signup_persona": profile.get("signup_persona"),
         "signup_unit_count": profile.get("signup_unit_count"),
         "signup_years": profile.get("signup_years"),
+        "signup_referral_code": profile.get("signup_referral_code"),
+        "signup_attribution": profile.get("signup_attribution"),
+        "company_name": profile.get("company_name"),
         "phone": _format_phone(getattr(auth_user, "phone", None)),
         "email": getattr(auth_user, "email", None),
         "email_confirmed": bool(getattr(auth_user, "email_confirmed_at", None)),
@@ -388,6 +413,22 @@ def update_me(
         profile_updates["signup_unit_count"] = patch.get("signup_unit_count")
     if "signup_years" in patch:
         profile_updates["signup_years"] = patch.get("signup_years")
+    if "signup_referral_code" in patch:
+        raw_ref = patch.get("signup_referral_code")
+        if raw_ref is None:
+            profile_updates["signup_referral_code"] = None
+        else:
+            ref = str(raw_ref).strip()
+            profile_updates["signup_referral_code"] = ref or None
+    if "signup_attribution" in patch:
+        profile_updates["signup_attribution"] = patch.get("signup_attribution")
+    if "company_name" in patch:
+        raw_company = patch.get("company_name")
+        if raw_company is None:
+            profile_updates["company_name"] = None
+        else:
+            company = str(raw_company).strip()
+            profile_updates["company_name"] = company or None
 
     if profile_updates:
         updated = (

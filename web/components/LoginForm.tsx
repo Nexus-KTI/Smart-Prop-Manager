@@ -10,8 +10,10 @@ import {
   requireCaptchaToken,
 } from "@/components/auth/AuthCaptcha";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
+import { LetsTalkSupport } from "@/components/LetsTalkSupport";
 import { formatEmailLoginError } from "@/lib/auth-errors";
 import { redirectAfterAuth } from "@/lib/auth-redirect";
+import { BRAND_NAME } from "@/lib/brand";
 import { getPendingMfaFactorId, verifyMfaCode } from "@/lib/mfa";
 import { createClient } from "@/lib/supabase/client";
 
@@ -277,6 +279,9 @@ export function LoginForm() {
           Create one
         </Link>
       </p>
+      <LetsTalkSupport
+        message={`Hi ${BRAND_NAME} support. I’m stuck signing in and need help.`}
+      />
     </div>
   );
 }

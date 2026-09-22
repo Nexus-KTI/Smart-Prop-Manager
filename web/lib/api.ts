@@ -725,6 +725,9 @@ export type UserProfile = {
   signup_persona?: string | null;
   signup_unit_count?: number | null;
   signup_years?: string | null;
+  signup_referral_code?: string | null;
+  signup_attribution?: string | null;
+  company_name?: string | null;
   phone: string | null;
   email: string | null;
   email_confirmed?: boolean;
@@ -751,6 +754,13 @@ function parseUserProfile(data: Partial<UserProfile> & { role?: string }): UserP
     signup_unit_count:
       typeof data.signup_unit_count === "number" ? data.signup_unit_count : null,
     signup_years: data.signup_years ? String(data.signup_years) : null,
+    signup_referral_code: data.signup_referral_code
+      ? String(data.signup_referral_code)
+      : null,
+    signup_attribution: data.signup_attribution
+      ? String(data.signup_attribution)
+      : null,
+    company_name: data.company_name ? String(data.company_name) : null,
     phone: data.phone ? String(data.phone) : null,
     email: data.email ? String(data.email) : null,
     email_confirmed: Boolean(data.email_confirmed),
@@ -784,6 +794,9 @@ export async function updateMe(payload: {
   signup_persona?: string | null;
   signup_unit_count?: number | null;
   signup_years?: string | null;
+  signup_referral_code?: string | null;
+  signup_attribution?: string | null;
+  company_name?: string | null;
 }): Promise<UserProfile> {
   const body: Record<string, unknown> = {};
   if (payload.name !== undefined) body.name = payload.name;
@@ -808,6 +821,15 @@ export async function updateMe(payload: {
   }
   if (payload.signup_years !== undefined) {
     body.signup_years = payload.signup_years;
+  }
+  if (payload.signup_referral_code !== undefined) {
+    body.signup_referral_code = payload.signup_referral_code;
+  }
+  if (payload.signup_attribution !== undefined) {
+    body.signup_attribution = payload.signup_attribution;
+  }
+  if (payload.company_name !== undefined) {
+    body.company_name = payload.company_name;
   }
 
   const res = await apiFetch("/users/me", {

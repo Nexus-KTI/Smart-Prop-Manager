@@ -7046,6 +7046,121 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   outline-offset: 3px;
 }
 
+/* Auth “Let’s talk” WhatsApp signature (signup / login) */
+.lets-talk {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.lets-talk-dismiss {
+  appearance: none;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 8px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lets-talk-dismiss:hover {
+  color: var(--ink);
+}
+
+.lets-talk-dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.lets-talk-link {
+  pointer-events: auto;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 52px;
+  grid-template-rows: auto 52px;
+  align-items: end;
+  column-gap: 4px;
+  row-gap: 0;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.lets-talk-script {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+  align-self: end;
+  padding-right: 4px;
+  font-family: "Segoe Script", "Apple Chancery", "Snell Roundhand", cursive;
+  font-size: 1.35rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.lets-talk-swoop {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  width: 128px;
+  height: 52px;
+  justify-self: end;
+  align-self: end;
+  color: var(--ink);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.lets-talk-fab {
+  grid-column: 2;
+  grid-row: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.lets-talk-link:hover .lets-talk-fab {
+  filter: brightness(1.05);
+}
+
+.lets-talk-link:focus-visible {
+  outline: none;
+}
+
+.lets-talk-link:focus-visible .lets-talk-fab {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+  .lets-talk {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .lets-talk-script {
+    font-size: 1.15rem;
+  }
+}
+
 .help-sheet-root {
   position: fixed;
   inset: 0;

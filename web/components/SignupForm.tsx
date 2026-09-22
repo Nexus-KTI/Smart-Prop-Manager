@@ -13,6 +13,7 @@ import { PasswordFields } from "@/components/auth/PasswordFields";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { claimTenancyInvite, updateMe } from "@/lib/api";
 import { BrandMark } from "@/components/BrandMark";
+import { LetsTalkSupport } from "@/components/LetsTalkSupport";
 import { authOtpChannelLabel } from "@/lib/auth-otp-channel";
 import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
 import {
@@ -33,6 +34,13 @@ type SignupPersona =
   | "none_yet"
   | "broker";
 type SignupYears = "less_1" | "1_4" | "5_10" | "more_10" | "none_yet";
+type SignupAttribution =
+  | "whatsapp"
+  | "instagram"
+  | "friend"
+  | "google"
+  | "agent"
+  | "other";
 
 const INVITE_ONLY =
   process.env.NEXT_PUBLIC_INVITE_ONLY_SIGNUP === "true" ||
@@ -54,6 +62,19 @@ const YEARS_OPTIONS: { value: SignupYears; label: string }[] = [
   { value: "none_yet", label: "I don’t manage any rentals yet" },
 ];
 
+const ATTRIBUTION_OPTIONS: { value: SignupAttribution; label: string }[] = [
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "instagram", label: "Instagram" },
+  { value: "friend", label: "Friend or colleague" },
+  { value: "google", label: "Google / search" },
+  { value: "agent", label: "Property agent" },
+  { value: "other", label: "Other" },
+];
+
+function needsCompanyName(persona: SignupPersona | null): boolean {
+  return persona === "manage_others" || persona === "manage_mix";
+}
+
 const STEPS: SignupStep[] = ["role", "qualify", "account"];
 
 function stepIndex(step: SignupStep): number {
@@ -69,6 +90,11 @@ export function SignupForm() {
   const inviteWhatsapp = searchParams.get("whatsapp") ?? "";
   const inviteToken = (searchParams.get("invite") ?? "").trim();
   const tokenParam = (searchParams.get("token") ?? "").trim();
+  const referralFromQuery = (
+    searchParams.get("ref") ??
+    searchParams.get("referral") ??
+    ""
+  ).trim();
   // Landlord beta: ?invite=<lead id>. Tenant/artisan claim: ?token=.
   const hasAccessCode = Boolean(inviteToken) || Boolean(tokenParam);
   const roleParam = searchParams.get("role");
@@ -85,6 +111,9 @@ export function SignupForm() {
   const [persona, setPersona] = useState<SignupPersona | null>(null);
   const [unitCount, setUnitCount] = useState(0);
   const [years, setYears] = useState<SignupYears | null>(null);
+  const [referralCode, setReferralCode] = useState(referralFromQuery);
+  const [attribution, setAttribution] = useState<SignupAttribution | "">("");
+  const [companyName, setCompanyName] = useState("");
   // Tenancy/artisan claim tokens use ?token=. Lead ?invite= is landlord beta only.
   const [claimCode, setClaimCode] = useState(
     normalizeTenancyClaimToken(tokenParam),
@@ -124,12 +153,25 @@ export function SignupForm() {
     };
   }, [inviteToken, inviteName]);
 
+  useEffect(() => {
+    if (referralFromQuery && !referralCode) {
+      setReferralCode(referralFromQuery);
+    }
+  }, [referralFromQuery, referralCode]);
+
   const signupMeta = useMemo(() => {
     const meta: Record<string, string | number | boolean> = { role };
     if (role === "landlord") {
       if (persona) meta.signup_persona = persona;
       meta.signup_unit_count = unitCount;
       if (years) meta.signup_years = years;
+      const ref = referralCode.trim().slice(0, 64);
+      if (ref) meta.signup_referral_code = ref;
+      if (attribution) meta.signup_attribution = attribution;
+      const company = companyName.trim().slice(0, 120);
+      if (needsCompanyName(persona) && company) {
+        meta.company_name = company;
+      }
     }
     if (fullName.trim()) meta.full_name = fullName.trim();
     if (acceptedTerms) meta.accepted_terms = true;
@@ -137,7 +179,18 @@ export function SignupForm() {
       meta.artisan_trades = artisanTrades.trim();
     }
     return meta;
-  }, [role, persona, unitCount, years, fullName, acceptedTerms, artisanTrades]);
+  }, [
+    role,
+    persona,
+    unitCount,
+    years,
+    referralCode,
+    attribution,
+    companyName,
+    fullName,
+    acceptedTerms,
+    artisanTrades,
+  ]);
 
   async function assertInviteOk(): Promise<boolean> {
     if (!INVITE_ONLY) return true;
@@ -218,6 +271,10 @@ export function SignupForm() {
       setQualifyError("Answer the landlord questions before continuing.");
       return false;
     }
+    if (needsCompanyName(persona) && !companyName.trim()) {
+      setQualifyError("Enter your company or agency name to continue.");
+      return false;
+    }
     setQualifyError(null);
     return true;
   }
@@ -237,12 +294,21 @@ export function SignupForm() {
 
   async function persistSignupProfile() {
     try {
+      const isLandlord = role === "landlord";
+      const ref = referralCode.trim().slice(0, 64);
+      const company = companyName.trim().slice(0, 120);
       await updateMe({
         role,
         name: fullName.trim() || undefined,
-        signup_persona: role === "landlord" ? persona : null,
-        signup_unit_count: role === "landlord" ? unitCount : null,
-        signup_years: role === "landlord" ? years : null,
+        signup_persona: isLandlord ? persona : null,
+        signup_unit_count: isLandlord ? unitCount : null,
+        signup_years: isLandlord ? years : null,
+        signup_referral_code: isLandlord && ref ? ref : null,
+        signup_attribution: isLandlord && attribution ? attribution : null,
+        company_name:
+          isLandlord && needsCompanyName(persona) && company ? company : null,
+        business_name:
+          isLandlord && needsCompanyName(persona) && company ? company : undefined,
       });
     } catch {
       /* trigger/metadata may already have set role; continue */
@@ -613,6 +679,59 @@ export function SignupForm() {
                       </label>
                     ))}
                   </fieldset>
+
+                  {needsCompanyName(persona) ? (
+                    <label className="form-field">
+                      <span className="form-label">Company or agency name</span>
+                      <input
+                        className="form-input"
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        placeholder="e.g. Lekki Court Management"
+                        autoComplete="organization"
+                        maxLength={120}
+                        required
+                      />
+                    </label>
+                  ) : null}
+
+                  <label className="form-field">
+                    <span className="form-label">
+                      Referral code{" "}
+                      <span className="table-muted">(optional)</span>
+                    </span>
+                    <input
+                      className="form-input"
+                      value={referralCode}
+                      onChange={(e) => setReferralCode(e.target.value)}
+                      placeholder="Enter referral code"
+                      autoComplete="off"
+                      maxLength={64}
+                    />
+                  </label>
+
+                  <label className="form-field">
+                    <span className="form-label">
+                      How did you hear about us?{" "}
+                      <span className="table-muted">(optional)</span>
+                    </span>
+                    <select
+                      className="form-input"
+                      value={attribution}
+                      onChange={(e) =>
+                        setAttribution(
+                          (e.target.value || "") as SignupAttribution | "",
+                        )
+                      }
+                    >
+                      <option value="">Select an option</option>
+                      {ATTRIBUTION_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               ) : null}
 
@@ -893,6 +1012,9 @@ export function SignupForm() {
           </div>
         </aside>
       </div>
+      <LetsTalkSupport
+        message={`Hi ${BRAND_NAME} support. I’m stuck signing up and need help.`}
+      />
     </div>
   );
 }
