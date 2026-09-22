@@ -41,7 +41,8 @@ App UX: `GET /notify/sms-delivery` flags “no SMS on API Twilio in last 5 minut
 Required:
 
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-- `FRONTEND_URL`, `CORS_ORIGINS` (include production web origin)
+- `FRONTEND_URL=https://smart-prop-web.vercel.app`
+- `CORS_ORIGINS=https://smart-prop-web.vercel.app,http://localhost:3000,http://127.0.0.1:3000` (include production web origin)
 - `PAYSTACK_SECRET_KEY` (+ web public key on Next)
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM` (and `TWILIO_WHATSAPP_FROM` only if using WA)
 - Mailgun: `EMAIL_SERVICE_PROVIDER=mailgun`, `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_SENDER_EMAIL`, `EMAIL_FROM_NAME=Nexora`, `FROM_EMAIL`

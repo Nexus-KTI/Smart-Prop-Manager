@@ -46,6 +46,8 @@ def _cors_origins() -> list[str]:
     defaults = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        # Production Next.js on Vercel (Hobby). Env can still add more.
+        "https://smart-prop-web.vercel.app",
     ]
     raw = os.getenv("CORS_ORIGINS") or os.getenv("FRONTEND_URL") or ""
     extras = [part.strip().rstrip("/") for part in raw.split(",") if part.strip()]
