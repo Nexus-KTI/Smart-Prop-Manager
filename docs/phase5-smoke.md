@@ -16,12 +16,13 @@ Prove utilities publish, access passes, and artisan work-order loop (local).
 
 ## 2. Gate codes (F50)
 1. Landlord → **Access** → select property with an **active linked tenant**  
-2. **Issue access code** → Who = **Tenant** → pick linked tenant → set valid-until → Issue (move-in)  
-3. Tenant → **Access** → sees move-in code (linked to account)  
-4. Tenant → **Create guest code**: Visit or Open · Starts now (1/2/4/6h) or pick date & time · QR + digits; revocable by tenant  
-5. Cap: at most 3 active tenant-minted guests (≤6h window); at most 1 Open; landlord still sees/revokes all on `/access`  
-6. Guest path (landlord): Who = Guest + check “Show on tenant’s Access” → tenant sees guest code  
-7. Revoke works; expired/read-time status shows correctly  
+2. **Admit at gate** — type a live code (or paste `nexora-pass:…`) → Allowed shows **Issued by** + **Admitted by**; Uses increments; activity log row appears  
+3. **Issue access code** → Who = **Tenant** → pick linked tenant → set valid-until → Issue (move-in)  
+4. Tenant → **Access** → sees move-in code (linked to account)  
+5. Tenant → **Create guest code**: Visit or Open · Starts now (1/2/4/6h) or pick date & time · QR + digits; revocable by tenant  
+6. Cap: at most 3 active tenant-minted guests (≤6h window); at most 1 Open; landlord still sees/revokes all on `/access`  
+7. Guest path (landlord): Who = Guest + check “Show on tenant’s Access” → tenant sees guest code  
+8. Revoke works; expired/read-time status shows correctly  
 
 ## 3. Artisan + work order (F51)
 1. Landlord → **Work orders** → **Invite artisan** → copy claim link  
@@ -35,6 +36,7 @@ Prove utilities publish, access passes, and artisan work-order loop (local).
 ## Pass criteria
 - Tenant utilities reflect landlord publish  
 - Tenant-linked gate codes appear on `/tenant/access` without WhatsApp as system of record  
+- Landlord/caretaker can **Admit** via typed code or QR paste; Uses column updates; **Issued by / Admitted by** + Gate activity trail  
 - Tenant can mint/revoke Visit/Open guest codes (scheduled or from-now, ≤6h, max 3 active / 1 open, QR on card) after claimed tenancy  
 - Artisan claim → assign → complete works end-to-end  
 - Resolved job offers charge deep-link to Payments  

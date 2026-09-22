@@ -128,6 +128,12 @@ def store():
 def svc(store, monkeypatch):
     client = _Svc(store)
     monkeypatch.setattr(access, "create_service_client", lambda: client)
+    monkeypatch.setattr(
+        access,
+        "_resolve_actor_label",
+        lambda uid, role_hint="User": "Ada",
+    )
+    monkeypatch.setattr(access, "_log_pass_event", lambda **_k: None)
     return client
 
 
@@ -183,6 +189,7 @@ def test_create_guest_visit_ok(store, svc):
     assert item["unit_id"] == "unit-1"
     assert item["max_uses"] is None
     assert item["uses_count"] == 0
+    assert item["created_by_label"] == "Ada"
     assert item["effective_status"] == "active"
     assert len(item["code"]) == 6
 

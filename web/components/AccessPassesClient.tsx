@@ -4,13 +4,17 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import {
+  admitAccessPass,
   createAccessPass,
   fetchAccessOccupants,
+  fetchAccessPassEvents,
   fetchAccessPasses,
   fetchProperties,
   revokeAccessPass,
   type AccessOccupant,
   type AccessPass,
+  type AccessPassEvent,
+  type AdmitAccessResult,
 } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import {
@@ -34,6 +38,11 @@ export function AccessPassesClient() {
   const [submitting, setSubmitting] = useState(false);
   const [subjectType, setSubjectType] = useState("guest");
   const [occupantKey, setOccupantKey] = useState("");
+  const [admitRaw, setAdmitRaw] = useState("");
+  const [admitting, setAdmitting] = useState(false);
+  const [lastAdmit, setLastAdmit] = useState<AdmitAccessResult | null>(null);
+  const [lastAdmitDenied, setLastAdmitDenied] = useState<string | null>(null);
+  const [events, setEvents] = useState<AccessPassEvent[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -55,6 +64,15 @@ export function AccessPassesClient() {
       setItems(data.items);
       setListCapped(data.capped);
       setListLoaded(data.loaded);
+      if (propertyId) {
+        try {
+          setEvents(await fetchAccessPassEvents(propertyId));
+        } catch {
+          setEvents([]);
+        }
+      } else {
+        setEvents([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
     } finally {
@@ -81,6 +99,32 @@ export function AccessPassesClient() {
       }
     })();
   }, [propertyId]);
+
+  async function onAdmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!propertyId) return;
+    const raw = admitRaw.trim();
+    if (!raw) return;
+    setAdmitting(true);
+    setLastAdmitDenied(null);
+    try {
+      const result = await admitAccessPass({ property_id: propertyId, raw });
+      setLastAdmit(result);
+      setAdmitRaw("");
+      showToast(
+        `Admitted ${result.item.subject_label} · use ${result.uses_count}`,
+        "success",
+      );
+      await load();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Admit failed";
+      setLastAdmit(null);
+      setLastAdmitDenied(msg);
+      showToast(msg, "error");
+    } finally {
+      setAdmitting(false);
+    }
+  }
 
   async function onIssue(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -164,10 +208,10 @@ export function AccessPassesClient() {
         <div>
           <h1 className="page-title">Gate codes</h1>
           <p className="page-subtitle">
-            Issue a tenant move-in code first so it shows on their Access page.
-            After that, tenants can mint Visit or Open guest codes (with a
-            start/end window and QR). You can still issue and revoke any pass
-            here.
+            Admit at the gate with the 6-character code or a scanned QR. Issue a
+            tenant move-in code first so it shows on their Access page. Tenants
+            can mint Visit or Open guest codes; you can still issue and revoke
+            any pass here.
           </p>
         </div>
         <div className="dashboard-header-actions">
@@ -198,6 +242,82 @@ export function AccessPassesClient() {
           ))}
         </select>
       </label>
+
+      <form
+        className="form-card"
+        style={{ marginTop: 16, maxWidth: 480 }}
+        onSubmit={(e) => void onAdmit(e)}
+      >
+        <p className="form-kicker">Admit at gate</p>
+        <p className="form-hint">
+          Type the code or paste/scan a QR payload. USB scanners that type into
+          this field work.
+        </p>
+        <label className="form-field">
+          <span className="form-label">Code or QR</span>
+          <input
+            className="form-input mono-data"
+            value={admitRaw}
+            onChange={(e) => setAdmitRaw(e.target.value)}
+            placeholder="A1B2C3 or nexora-pass:…"
+            autoComplete="off"
+            disabled={admitting || !propertyId}
+            autoFocus
+          />
+        </label>
+        <div className="form-actions">
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={admitting || !propertyId || !admitRaw.trim()}
+          >
+            {admitting ? "Checking…" : "Admit"}
+          </button>
+        </div>
+        {lastAdmit ? (
+          <div
+            className="tenant-module-banner"
+            data-tone="info"
+            role="status"
+            style={{ marginTop: 12 }}
+          >
+            <p className="tenant-module-banner-title">
+              Allowed · {lastAdmit.item.subject_label}
+            </p>
+            <p className="page-subtitle" style={{ margin: 0 }}>
+              <span className="mono-data">{lastAdmit.item.code}</span>
+              {" · "}
+              use {lastAdmit.uses_count}
+              {lastAdmit.item.max_uses != null
+                ? ` / ${lastAdmit.item.max_uses}`
+                : ""}
+              {" · until "}
+              {new Date(lastAdmit.item.valid_until).toLocaleString()}
+            </p>
+            <p className="page-subtitle" style={{ margin: "6px 0 0" }}>
+              Issued by{" "}
+              {lastAdmit.created_by_label ||
+                lastAdmit.item.created_by_label ||
+                "—"}
+              {" · "}
+              Admitted by {lastAdmit.admitted_by_label || "—"}
+            </p>
+          </div>
+        ) : null}
+        {lastAdmitDenied ? (
+          <div
+            className="tenant-module-banner"
+            data-tone="wait"
+            role="status"
+            style={{ marginTop: 12 }}
+          >
+            <p className="tenant-module-banner-title">Denied</p>
+            <p className="page-subtitle" style={{ margin: 0 }}>
+              {lastAdmitDenied}
+            </p>
+          </div>
+        ) : null}
+      </form>
 
       {formOpen ? (
         <form className="form-card" onSubmit={(e) => void onIssue(e)} style={{ marginTop: 16 }}>
@@ -324,7 +444,9 @@ export function AccessPassesClient() {
             <tr>
               <th>Who</th>
               <th>Code</th>
+              <th>Issued by</th>
               <th>Window</th>
+              <th>Uses</th>
               <th>Status</th>
               <th />
             </tr>
@@ -332,7 +454,7 @@ export function AccessPassesClient() {
           <tbody>
             {items.length === 0 && !loading ? (
               <tr>
-                <td colSpan={5} className="table-muted">
+                <td colSpan={7} className="table-muted">
                   No gate codes yet.
                 </td>
               </tr>
@@ -347,8 +469,23 @@ export function AccessPassesClient() {
                     </p>
                   </td>
                   <td className="mono-data">{row.code}</td>
+                  <td>
+                    <span>{row.created_by_label || "—"}</span>
+                    {row.last_admitted_by_label ? (
+                      <p className="table-muted" style={{ margin: "4px 0 0" }}>
+                        Last admit: {row.last_admitted_by_label}
+                        {row.last_admitted_at
+                          ? ` · ${new Date(row.last_admitted_at).toLocaleString()}`
+                          : ""}
+                      </p>
+                    ) : null}
+                  </td>
                   <td className="table-muted">
                     Until {new Date(row.valid_until).toLocaleString()}
+                  </td>
+                  <td className="mono-data table-muted">
+                    {row.uses_count ?? 0}
+                    {row.max_uses != null ? ` / ${row.max_uses}` : ""}
                   </td>
                   <td>
                     {labelOrTitle(
@@ -357,7 +494,8 @@ export function AccessPassesClient() {
                     )}
                   </td>
                   <td>
-                    {(row.effective_status || row.status) === "active" ? (
+                    {(row.effective_status || row.status) === "active" ||
+                    (row.effective_status || row.status) === "scheduled" ? (
                       <button
                         type="button"
                         className="table-link"
@@ -375,6 +513,48 @@ export function AccessPassesClient() {
           </tbody>
         </table>
       </div>
+      ) : null}
+
+      {events.length > 0 ? (
+        <div style={{ marginTop: 24, maxWidth: 640 }}>
+          <p className="form-kicker">Gate activity</p>
+          <p className="form-hint" style={{ marginBottom: 10 }}>
+            Chain of custody — who issued, admitted, or revoked each code.
+          </p>
+          <ul className="tenant-notice-list">
+            {events.map((ev) => {
+              const verb =
+                ev.event_type === "created"
+                  ? "Issued"
+                  : ev.event_type === "admitted"
+                    ? "Admitted"
+                    : ev.event_type === "revoked"
+                      ? "Revoked"
+                      : ev.event_type;
+              return (
+                <li key={ev.id} className="tenant-notice-card">
+                  <p className="form-kicker" style={{ marginBottom: 4 }}>
+                    {verb}
+                    {ev.actor_role ? ` · ${ev.actor_role}` : ""}
+                  </p>
+                  <p style={{ margin: 0 }}>
+                    <strong>{ev.actor_label || "Unknown"}</strong>
+                    {ev.subject_label ? ` · ${ev.subject_label}` : ""}
+                    {ev.code ? (
+                      <>
+                        {" · "}
+                        <span className="mono-data">{ev.code}</span>
+                      </>
+                    ) : null}
+                  </p>
+                  <p className="table-muted" style={{ margin: "6px 0 0" }}>
+                    {new Date(ev.created_at).toLocaleString()}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       ) : null}
     </section>
   );

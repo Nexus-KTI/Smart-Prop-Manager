@@ -64,6 +64,7 @@ export const STAFF_STATUS_LABELS: Record<string, string> = {
 
 export const ACCESS_STATUS_LABELS: Record<string, string> = {
   active: "Active",
+  scheduled: "Scheduled",
   revoked: "Revoked",
   expired: "Expired",
   used: "Used",

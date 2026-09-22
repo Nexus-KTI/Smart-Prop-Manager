@@ -1559,6 +1559,10 @@ export type AccessPass = {
   invite_mode?: string | null;
   max_uses?: number | null;
   uses_count?: number | null;
+  created_by_label?: string | null;
+  last_admitted_by?: string | null;
+  last_admitted_by_label?: string | null;
+  last_admitted_at?: string | null;
 };
 
 export type AccessPassesPayload = {
@@ -1657,6 +1661,57 @@ export async function revokeAccessPass(passId: string): Promise<AccessPass> {
   }
   const data = (await res.json()) as { item: AccessPass };
   return data.item;
+}
+
+export type AdmitAccessResult = {
+  admitted: boolean;
+  item: AccessPass;
+  uses_count: number;
+  admitted_by_label?: string;
+  created_by_label?: string;
+};
+
+export async function admitAccessPass(payload: {
+  property_id: string;
+  raw: string;
+}): Promise<AdmitAccessResult> {
+  const res = await apiFetch("/access/admit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not admit"));
+  }
+  const data = (await res.json()) as AdmitAccessResult;
+  return data;
+}
+
+export type AccessPassEvent = {
+  id: string;
+  pass_id?: string | null;
+  property_id: string;
+  event_type: "created" | "admitted" | "revoked" | string;
+  actor_user_id: string;
+  actor_role?: string | null;
+  actor_label?: string | null;
+  code?: string | null;
+  subject_label?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+};
+
+export async function fetchAccessPassEvents(
+  propertyId: string,
+): Promise<AccessPassEvent[]> {
+  const res = await apiFetch(
+    `/access/pass-events?property_id=${encodeURIComponent(propertyId)}`,
+  );
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load gate activity"));
+  }
+  const data = (await res.json()) as { items?: AccessPassEvent[] };
+  return data.items ?? [];
 }
 
 export async function fetchMyAccessPasses(): Promise<MyAccessPassesPayload> {

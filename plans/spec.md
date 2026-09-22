@@ -1,32 +1,31 @@
-# Current initiative — Tenant guest invite modes
+# Current initiative — Gate staff Admit + custody trail
 
 **Updated:** 2026-09-22  
 **Owner:** Engineering  
-**Status:** in progress
+**Status:** closed (code)
 
 ## Goal
 
-Replace single-entry “duration from now” guest codes with two invite modes
-(Visit / Open), a scheduled validity window (date + time), unlimited scans
-inside that window (in/out at the gate), and a QR on the tenant Access card
-for estate staff to scan from the guest’s phone.
+Caretaker/landlord admits visitors by typed gate code or pasted QR payload,
+and every issue / admit / revoke is logged so admin can trace who minted a
+code and who scanned it at the gate.
 
 ## Acceptance
 
-- [x] Tenant picks **Visit** (named one-off) or **Open** (reusable in window)
-- [x] Tenant sets **start + end** (or quick 1/2/4/6h from now); window ≤ 6h;
-      start at most 7 days ahead
-- [x] `max_uses` null for tenant-minted guests (no single-entry burn)
-- [x] Pass card shows 6-digit code + QR encoding the same pass
-- [x] `effective_status` includes `scheduled` when `valid_from` is in the future
-- [x] Tests + phase5 smoke updated; migration `036` applied
+- [x] `POST /access/admit` with property_id + raw (code or QR)
+- [x] Rejects revoked / expired / scheduled / max_uses exhausted
+- [x] `GET /access/passes?property_id=` uses `ctx.owner_id` (staff-visible)
+- [x] Admit panel on landlord `/access` (type/paste; no camera)
+- [x] `created_by_label` / `last_admitted_by_label` on passes
+- [x] `access_pass_events` chain-of-custody + `GET /access/pass-events`
+- [x] Tests + phase5 smoke; migration `037` applied
 
 ## Guardrails
 
-- No gate hardware / Admit API yet — QR is presentation only
-- Do not invent US visitor-CRM features; keep Nigerian estate gate copy
-- Cap active tenant-minted guests (Visit + Open combined); Open soft-cap = 1
+- No camera SDK; no separate Admit permission
+- Events always logged (owners and tenants included) — unlike Phase 4 staff audit which skips owners
+- USB keyboard-wedge scanners work via the Admit input
 
 ## Next
 
-Staff Admit endpoint that increments `uses_count` from scanned QR / typed code.
+Optional: phone camera QR decode; filter activity by pass id.

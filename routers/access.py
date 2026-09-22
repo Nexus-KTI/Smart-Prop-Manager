@@ -77,6 +77,78 @@ def _gen_code() -> str:
     return secrets.token_hex(3).upper()  # 6 hex chars
 
 
+def _resolve_actor_label(user_id: str, *, role_hint: str = "User") -> str:
+    """Best-effort display name for gate chain-of-custody."""
+    svc = create_service_client()
+    try:
+        prof = (
+            svc.table("profiles")
+            .select("business_name")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if prof:
+            name = (prof[0].get("business_name") or "").strip()
+            if name:
+                return name[:120]
+    except Exception:
+        pass
+    try:
+        ten = (
+            svc.table("tenancies")
+            .select("tenant_name")
+            .eq("tenant_user_id", user_id)
+            .eq("status", "active")
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if ten:
+            name = (ten[0].get("tenant_name") or "").strip()
+            if name:
+                return name[:120]
+    except Exception:
+        pass
+    return f"{role_hint} · {user_id[:8]}"
+
+
+def _log_pass_event(
+    *,
+    pass_id: str | None,
+    landlord_id: str,
+    property_id: str,
+    event_type: str,
+    actor_user_id: str,
+    actor_role: str | None,
+    actor_label: str | None,
+    code: str | None = None,
+    subject_label: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    """Append-only custody event. Must not break the primary action."""
+    try:
+        create_service_client().table("access_pass_events").insert(
+            {
+                "pass_id": pass_id,
+                "landlord_id": landlord_id,
+                "property_id": property_id,
+                "event_type": event_type,
+                "actor_user_id": actor_user_id,
+                "actor_role": actor_role,
+                "actor_label": (actor_label or "")[:120] or None,
+                "code": (code or "")[:32] or None,
+                "subject_label": (subject_label or "")[:120] or None,
+                "metadata": metadata or {},
+            }
+        ).execute()
+    except Exception:
+        pass
+
+
 def _active_tenancy_for_tenant(user: AuthedUser) -> dict | None:
     """First active claimed tenancy for this user (service read for unit/property)."""
     svc = create_service_client()
@@ -209,18 +281,28 @@ def list_passes(
     user: AuthedUser = Depends(get_current_user),
 ):
     PASSES_PAGE_LIMIT = 100
-    q = (
-        user.db.table("access_passes")
-        .select("*")
-        .eq("landlord_id", user.id)
-        .order("created_at", desc=True)
-        .limit(PASSES_PAGE_LIMIT)
-    )
     if property_id:
-        require_property_access(
+        ctx = require_property_access(
             user.id, property_id, permission=PERM_ACCESS_VISITOR_PASSES
         )
-        q = q.eq("property_id", property_id)
+        # Service read so caretakers/managers see the owner's passes (RLS is landlord-scoped).
+        q = (
+            create_service_client()
+            .table("access_passes")
+            .select("*")
+            .eq("landlord_id", ctx.owner_id)
+            .eq("property_id", property_id)
+            .order("created_at", desc=True)
+            .limit(PASSES_PAGE_LIMIT)
+        )
+    else:
+        q = (
+            user.db.table("access_passes")
+            .select("*")
+            .eq("landlord_id", user.id)
+            .order("created_at", desc=True)
+            .limit(PASSES_PAGE_LIMIT)
+        )
     rows = q.execute().data or []
     items = [_serialize_pass(dict(r)) for r in rows]
     return {
@@ -257,6 +339,7 @@ def create_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
     subject_user_id = (payload.get("subject_user_id") or "").strip() or None
     code = (payload.get("code") or "").strip().upper() or _gen_code()
     valid_from = (payload.get("valid_from") or "").strip() or _now().isoformat()
+    actor_label = _resolve_actor_label(user.id, role_hint=ctx.role)
 
     # Owner inserts as landlord_id; staff acting for owner need service insert
     # when user.id != landlord_id — use user.db when owner, else service with landlord_id.
@@ -274,6 +357,7 @@ def create_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
         "source_type": (payload.get("source_type") or None),
         "source_id": (payload.get("source_id") or None),
         "created_by": user.id,
+        "created_by_label": actor_label,
         "updated_at": _now().isoformat(),
     }
 
@@ -287,6 +371,18 @@ def create_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
     created = _first_row(inserted)
     if not created:
         raise HTTPException(status_code=500, detail="Could not create pass")
+    _log_pass_event(
+        pass_id=str(created.get("id")),
+        landlord_id=landlord_id,
+        property_id=property_id,
+        event_type="created",
+        actor_user_id=user.id,
+        actor_role=ctx.role,
+        actor_label=actor_label,
+        code=str(created.get("code") or code),
+        subject_label=subject_label[:120],
+        metadata={"subject_type": subject_type},
+    )
     return {"item": _serialize_pass(dict(created))}
 
 
@@ -317,7 +413,7 @@ def revoke_pass(pass_id: str, user: AuthedUser = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Pass not found")
 
     current = dict(rows[0])
-    require_property_access(
+    ctx = require_property_access(
         user.id,
         str(current["property_id"]),
         permission=PERM_ACCESS_VISITOR_PASSES,
@@ -345,7 +441,150 @@ def revoke_pass(pass_id: str, user: AuthedUser = Depends(get_current_user)):
             .data
         )
     row = _first_row(updated) or {**current, **patch}
+    actor_label = _resolve_actor_label(user.id, role_hint=ctx.role)
+    _log_pass_event(
+        pass_id=pass_id,
+        landlord_id=str(current.get("landlord_id") or ctx.owner_id),
+        property_id=str(current["property_id"]),
+        event_type="revoked",
+        actor_user_id=user.id,
+        actor_role=ctx.role,
+        actor_label=actor_label,
+        code=str(current.get("code") or ""),
+        subject_label=str(current.get("subject_label") or ""),
+    )
     return {"item": _serialize_pass(dict(row))}
+
+
+def _parse_admit_raw(raw: str) -> tuple[str | None, str]:
+    """Parse bare code or QR payload `nexora-pass:{passId}:{code}` / `nexora-pass:{code}`."""
+    text = (raw or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Code or QR payload is required")
+    lower = text.lower()
+    if lower.startswith("nexora-pass:"):
+        parts = text.split(":")
+        if len(parts) == 3:
+            pass_id = parts[1].strip() or None
+            code = parts[2].strip().upper()
+        elif len(parts) == 2:
+            pass_id = None
+            code = parts[1].strip().upper()
+        else:
+            raise HTTPException(status_code=400, detail="Unrecognized QR payload")
+        if not code:
+            raise HTTPException(status_code=400, detail="QR payload missing code")
+        return pass_id, code
+    return None, text.upper()
+
+
+@router.post("/admit")
+def admit_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
+    """Caretaker/landlord admits a visitor by typed code or scanned QR string."""
+    property_id = (payload.get("property_id") or "").strip()
+    if not property_id:
+        raise HTTPException(status_code=400, detail="property_id is required")
+
+    ctx = require_property_access(
+        user.id, property_id, permission=PERM_ACCESS_VISITOR_PASSES
+    )
+    pass_id, code = _parse_admit_raw(str(payload.get("raw") or ""))
+
+    svc = create_service_client()
+    q = (
+        svc.table("access_passes")
+        .select("*")
+        .eq("landlord_id", ctx.owner_id)
+        .eq("property_id", property_id)
+        .eq("code", code)
+        .limit(5)
+    )
+    rows = q.execute().data or []
+    if pass_id:
+        rows = [r for r in rows if str(r.get("id")) == pass_id]
+    if not rows:
+        raise HTTPException(status_code=404, detail="No matching gate code")
+
+    current = dict(rows[0])
+    serialized = _serialize_pass(current)
+    effective = serialized.get("effective_status") or current.get("status")
+
+    if effective == "revoked" or current.get("status") == "revoked":
+        raise HTTPException(status_code=400, detail="Pass was revoked")
+    if effective == "expired":
+        raise HTTPException(status_code=400, detail="Pass has expired")
+    if effective == "scheduled":
+        raise HTTPException(
+            status_code=400, detail="Pass is not valid yet (scheduled)"
+        )
+    if effective != "active":
+        raise HTTPException(status_code=400, detail=f"Pass is not usable ({effective})")
+
+    max_uses = current.get("max_uses")
+    uses_count = int(current.get("uses_count") or 0)
+    if max_uses is not None:
+        try:
+            max_uses_i = int(max_uses)
+        except (TypeError, ValueError):
+            max_uses_i = None
+        if max_uses_i is not None and uses_count >= max_uses_i:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Pass use limit reached ({uses_count}/{max_uses_i})",
+            )
+
+    new_uses = uses_count + 1
+    now_iso = _now().isoformat()
+    actor_label = _resolve_actor_label(user.id, role_hint=ctx.role)
+    issuer_label = (
+        (current.get("created_by_label") or "").strip()
+        or (
+            _resolve_actor_label(str(current["created_by"]), role_hint="Issuer")
+            if current.get("created_by")
+            else "Unknown"
+        )
+    )
+    patch = {
+        "uses_count": new_uses,
+        "last_admitted_by": user.id,
+        "last_admitted_by_label": actor_label,
+        "last_admitted_at": now_iso,
+        "updated_at": now_iso,
+    }
+    updated = (
+        svc.table("access_passes")
+        .update(patch)
+        .eq("id", current["id"])
+        .execute()
+        .data
+    )
+    row = _first_row(updated) or {**current, **patch}
+    _log_pass_event(
+        pass_id=str(current["id"]),
+        landlord_id=ctx.owner_id,
+        property_id=property_id,
+        event_type="admitted",
+        actor_user_id=user.id,
+        actor_role=ctx.role,
+        actor_label=actor_label,
+        code=str(current.get("code") or code),
+        subject_label=str(current.get("subject_label") or ""),
+        metadata={
+            "uses_count": new_uses,
+            "created_by": current.get("created_by"),
+            "created_by_label": issuer_label,
+        },
+    )
+    item = _serialize_pass(dict(row))
+    if not item.get("created_by_label"):
+        item["created_by_label"] = issuer_label
+    return {
+        "admitted": True,
+        "item": item,
+        "uses_count": new_uses,
+        "admitted_by_label": actor_label,
+        "created_by_label": issuer_label,
+    }
 
 
 @router.get("/me")
@@ -530,6 +769,11 @@ def create_my_guest_pass(payload: dict, user: AuthedUser = Depends(get_current_u
                 ),
             )
 
+    actor_label = _resolve_actor_label(user.id, role_hint="Tenant")
+    # Prefer tenancy name for guest mint provenance
+    if tenancy.get("tenant_name"):
+        actor_label = str(tenancy["tenant_name"]).strip()[:120] or actor_label
+
     row = {
         "landlord_id": tenancy["landlord_id"],
         "property_id": tenancy["property_id"],
@@ -544,6 +788,7 @@ def create_my_guest_pass(payload: dict, user: AuthedUser = Depends(get_current_u
         "source_type": TENANT_GUEST_SOURCE,
         "source_id": tenancy["tenancy_id"],
         "created_by": user.id,
+        "created_by_label": actor_label,
         "invite_mode": invite_mode,
         "max_uses": None,  # in/out within window; Admit will track uses_count later
         "uses_count": 0,
@@ -553,6 +798,18 @@ def create_my_guest_pass(payload: dict, user: AuthedUser = Depends(get_current_u
     created = _first_row(inserted)
     if not created:
         raise HTTPException(status_code=500, detail="Could not create guest pass")
+    _log_pass_event(
+        pass_id=str(created.get("id")),
+        landlord_id=tenancy["landlord_id"],
+        property_id=tenancy["property_id"],
+        event_type="created",
+        actor_user_id=user.id,
+        actor_role="tenant",
+        actor_label=actor_label,
+        code=str(created.get("code") or ""),
+        subject_label=subject_label[:120],
+        metadata={"invite_mode": invite_mode, "source_type": TENANT_GUEST_SOURCE},
+    )
     return {"item": _serialize_pass(dict(created))}
 
 
@@ -580,9 +837,49 @@ def revoke_my_guest_pass(pass_id: str, user: AuthedUser = Depends(get_current_us
     if current.get("status") == "revoked":
         return {"item": _serialize_pass(current)}
 
+    actor_label = (
+        (current.get("created_by_label") or "").strip()
+        or _resolve_actor_label(user.id, role_hint="Tenant")
+    )
     patch = {"status": "revoked", "updated_at": _now().isoformat()}
     updated = (
         svc.table("access_passes").update(patch).eq("id", pass_id).execute().data
     )
     row = _first_row(updated) or {**current, **patch}
+    _log_pass_event(
+        pass_id=pass_id,
+        landlord_id=str(current.get("landlord_id") or ""),
+        property_id=str(current.get("property_id") or ""),
+        event_type="revoked",
+        actor_user_id=user.id,
+        actor_role="tenant",
+        actor_label=actor_label,
+        code=str(current.get("code") or ""),
+        subject_label=str(current.get("subject_label") or ""),
+    )
     return {"item": _serialize_pass(dict(row))}
+
+
+@router.get("/pass-events")
+def list_pass_events(
+    property_id: str = Query(...),
+    limit: int = Query(default=40, ge=1, le=100),
+    user: AuthedUser = Depends(get_current_user),
+):
+    """Recent gate chain-of-custody events for a property (issue / admit / revoke)."""
+    ctx = require_property_access(
+        user.id, property_id, permission=PERM_ACCESS_VISITOR_PASSES
+    )
+    rows = (
+        create_service_client()
+        .table("access_pass_events")
+        .select("*")
+        .eq("landlord_id", ctx.owner_id)
+        .eq("property_id", property_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+        .data
+        or []
+    )
+    return {"items": [dict(r) for r in rows], "loaded": len(rows)}
