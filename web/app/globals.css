@@ -1806,6 +1806,14 @@ html[data-sidebar-collapsed="true"] .shell-main {
   text-align: right;
 }
 
+.form-label-actions {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .auth-phone-row {
   display: grid;
   grid-template-columns: 7.5rem 1fr;
