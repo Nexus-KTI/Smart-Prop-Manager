@@ -1,29 +1,25 @@
-# Current initiative — Tenant maintenance landlord notify
+# Current initiative — Ops unblock + headed smoke
 
 **Updated:** 2026-09-24  
-**Owner:** Engineering  
-**Status:** closed (code)
+**Owner:** Engineering / Ops  
+**Status:** blocked on Nexora Render account + signed-in browser
 
 ## Goal
 
-When Tunde submits a repair on `/tenant/requests`, Ada gets a best-effort
-channel notify so tenant-originated `maintenance_requests` are not silent
-until she opens the board. Same work-order object — no new phase.
+Get durable delivery live and prove Phase 5 notify loops headed.
 
 ## Acceptance
 
-- [x] `POST /maintenance/me` enqueues landlord notify after insert (never fails create)
-- [x] HTML via `tenant_maintenance_submitted`; prefs event `maintenance_update`
-- [x] Idempotency `tenant-maintenance:{request_id}`
-- [x] Tests for template + enqueue
+- [ ] Render team that hosts `smart-prop-api` has cron `smart-prop-delivery-outbox`
+      from `render.yaml` (`*/5 * * * *`)
+- [ ] Supabase Auth: leaked-password protection enabled (Dashboard)
+- [ ] Headed: [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) admit notify +
+      tenant repair notify + From/Origin labels
+- [x] Origin labels: Tenant vs You on work-orders + unit repair card
+- [x] Ops checklist notes wrong MCP Render workspace; auth advisor link
 
-## Already in product (not re-built)
+## Findings (2026-09-24)
 
-- Tenant create with `origin='tenant'`, photo, cancel, message thread
-- Landlord triage + artisan assign on same row
-
-## Next
-
-Broader Phase 5 smoke (Tunde → Ada triage → Sola) when you have a signed-in
-browser; ops (outbox deploy, Twilio). Optional UX polish on work-orders
-`origin` badge if triage is unclear.
+- Connected Render workspace has **no** Smart Prop services (ProjectX/kronix only).
+- Supabase advisor WARN: leaked password protection disabled.
+- RLS-no-policy INFO on service-role tables is intentional (incl. `access_pass_events`).

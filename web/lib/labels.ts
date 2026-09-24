@@ -176,6 +176,11 @@ export const MAINTENANCE_STATUS_LABELS: Record<string, string> = {
   cancelled: "Canceled",
 };
 
+export const MAINTENANCE_ORIGIN_LABELS: Record<string, string> = {
+  tenant: "Tenant",
+  landlord: "You",
+};
+
 export const LEAD_STATUS_LABELS: Record<string, string> = {
   new: "New",
   contacted: "Contacted",

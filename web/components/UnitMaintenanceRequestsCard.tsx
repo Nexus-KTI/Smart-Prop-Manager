@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { useToast } from "@/components/ToastProvider";
 import {
+  MAINTENANCE_ORIGIN_LABELS,
   MAINTENANCE_STATUS_LABELS,
   PRIORITY_LABELS,
   labelOrTitle,
@@ -274,6 +275,7 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
             <thead>
               <tr>
                 <th>Request</th>
+                <th>From</th>
                 <th>Priority</th>
                 <th>Status</th>
                 <th />
@@ -311,6 +313,12 @@ export function UnitMaintenanceRequestsCard({ unitId }: Props) {
                         </a>
                       </p>
                     ) : null}
+                  </td>
+                  <td>
+                    {labelOrTitle(
+                      MAINTENANCE_ORIGIN_LABELS,
+                      row.origin || "tenant",
+                    )}
                   </td>
                   <td>{labelOrTitle(PRIORITY_LABELS, row.priority)}</td>
                   <td>

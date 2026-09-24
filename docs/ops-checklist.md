@@ -141,20 +141,36 @@ order by status;
 Repo files under `sql/` (apply in order if rebuilding):
 
 `000` → … → `031` → `032_resilience_payments_outbox_limits` →
-`033_reminders_queued_status`
+`033_reminders_queued_status` → `034`…`037` access passes/events →
+`038_signup_attribution`
 
 Remote (Supabase): `032` and `033` DDL are live and recorded as verify-only
 migration stamps (`20260917172210` / `20260917172220`). Do **not** re-apply the
 full financial sections of `032`. Prefer MCP/`list_migrations` + column checks
-over blind re-apply.
+over blind re-apply. `038_signup_attribution` applied 2026-09-24.
 
 `delivery_outbox` and `rate_limit_buckets` intentionally use RLS with no
 client policies (service-role RPCs only), matching `product_events`.
+Same pattern: `access_pass_events` (API/service-role reads only).
 
 Interactive chase can log `queued` reminder rows while the outbox worker
 delivers. Ensure Render cron `smart-prop-delivery-outbox` is created from
 `render.yaml` (`*/5 * * * *`) — it is defined in-repo but may not yet be live
 in every Render workspace.
+
+**2026-09-24 check:** the Render MCP account’s only workspace (`My Workspace`,
+`tea-d28svn1r0fns73epoe20`) has ProjectX/kronix services only — **no**
+`smart-prop-api` / `smart-prop-delivery-outbox`. Deploy the blueprint from the
+Nexora Render team/account (or sync `render.yaml` there), not into this
+workspace.
+
+---
+
+## 6b. Auth hardening (Dashboard)
+
+- Enable **Leaked password protection** (HaveIBeenPwned):  
+  [Supabase password security](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)  
+  Advisor WARN until on. Not toggleable via SQL/MCP — Auth settings only.
 
 ---
 
@@ -164,4 +180,5 @@ in every Render workspace.
 2. Login → `/properties`  
 3. Manual payment → paid ledger + one queued receipt → delivered receipt log
 4. Reminder run → one queued row → one delivered provider message
-5. Admin invite lead → signup link opens with invite query params  
+5. Admin invite lead → signup link opens with invite query params
+6. Phase 5: [`phase5-smoke.md`](phase5-smoke.md) — admit notify + tenant repair notify  

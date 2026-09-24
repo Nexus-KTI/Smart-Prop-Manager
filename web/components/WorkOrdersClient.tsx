@@ -13,6 +13,7 @@ import {
 import { useToast } from "@/components/ToastProvider";
 import {
   ARTISAN_STATUS_LABELS,
+  MAINTENANCE_ORIGIN_LABELS,
   MAINTENANCE_STATUS_LABELS,
   labelOrTitle,
 } from "@/lib/labels";
@@ -248,7 +249,12 @@ export function WorkOrdersClient() {
                       </p>
                     ) : null}
                   </td>
-                  <td>{row.origin || "tenant"}</td>
+                  <td>
+                    {labelOrTitle(
+                      MAINTENANCE_ORIGIN_LABELS,
+                      row.origin || "tenant",
+                    )}
+                  </td>
                   <td>{labelOrTitle(MAINTENANCE_STATUS_LABELS, row.status)}</td>
                   <td>
                     <Link
