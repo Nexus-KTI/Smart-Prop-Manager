@@ -30,7 +30,7 @@ def notify_tenant_task_assigned(
         return result
     try:
         from lib.delivery_outbox import enqueue_notification
-        from lib.email_templates import frontend_base_url
+        from lib.email_templates import frontend_base_url, tenant_task_assigned
         from lib.notification_prefs import load_profile_notification_prefs
         from lib.notify import (
             get_owner_notification_channel,
@@ -58,11 +58,11 @@ def notify_tenant_task_assigned(
         channel = get_owner_notification_channel(db, landlord_id)
         tenant_uid = rows[0].get("tenant_user_id")
         prefs = load_profile_notification_prefs(db, tenant_uid) if tenant_uid else None
-        due_bit = f" Due {due_on}." if due_on else ""
         link = f"{frontend_base_url()}/tenant/tasks"
-        message = (
-            f"Your landlord assigned a to-do on Nexora: {title[:120]}.{due_bit} "
-            f"Open: {link}"
+        mail = tenant_task_assigned(
+            title=title,
+            tasks_url=link,
+            due_on=due_on,
         )
         notify_to = contact if channel == "email" else normalize_e164(contact)
         fallback = hashlib.sha256(
@@ -73,8 +73,9 @@ def notify_tenant_task_assigned(
             idempotency_key=idempotency_key or f"task-assigned:{fallback}",
             channel=channel,
             contact=notify_to,
-            message=message,
-            email_subject="New to-do from your landlord",
+            message=mail.text,
+            email_subject=mail.subject,
+            email_html=mail.html,
             event="messages",
             notification_prefs=prefs,
         )

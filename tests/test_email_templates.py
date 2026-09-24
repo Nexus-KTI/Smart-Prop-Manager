@@ -213,6 +213,18 @@ def test_invite_templates(monkeypatch):
     assert job.html and "Open jobs" in job.html
     assert "Palm Court" in job.html
 
+    from lib.email_templates import tenant_task_assigned
+
+    task = tenant_task_assigned(
+        title="Send meter photo",
+        tasks_url="https://app.example.com/tenant/tasks",
+        due_on="2026-09-20",
+    )
+    assert "Send meter photo" in task.subject
+    assert task.html and "Open tasks" in task.html
+    assert "2026-09-20" in task.html
+    assert "Send meter photo" in task.text
+
 
 def test_mailgun_send_includes_html(monkeypatch):
     from lib.notify import send_email

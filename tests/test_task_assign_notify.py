@@ -101,3 +101,49 @@ def test_notify_sends_when_contact_present(monkeypatch):
     assert "Send meter photo" in sent["message"]
     assert "https://app.example.com/tenant/tasks" in sent["message"]
     assert sent["event"] == "messages"
+    assert sent["email_html"] and "Open tasks" in sent["email_html"]
+    assert "Send meter photo" in sent["email_subject"]
+
+
+def test_notify_queues_html_on_email_channel(monkeypatch):
+    monkeypatch.setenv("FRONTEND_URL", "https://app.example.com")
+    monkeypatch.setattr(
+        "lib.notify.get_owner_notification_channel",
+        lambda _db, _lid: "email",
+    )
+    monkeypatch.setattr(
+        "lib.notification_prefs.load_profile_notification_prefs",
+        lambda *_a, **_k: {},
+    )
+    sent = {}
+
+    def _fake_enqueue(_db, **kwargs):
+        sent.update(kwargs)
+        return {"channel": "email"}
+
+    monkeypatch.setattr(
+        "lib.delivery_outbox.enqueue_notification",
+        _fake_enqueue,
+    )
+
+    out = notify_tenant_task_assigned(
+        _FakeDb(
+            [
+                {
+                    "id": "t1",
+                    "tenant_contact": "tenant@example.com",
+                    "tenant_user_id": "u1",
+                    "tenant_name": "Ada",
+                }
+            ]
+        ),
+        landlord_id="ll1",
+        tenancy_id="t1",
+        title="Pay service charge",
+        due_on=None,
+    )
+    assert out["sent"] is True
+    assert out["channel"] == "email"
+    assert sent["contact"] == "tenant@example.com"
+    assert sent["email_html"] and "#0f6e4f" in sent["email_html"]
+    assert "Open tasks" in sent["email_html"]

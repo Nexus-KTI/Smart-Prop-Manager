@@ -323,6 +323,36 @@ def artisan_invite(*, claim_url: str, landlord_label: str | None = None) -> Emai
     return EmailContent(subject=subject, text=text, html=html_body)
 
 
+def tenant_task_assigned(
+    *,
+    title: str,
+    tasks_url: str,
+    due_on: str | None = None,
+) -> EmailContent:
+    job = (title or "").strip() or "To-do"
+    due = (due_on or "").strip() or None
+    subject = f"New to-do: {job[:80]}"
+    due_bit = f" Due {due}." if due else ""
+    text = (
+        f"Your landlord assigned a to-do on {BRAND_NAME}: {job[:120]}.{due_bit}\n\n"
+        f"Open: {tasks_url}"
+    )
+    details: list[tuple[str, str]] = [("Task", job[:120])]
+    if due:
+        details.append(("Due", due))
+    html_body = render_transactional_email(
+        brand=email_brand_name(),
+        eyebrow="To-do",
+        heading="New to-do from your landlord",
+        body_text="Open your tasks list to mark it done when finished.",
+        details=details,
+        cta_url=tasks_url,
+        cta_label="Open tasks",
+        footer=f"This notice was sent by your landlord via {BRAND_NAME}.",
+    )
+    return EmailContent(subject=subject, text=text, html=html_body)
+
+
 def artisan_job_assigned(
     *,
     title: str,

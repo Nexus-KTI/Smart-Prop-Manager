@@ -109,6 +109,7 @@ Rules:
 | `tenancy_invite` | Tenancy invite | Unit / from details | Claim invite |
 | `artisan_invite` | Artisan invite | From details | Claim invite |
 | `artisan_job_assigned` | Work order | Job / where details | Open jobs |
+| `tenant_task_assigned` | To-do | Task / due details | Open tasks |
 
 ---
 
@@ -125,6 +126,18 @@ Rules:
 - Dark-mode brand redesign (force light)  
 - Litmus/Email on Acid as a CI gate (manual QA only)  
 - Per-event HTML forks outside `render_transactional_email`
+
+---
+
+## Live inbox QA (manual)
+
+After Mailgun is configured, spot-check one of each recently wired event:
+
+1. Staff invite → Claim invite CTA + role/from details  
+2. Artisan job assigned → Open jobs + where details  
+3. Tenant to-do assigned → Open tasks + due (if set)  
+
+Confirm multipart plain + HTML, forest CTA (`#0f6e4f`), no broken images if `EMAIL_LOGO_URL` unset.
 
 ---
 
