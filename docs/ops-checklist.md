@@ -162,28 +162,37 @@ in every Render workspace.
 `My Workspace`) has ProjectX/kronix only — **not** Nexora.
 
 **Live Nexora API (Kings-Hubbot):** web service **Smart-Prop-Manager**
-(`srv-danbl2rbc2fs73drq7c0`) → https://smart-prop-manager.onrender.com  
-Repo `Nexus-KTI/Smart-Prop-Manager` `main`; Free tier (spins down). Deploys
-through `9a147ae` confirmed live. Create cron **on that same Kings-Hubbot
-dashboard** (Blueprint or New Cron Job), not via the Keyrium MCP workspace.
+(`srv-danbl2rbc2fs73drq7o0`) → https://smart-prop-manager.onrender.com  
+Repo `Nexus-KTI/Smart-Prop-Manager` `main`; Free tier (spins down).  
 
-### Create `smart-prop-delivery-outbox` (Dashboard)
+**Render MCP:** project `.cursor/mcp.json` uses
+`Authorization: Bearer ${env:RENDER_API_KEY}`. Put the key in `.env` and as a
+User env var (`setx RENDER_API_KEY …`), then **restart Cursor** so MCP resolves
+it. Prefer the Kings-Hubbot API key (not Keyrium).
 
-1. Render → Kings-Hubbot → **New → Cron Job** (same account as Smart-Prop-Manager).
-2. Connect `Nexus-KTI/Smart-Prop-Manager`, branch `main`, Docker runtime.
+### Delivery outbox on Free tier (no Render Cron billing)
+
+Native `smart-prop-delivery-outbox` Cron Job requires a payment method
+(API returned **402** on create). Until you add a card + Starter cron:
+
+1. Ensure `CRON_SECRET` is set on Smart-Prop-Manager (synced from local `.env`).
+2. Every 5 minutes, call:
+
+```http
+POST https://smart-prop-manager.onrender.com/jobs/delivery-outbox
+Authorization: Bearer <CRON_SECRET>
+```
+
+Use [cron-job.org](https://cron-job.org) / GitHub Actions / similar. Cold starts
+on Free may take ~50s — set the external cron timeout ≥ 60s.
+
+### Create native Render Cron (after billing)
+
+1. Render → Kings-Hubbot → **New → Cron Job** (or retry API once a card is on file).
+2. Repo `Nexus-KTI/Smart-Prop-Manager`, branch `main`, Docker.
 3. Schedule: `*/5 * * * *`
-4. Docker command override: `python -m scripts.delivery_outbox`
-5. Copy env from **Smart-Prop-Manager** Environment (at least):
-   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
-   Twilio + Mailgun/SMTP + `FRONTEND_URL` / `EMAIL_*` (same set as
-   `render.yaml` → `smart-prop-delivery-outbox`).
-6. After first run: SQL health check in §5 above; investigate `dead` / old
-   `pending`.
-
-Optional: also create `smart-prop-due-reminders` from the same blueprint if
-missing. Note: blueprint service name is `smart-prop-api`; live name is
-`Smart-Prop-Manager` — use Dashboard copy-from-service rather than blind
-Blueprint apply if names diverge.
+4. Command: `python -m scripts.delivery_outbox`
+5. Copy env from Smart-Prop-Manager (Supabase + Twilio + Mailgun + `FRONTEND_URL`).
 
 ---
 
@@ -200,6 +209,7 @@ Blueprint apply if names diverge.
 1. `/health` 200 on https://smart-prop-manager.onrender.com/health  
 2. Login → `/properties`  
 3. Manual payment → paid ledger + one queued receipt → delivered receipt log
-4. Reminder run → one queued row → one delivered provider message
-5. Admin invite lead → signup link opens with invite query params
-6. Phase 5: [`phase5-smoke.md`](phase5-smoke.md) — admit notify + tenant repair notify  
+4. `POST /jobs/delivery-outbox` with `CRON_SECRET` → JSON with processed counts  
+5. Reminder run → one queued row → one delivered provider message
+6. Admin invite lead → signup link opens with invite query params
+7. Phase 5: [`phase5-smoke.md`](phase5-smoke.md) — admit notify + tenant repair notify  

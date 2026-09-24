@@ -15,6 +15,7 @@ from routers import (
     admin,
     applications,
     artisans,
+    cron_jobs,
     events,
     expenses,
     leads,
@@ -87,6 +88,7 @@ app.add_middleware(
 app.include_router(properties.router)
 app.include_router(payments.router)
 app.include_router(reminders.router)
+app.include_router(cron_jobs.router)
 app.include_router(tenancies.router)
 app.include_router(maintenance.router)
 app.include_router(utilities.router)
