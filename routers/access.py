@@ -146,25 +146,38 @@ def _log_pass_event(
     code: str | None = None,
     subject_label: str | None = None,
     metadata: dict | None = None,
-) -> None:
-    """Append-only custody event. Must not break the primary action."""
+) -> str | None:
+    """Append-only custody event. Must not break the primary action.
+
+    Returns the new event id when insert succeeds (for notify idempotency).
+    """
     try:
-        create_service_client().table("access_pass_events").insert(
-            {
-                "pass_id": pass_id,
-                "landlord_id": landlord_id,
-                "property_id": property_id,
-                "event_type": event_type,
-                "actor_user_id": actor_user_id,
-                "actor_role": actor_role,
-                "actor_label": (actor_label or "")[:120] or None,
-                "code": (code or "")[:32] or None,
-                "subject_label": (subject_label or "")[:120] or None,
-                "metadata": metadata or {},
-            }
-        ).execute()
+        inserted = (
+            create_service_client()
+            .table("access_pass_events")
+            .insert(
+                {
+                    "pass_id": pass_id,
+                    "landlord_id": landlord_id,
+                    "property_id": property_id,
+                    "event_type": event_type,
+                    "actor_user_id": actor_user_id,
+                    "actor_role": actor_role,
+                    "actor_label": (actor_label or "")[:120] or None,
+                    "code": (code or "")[:32] or None,
+                    "subject_label": (subject_label or "")[:120] or None,
+                    "metadata": metadata or {},
+                }
+            )
+            .execute()
+            .data
+            or []
+        )
+        if inserted and inserted[0].get("id"):
+            return str(inserted[0]["id"])
     except Exception:
         pass
+    return None
 
 
 def _active_tenancy_for_tenant(user: AuthedUser) -> dict | None:
@@ -577,7 +590,7 @@ def admit_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
         .data
     )
     row = _first_row(updated) or {**current, **patch}
-    _log_pass_event(
+    event_id = _log_pass_event(
         pass_id=str(current["id"]),
         landlord_id=ctx.owner_id,
         property_id=property_id,
@@ -593,6 +606,29 @@ def admit_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
             "created_by_label": issuer_label,
         },
     )
+    try:
+        from lib.access_notify import notify_guest_admitted
+
+        notify_guest_admitted(
+            svc,
+            landlord_id=ctx.owner_id,
+            property_id=property_id,
+            unit_id=current.get("unit_id"),
+            pass_id=str(current["id"]),
+            event_id=event_id,
+            code=str(current.get("code") or code),
+            subject_label=str(current.get("subject_label") or "") or None,
+            admitter_user_id=user.id,
+            admitter_label=actor_label,
+            issuer_user_id=(
+                str(current["created_by"]) if current.get("created_by") else None
+            ),
+            issuer_label=issuer_label,
+            admitted_at=now_iso,
+            uses_count=new_uses,
+        )
+    except Exception:
+        pass
     item = _serialize_pass(dict(row))
     if not item.get("created_by_label"):
         item["created_by_label"] = issuer_label

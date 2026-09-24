@@ -2,7 +2,7 @@
 
 **Updated:** 2026-09-24  
 **Owner:** Engineering  
-**Status:** next (not started)
+**Status:** closed (code)
 
 ## Goal
 
@@ -12,29 +12,25 @@ is not only an in-app log.
 
 ## Acceptance
 
-- [ ] On successful `POST /access/admit`, enqueue notify to landlord and issuing
+- [x] On successful `POST /access/admit`, enqueue notify to landlord and issuing
       tenant (when contact known), best-effort / never fail admit
-- [ ] Reuse delivery outbox + notification prefs; HTML email via
+- [x] Reuse delivery outbox + notification prefs; HTML email via
       `render_transactional_email` (details: code, unit, admitter, when)
-- [ ] WhatsApp/SMS plain text mirrors email facts
-- [ ] Idempotency key per admit event id (no duplicate blast on retry)
-- [ ] Tests for enqueue payload; no schema migration unless a real gap appears
-- [ ] Update [`docs/gate-visibility.md`](../docs/gate-visibility.md) — move
-      “admit notify” from out-of-scope to shipped
+- [x] WhatsApp/SMS plain text mirrors email facts
+- [x] Idempotency key per admit event id (no duplicate blast on retry)
+- [x] Tests for enqueue payload; no schema migration
+- [x] Update [`docs/gate-visibility.md`](../docs/gate-visibility.md) — admit
+      notify moved to shipped
 
 ## Guardrails
 
 - No estate-as-org, police export, camera QR, IoT
-- Do not spam on revoke/issue — **admit only** in this slice
-- Prefer existing `access_pass_events` row as the notify trigger identity
+- Admit only (not revoke/issue)
+- Skip landlord when they are the admitter; skip issuer when they are
+  admitter or landlord
+- `gate_admit` prefs event defaults allow (no settings matrix row yet)
 
-## Closed just before this
-
-- Gate role visibility (staff-first / landlord portfolio / tenant issuer trail)
-- Email kit: details/alert primitives + invite/job/task HTML templates
-- Remote `038_signup_attribution` applied
-
-## After this
+## Next
 
 Product bet: **tenant-originated maintenance → existing work-order object**
 (Phase 5). Ops: headed Ada walk, delivery-outbox deploy, prod Twilio.

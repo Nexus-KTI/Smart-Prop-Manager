@@ -41,7 +41,8 @@ Gate activity is therefore an **estate ops** concern first, with **scoped landlo
 - Dashboard `/access`: Admit first → Gate activity (issuer + actor) → Issue / pass table.  
 - Portfolio toggle **This property | All my properties** → `GET /access/pass-events?scope=portfolio` (ACL via `accessible_property_ids_for_portfolio`).  
 - Tenant `/tenant/access`: **Your guests at the gate** via `GET /access/my-pass-events`; last-admit on pass cards.  
-- Events expose `issuer_label` (from metadata / created actor).
+- Events expose `issuer_label` (from metadata / created actor).  
+- **Admit notify:** on successful admit, best-effort outbox notify to landlord (if not the admitter) and issuing tenant (if distinct), HTML via `guest_admitted`.
 
 ---
 
@@ -49,7 +50,6 @@ Gate activity is therefore an **estate ops** concern first, with **scoped landlo
 
 **Product / market**
 
-- Notify landlord or tenant on each admit (WhatsApp/SMS/email) — later  
 - Estate-as-org / multi-landlord community entity (one gate for many unrelated landlords)  
 - Police/export packs, CCTV, visitor photo ID capture  
 - IoT / smart locks / ANPR (PRD F52)  
@@ -63,6 +63,7 @@ Gate activity is therefore an **estate ops** concern first, with **scoped landlo
 - Changing Admit code/QR format or use-limit rules  
 - RLS policies for direct client reads of events (keep API + service role)  
 - OS explorer / design-mode wireframes  
+- Settings matrix row for `gate_admit` (unknown events default allow)  
 
 ---
 
@@ -72,3 +73,4 @@ Gate activity is therefore an **estate ops** concern first, with **scoped landlo
 - [x] Landlord sees events only for their portfolio properties (single or All).  
 - [x] Tenant sees admits for codes they issued.  
 - [x] Event rows always show **issuer** and **admitter**/actor labels when known (criminal-guest audit trail).
+- [x] Successful admit enqueues notify to landlord and/or issuer (idempotent per event id); admit still succeeds if notify fails.

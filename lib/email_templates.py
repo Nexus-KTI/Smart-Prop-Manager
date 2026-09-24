@@ -353,6 +353,80 @@ def tenant_task_assigned(
     return EmailContent(subject=subject, text=text, html=html_body)
 
 
+def guest_admitted(
+    *,
+    audience: str,
+    code: str,
+    place: str,
+    admitter_label: str,
+    access_url: str,
+    issuer_label: str | None = None,
+    subject_label: str | None = None,
+    when_label: str | None = None,
+) -> EmailContent:
+    """Notify landlord or issuing tenant that a guest code was admitted."""
+    gate_code = (code or "").strip() or "—"
+    where = (place or "").strip() or "your property"
+    by = (admitter_label or "").strip() or "gate staff"
+    guest = (subject_label or "").strip() or None
+    issuer = (issuer_label or "").strip() or None
+    when = (when_label or "").strip() or None
+
+    if audience == "issuer":
+        subject = f"Your guest was admitted: {where}"
+        heading = "Your guest was admitted"
+        body = (
+            f"Gate staff admitted a guest using your code at {where}.\n\n"
+            "Open your access page if you need to revoke remaining uses."
+        )
+        cta = "Open my codes"
+        footer = f"You issued this code on {BRAND_NAME}."
+    else:
+        subject = f"Guest admitted: {where}"
+        heading = "Guest admitted at the gate"
+        body = (
+            f"A guest code was admitted at {where}.\n\n"
+            "Open gate activity if you need the custody trail."
+        )
+        cta = "Open gate activity"
+        footer = f"This notice was sent via {BRAND_NAME}."
+
+    details: list[tuple[str, str]] = [
+        ("Code", gate_code),
+        ("Where", where),
+        ("Admitted by", by),
+    ]
+    if guest:
+        details.append(("Guest", guest[:120]))
+    if issuer and audience != "issuer":
+        details.append(("Issued by", issuer[:120]))
+    if when:
+        details.append(("When", when[:40]))
+
+    text_lines = [
+        f"{heading} — {where}.",
+        f"Code: {gate_code}. Admitted by {by}.",
+    ]
+    if guest:
+        text_lines.append(f"Guest: {guest}.")
+    if issuer and audience != "issuer":
+        text_lines.append(f"Issued by: {issuer}.")
+    text_lines.append(f"Open: {access_url}")
+    text = "\n".join(text_lines)
+
+    html_body = render_transactional_email(
+        brand=email_brand_name(),
+        eyebrow="Gate",
+        heading=heading,
+        body_text=body,
+        details=details,
+        cta_url=access_url,
+        cta_label=cta,
+        footer=footer,
+    )
+    return EmailContent(subject=subject, text=text, html=html_body)
+
+
 def artisan_job_assigned(
     *,
     title: str,

@@ -2,15 +2,13 @@
 
 ## Now
 
-1. **Gate admit notify** — see [`plans/spec.md`](spec.md) (landlord + issuing
-   tenant on successful admit; outbox + HTML email).
-
-## Next (after admit notify)
-
-2. **Tenant-originated maintenance intake** — Phase 5 work-order object;
+1. **Tenant-originated maintenance intake** — Phase 5 work-order object;
    Tunde submits → triage → Sola. Spec before code; no new PRD phase.
-3. Ops interleave when touching deploy: headed Ada walk, delivery-outbox
-   service, prod Twilio, leaked-password advisor.
+
+## Next (ops interleave)
+
+2. Headed Ada walk, delivery-outbox service, prod Twilio, leaked-password
+   advisor — when next touching deploy.
 
 ## Deferred ops
 
@@ -22,6 +20,7 @@
 
 ## Closed recently
 
+- Gate admit notify (landlord + issuer outbox)
 - Gate role visibility (staff / landlord / tenant scopes)
 - Transactional email kit (details/alert + invite/job/task HTML)
 - Signup attribution (`038` applied remote)
