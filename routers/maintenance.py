@@ -41,7 +41,7 @@ def _first_row(data: Any) -> dict | None:
 def _require_active_tenancy_for_tenant(user: AuthedUser) -> dict:
     rows = (
         user.db.table("tenancies")
-        .select("id, unit_id, landlord_id, tenant_user_id, status")
+        .select("id, unit_id, landlord_id, tenant_user_id, tenant_name, status")
         .eq("tenant_user_id", user.id)
         .eq("status", "active")
         .order("activated_at", desc=True)
