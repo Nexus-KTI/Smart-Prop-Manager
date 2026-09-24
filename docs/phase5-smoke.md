@@ -49,3 +49,13 @@ Prove utilities publish, access passes, and artisan work-order loop (local).
 
 ## Fail notes
 Record: unit id, invite token, request id, pass id, API error detail.
+
+---
+
+## Agent gate (2026-09-24)
+
+- [x] pytest: access notify + maintenance notify + cron jobs + Ada money subset → **22 passed**
+- [x] Code: `MAINTENANCE_ORIGIN_LABELS` on work-orders + unit repair card
+- [x] Outbox HTTP + GH Actions drain proven earlier same day
+- [ ] **Headed live** — needs your signed-in landlord / tenant / artisan session  
+  (agent has no product cookie; same block as Ada smoke)

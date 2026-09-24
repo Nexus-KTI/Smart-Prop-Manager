@@ -1,29 +1,35 @@
-# Current initiative — Ops unblock + headed smoke
+# Current initiative — Close ops residue + headed proof
 
 **Updated:** 2026-09-24  
 **Owner:** Engineering / Ops  
-**Status:** blocked on Nexora Render account + signed-in browser
+**Status:** in progress (outbox drain live; Auth + headed + Twilio remain)
 
 ## Goal
 
-Get durable delivery live and prove Phase 5 notify loops headed.
+Keep money as the commercial beachhead. Finish residual ops/proof so Phase 5
+notify and chase SMS are trustworthy — no new product modules without an
+explicit call.
 
 ## Acceptance
 
-- [ ] Render team that hosts `smart-prop-api` has cron `smart-prop-delivery-outbox`
-      from `render.yaml` (`*/5 * * * *`)
+- [x] Durable outbox drain live without Render Cron card  
+      — `POST /jobs/delivery-outbox` + [`.github/workflows/delivery-outbox.yml`](../.github/workflows/delivery-outbox.yml)  
+      — Secret `CRON_SECRET` on repo; manual run OK (`claimed`/`sent` > 0)
 - [ ] Supabase Auth: leaked-password protection enabled (Dashboard)
-- [ ] Headed: [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) admit notify +
-      tenant repair notify + From/Origin labels
-- [x] Origin labels: Tenant vs You on work-orders + unit repair card
-- [x] Ops checklist notes wrong MCP Render workspace; auth advisor link
+- [ ] Headed: [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) +  
+      [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md)
+- [ ] Supabase Phone Twilio aligned with prod sender; NG SMS chase works
+- [x] Origin labels Tenant vs You; gate/admit + tenant repair notify shipped
+- [x] Living plan matches Free-tier outbox reality (Render Cron waived)
 
-## Findings (2026-09-24)
+## Findings
 
-- Render MCP (`emmanuel@…` / My Workspace) ≠ Nexora host.
-- **Live API:** Kings-Hubbot → **Smart-Prop-Manager**
-  (`srv-danbl2rbc2fs73drq7c0`, https://smart-prop-manager.onrender.com), Free,
-  auto-deploy `main` through `9a147ae`.
-- Outbox cron still not created there — Dashboard steps in ops-checklist §5.
-- Supabase advisor WARN: leaked password protection disabled.
-- RLS-no-policy INFO on service-role tables is intentional.
+- Kings-Hubbot **Smart-Prop-Manager** Free web is live; Cron Job needs a card → waived.
+- GH Actions schedule every ~5 min drains outbox (cold start ≤90s).
+- Advisor still WARN: leaked-password disabled (MCP cannot toggle Auth).
+- Applications / listing page: **hold** until product decision.
+
+## Not this initiative
+
+US TenantCloud skips; Estate OS → prod; hard paywall; bank rec; leasing CRM
+before applications decision.

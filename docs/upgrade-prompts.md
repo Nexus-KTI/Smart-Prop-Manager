@@ -97,8 +97,11 @@ _No open Now prompts._ Ada: servers + pytest + static-headed-gate **PASS** (2026
 
 ## Next (after Now green)
 
-- Upgrade Twilio off trial / verify recipient numbers for live SMS.  
-- If public pricing launches: one price story on marketing + checkout only.
+- Enable leaked-password + align Phone Twilio ([`auth-dashboard-ops.md`](auth-dashboard-ops.md)).  
+- Headed Ada + Phase 5 live walks.  
+- Upgrade Twilio off trial / verify recipient numbers for live SMS (after Dashboard Phone SID matches Render).  
+- If public pricing launches: one price story on marketing + checkout only.  
+- Applications / listing: **HOLD** until explicit product yes ([`plans/backlog.md`](../plans/backlog.md)).
 
 ---
 

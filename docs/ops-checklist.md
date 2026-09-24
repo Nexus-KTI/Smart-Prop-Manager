@@ -28,9 +28,16 @@ Auth OTP goes **Supabase Phone Auth → Twilio configured in the Supabase dashbo
 | Actual OTP path | Old Twilio `AC8abf…` / From `+14472244801` — today’s OTPs **failed 21608** |
 | UI symptom | “Enter the 6-digit code…” while no SMS arrives |
 
-**Fix (required):** Supabase Dashboard → **Authentication → Providers → Phone** → set Account SID, Auth Token, and Message Service / From to the **new** Twilio values (`ACf7c4…`, token, `+15155172581`). Save, then retry login.
+**Fix (required):** Supabase Dashboard → **Authentication → Providers → Phone** → set Account SID, Auth Token, and Message Service / From to the **production** Twilio values used on Render Smart-Prop-Manager (`TWILIO_*`). Save, then retry login. Step-by-step: [`auth-dashboard-ops.md`](auth-dashboard-ops.md).
 
-**Also:** on a Trial account, the login phone must be under Twilio **Verified Caller IDs** (already true on the new account for `+2348139608051`).
+**Also:** on a Trial account, the login phone must be under Twilio **Verified Caller IDs**.
+
+**Alignment checklist (2026-09-24)**
+
+- [ ] Supabase Phone SID matches Render `TWILIO_ACCOUNT_SID`
+- [ ] From / Messaging Service matches `TWILIO_SMS_FROM` (or WA From if used for OTP)
+- [ ] Trial lifted **or** test NG numbers verified
+- [ ] Login OTP SMS received; chase SMS (unit contact) received when channel=sms
 
 App UX: `GET /notify/sms-delivery` flags “no SMS on API Twilio in last 5 minutes” when Supabase still points at a different Twilio account.
 
@@ -193,9 +200,12 @@ Optional: [cron-job.org](https://cron-job.org) with the same URL + Bearer header
 
 ## 6b. Auth hardening (Dashboard)
 
-- Enable **Leaked password protection** (HaveIBeenPwned):  
-  [Supabase password security](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)  
-  Advisor WARN until on. Not toggleable via SQL/MCP — Auth settings only.
+**One-pager:** [`auth-dashboard-ops.md`](auth-dashboard-ops.md)
+
+- [ ] Enable **Leaked password protection** (HaveIBeenPwned)  
+  [docs](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)  
+  **2026-09-24:** advisor still WARN — not toggleable via SQL/MCP.
+- [ ] Phone provider Twilio = prod sender (same SID/From as Render chase SMS)
 
 ---
 

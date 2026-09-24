@@ -77,3 +77,5 @@ python -m pytest tests/test_unit_status_aggregate.py tests/test_portfolio_money_
 **2026-09-15 headed attempt:** Prep servers PASS; pytest PASS; static re-walk of all headed checklist items PASS (no P0). Live headed walk **blocked** until you confirm in a signed-in browser (open `/properties`, check Action needed badge vs empty header chase badge, then walk Friday path). Next ops after live PASS: prod Twilio.
 
 **2026-09-15 proceed retry:** pytest **10 passed**; `:8000` up; gstack browse + `cookie-import-browser chrome --domain localhost` → **DPAPI decryption failed** (Windows cannot decrypt Chrome cookies for the agent). Still `/properties` → `/login`. Unblock: your headed walk, or Chrome launched with `--remote-debugging-port=9222` while signed in.
+
+**2026-09-24 agent gate:** Ada money pytest subset + Phase 5 notify/cron tests → **22 passed** (with related suites). Living plan: outbox drain via GH Actions **done**; Auth leaked-password + Phone Twilio still Dashboard. **Headed live:** still blocked without your session / CDP `9222`. Next after your live PASS: confirm Twilio alignment ([`auth-dashboard-ops.md`](auth-dashboard-ops.md)).
