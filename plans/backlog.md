@@ -2,13 +2,15 @@
 
 ## Now
 
-1. **Tenant-originated maintenance intake** — Phase 5 work-order object;
-   Tunde submits → triage → Sola. Spec before code; no new PRD phase.
+1. **Phase 5 smoke / ops** — headed Tunde→Ada→Sola maintenance loop when
+   signed-in browser available; delivery-outbox deploy; prod Twilio.
 
-## Next (ops interleave)
+## Next (product)
 
-2. Headed Ada walk, delivery-outbox service, prod Twilio, leaked-password
-   advisor — when next touching deploy.
+2. Optional: clearer `origin=tenant` badge on work-orders board if triage is
+   unclear in headed QA.
+3. Larger bets (applications / listing page) need an explicit product decision
+   — not from gap-analysis alone.
 
 ## Deferred ops
 
@@ -20,11 +22,11 @@
 
 ## Closed recently
 
+- Tenant maintenance → landlord notify on submit
 - Gate admit notify (landlord + issuer outbox)
 - Gate role visibility (staff / landlord / tenant scopes)
-- Transactional email kit (details/alert + invite/job/task HTML)
+- Transactional email kit (details/alert + invite/job/task/gate HTML)
 - Signup attribution (`038` applied remote)
-- Residual resilience waves 1–5 + verify stamps
 
 ## Done earlier
 

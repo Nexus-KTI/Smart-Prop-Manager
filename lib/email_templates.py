@@ -353,6 +353,48 @@ def tenant_task_assigned(
     return EmailContent(subject=subject, text=text, html=html_body)
 
 
+def tenant_maintenance_submitted(
+    *,
+    title: str,
+    work_orders_url: str,
+    priority: str | None = None,
+    property_name: str | None = None,
+    unit_label: str | None = None,
+    tenant_name: str | None = None,
+) -> EmailContent:
+    job = (title or "").strip() or "Repair request"
+    place = None
+    if (property_name or "").strip() or (unit_label or "").strip():
+        place = _place(property_name, unit_label)
+    who = (tenant_name or "").strip() or "Your tenant"
+    pri = (priority or "").strip().lower() or None
+    subject = f"New repair request: {job[:80]}"
+    text_lines = [f"{who} submitted a repair on {BRAND_NAME}: {job}."]
+    if place:
+        text_lines.append(f"Where: {place}")
+    if pri and pri != "normal":
+        text_lines.append(f"Priority: {pri}")
+    text_lines.append(f"Open work orders: {work_orders_url}")
+    text = "\n\n".join(text_lines)
+    details: list[tuple[str, str]] = [("Request", job[:120]), ("From", who[:120])]
+    if place:
+        details.append(("Where", place))
+    if pri and pri != "normal":
+        details.append(("Priority", pri))
+    html_body = render_transactional_email(
+        brand=email_brand_name(),
+        eyebrow="Maintenance",
+        heading="New repair from your tenant",
+        body_text="Open work orders to triage, message the tenant, or assign an artisan.",
+        details=details,
+        alert="Urgent priority." if pri == "urgent" else None,
+        cta_url=work_orders_url,
+        cta_label="Open work orders",
+        footer=f"This notice was sent via {BRAND_NAME}.",
+    )
+    return EmailContent(subject=subject, text=text, html=html_body)
+
+
 def guest_admitted(
     *,
     audience: str,

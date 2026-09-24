@@ -111,6 +111,7 @@ Rules:
 | `artisan_job_assigned` | Work order | Job / where details | Open jobs |
 | `tenant_task_assigned` | To-do | Task / due details | Open tasks |
 | `guest_admitted` | Gate | Code / where / admitter details | Open gate activity / my codes |
+| `tenant_maintenance_submitted` | Maintenance | Request / from / where; alert if urgent | Open work orders |
 
 ---
 

@@ -190,6 +190,58 @@ def create_my_request(payload: dict, user: AuthedUser = Depends(get_current_user
         )
     except Exception:
         pass
+    try:
+        from lib.db import create_service_client
+        from lib.maintenance_notify import notify_landlord_tenant_request
+
+        try:
+            svc = create_service_client()
+        except RuntimeError:
+            svc = user.db
+        prop_name = None
+        unit_label = None
+        tenant_name = tenancy.get("tenant_name")
+        unit_id = created.get("unit_id")
+        if unit_id:
+            try:
+                urows = (
+                    svc.table("units")
+                    .select("id, label, property_id")
+                    .eq("id", unit_id)
+                    .limit(1)
+                    .execute()
+                    .data
+                    or []
+                )
+                if urows:
+                    unit_label = urows[0].get("label")
+                    pid = urows[0].get("property_id")
+                    if pid:
+                        prows = (
+                            svc.table("properties")
+                            .select("id, name")
+                            .eq("id", pid)
+                            .limit(1)
+                            .execute()
+                            .data
+                            or []
+                        )
+                        if prows:
+                            prop_name = prows[0].get("name")
+            except Exception:
+                pass
+        notify_landlord_tenant_request(
+            svc,
+            landlord_id=str(created["landlord_id"]),
+            request_id=str(created["id"]),
+            title=str(created.get("title") or title),
+            priority=str(created.get("priority") or priority),
+            property_name=prop_name,
+            unit_label=unit_label,
+            tenant_name=tenant_name,
+        )
+    except Exception:
+        pass
     return {"item": created}
 
 
