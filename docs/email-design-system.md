@@ -50,6 +50,8 @@ html = render_transactional_email(
     eyebrow="Verification",  # optional
     cta_url=None,            # optional
     cta_label=None,
+    details=[("Unit", "Palm Court · Flat 2")],  # optional key/value rows
+    alert=None,              # optional alert strip
 )
 ```
 
@@ -60,23 +62,29 @@ html = render_transactional_email(
 | `code` | Large scannable mono panel (OTP, amount, reference) |
 | `eyebrow` | Small uppercase event label |
 | `cta_url` / `cta_label` | Single primary button |
+| `details` | Optional `(label, value)` rows (unit, role, from…) |
+| `alert` | Optional alert strip (overdue / important) |
 | `brand` / `footer` | Overrides |
 
-Event helpers in [`lib/email_templates.py`](../lib/email_templates.py) (`landlord_money_in`, `tenant_receipt`, `tenant_due`, `otp_notice`) all call this renderer. Money amounts use the **code** panel for scannability.
+Event helpers in [`lib/email_templates.py`](../lib/email_templates.py) all call this renderer. Money amounts use the **code** panel for scannability.
 
 ---
 
 ## Anatomy
 
-One composition per message (560px card):
+One composition per message (560px card, fluid `max-width`):
 
 1. **Brand** — wordmark or `EMAIL_LOGO_URL` image  
 2. **Eyebrow** — optional event label  
 3. **Heading** — `heading`  
 4. **Code panel** — optional large mono `code`  
-5. **Body** — `body_text` paragraphs  
-6. **One primary CTA** — omit when no URL  
-7. **Footer** — muted transactional line  
+5. **Alert strip** — optional (alert tone)  
+6. **Body** — `body_text` paragraphs  
+7. **Details rows** — optional key/value table  
+8. **One primary CTA** — omit when no URL  
+9. **Footer** — muted transactional line  
+
+**Responsive:** outer pad + card pad shrink under 620px via `@media`; width stays `100%` / `max-width:560px`. No flex/grid.
 
 **Dark-mode-safe backgrounds:** solid `bgcolor` on body/tables matching light tokens; `color-scheme: light only` / `supported-color-schemes: light`; prefer-color-scheme media rules that keep canvas/card fills.
 
@@ -90,19 +98,33 @@ Rules:
 
 ## Event → template
 
-| Event | Eyebrow | Code panel | CTA |
-|-------|---------|------------|-----|
-| `landlord_money_in` | Money in | Amount | View payment |
-| `tenant_receipt` | Receipt | Amount | Download receipt |
-| `tenant_due` | Rent reminder | Amount | None (v1) |
+| Event | Eyebrow | Code / details | CTA |
+|-------|---------|----------------|-----|
+| `landlord_money_in` | Money in | Amount code | View payment |
+| `tenant_receipt` | Receipt | Amount code | Download receipt |
+| `tenant_due` | Rent reminder | Amount code | None (v1) |
+| `landlord_renewal` | Renewal… | Date code + details; alert if overdue | Open unit payments |
 | `otp_notice` | Verification | OTP code | None |
+| `staff_invite` | Staff invite | Role / from details | Claim invite |
+| `tenancy_invite` | Tenancy invite | Unit / from details | Claim invite |
+| `artisan_invite` | Artisan invite | From details | Claim invite |
+| `artisan_job_assigned` | Work order | Job / where details | Open jobs |
 
 ---
 
 ## Do / don’t
 
-**Do:** parameterize via `heading` / `body_text` / `code`; escape dynamic text; set `EMAIL_LOGO_URL` only for a publicly hosted asset.  
-**Don’t:** add MJML/React Email without a stack decision; invent new hex per event; nest cards.
+**Do:** parameterize via `heading` / `body_text` / `code` / `details` / `alert`; escape dynamic text; set `EMAIL_LOGO_URL` only for a publicly hosted asset.  
+**Don’t:** add MJML/React Email without a stack decision; invent new hex per event; nest cards; add a second primary button.
+
+---
+
+## Out of scope
+
+- Newsletter / marketing multi-column layouts  
+- Dark-mode brand redesign (force light)  
+- Litmus/Email on Acid as a CI gate (manual QA only)  
+- Per-event HTML forks outside `render_transactional_email`
 
 ---
 

@@ -26,7 +26,7 @@ def notify_artisan_assigned(
     }
     try:
         from lib.delivery_outbox import enqueue_notification
-        from lib.email_templates import frontend_base_url
+        from lib.email_templates import artisan_job_assigned, frontend_base_url
 
         rows = (
             db.table("landlord_artisans")
@@ -48,9 +48,7 @@ def notify_artisan_assigned(
             return result
 
         link = f"{frontend_base_url()}/artisan/jobs"
-        message = (
-            f"New Nexora job assigned: {title[:120]}. Open your jobs: {link}"
-        )
+        mail = artisan_job_assigned(title=title, jobs_url=link)
         fallback = hashlib.sha256(
             f"{landlord_id}:{artisan_user_id}:{title}".encode("utf-8")
         ).hexdigest()[:24]
@@ -59,8 +57,9 @@ def notify_artisan_assigned(
             idempotency_key=idempotency_key or f"artisan-assigned:{fallback}",
             channel=None,
             contact=contact,
-            message=message,
-            email_subject="New repair job assigned",
+            message=mail.text,
+            email_subject=mail.subject,
+            email_html=mail.html,
         )
         result["sent"] = True
         result["queued"] = True

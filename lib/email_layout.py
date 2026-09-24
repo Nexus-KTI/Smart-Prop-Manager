@@ -106,6 +106,71 @@ def _code_block(code_text: str) -> str:
           </tr>"""
 
 
+def details_rows_html(rows: list[tuple[str, str]]) -> str:
+    """Key/value detail table for unit · tenant · role · etc. Empty → ''."""
+    t = EMAIL_TOKENS
+    cleaned: list[tuple[str, str]] = []
+    for label, value in rows or []:
+        lab = (label or "").strip()
+        val = (value or "").strip()
+        if not lab or not val:
+            continue
+        cleaned.append((lab, val))
+    if not cleaned:
+        return ""
+    cells: list[str] = []
+    for i, (lab, val) in enumerate(cleaned):
+        pad = "0 0 10px 0" if i < len(cleaned) - 1 else "0"
+        cells.append(
+            f"""
+                <tr>
+                  <td style="padding:{pad};font-family:{FONT_UI};font-size:12px;line-height:1.4;letter-spacing:0.03em;text-transform:uppercase;color:{t["muted"]};width:36%;vertical-align:top;">
+                    {escape(lab)}
+                  </td>
+                  <td style="padding:{pad};font-family:{FONT_UI};font-size:15px;line-height:1.4;color:{t["ink"]};vertical-align:top;">
+                    {escape(val)}
+                  </td>
+                </tr>"""
+        )
+    return f"""
+          <tr>
+            <td style="padding:4px 0 16px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="border:1px solid {t["border"]};border-radius:6px;">
+                <tr>
+                  <td style="padding:14px 16px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      {"".join(cells)}
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>"""
+
+
+def alert_strip_html(message: str) -> str:
+    """Muted alert banner (overdue / important). Empty message → ''."""
+    t = EMAIL_TOKENS
+    text = (message or "").strip()
+    if not text:
+        return ""
+    return f"""
+          <tr>
+            <td style="padding:0 0 16px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     bgcolor="#faf3f1"
+                     style="background-color:#faf3f1;border:1px solid #ead5cf;border-radius:6px;">
+                <tr>
+                  <td style="padding:12px 14px;font-family:{FONT_UI};font-size:14px;line-height:1.45;color:{t["alert"]};">
+                    {escape(text)}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>"""
+
+
 def render_transactional_email(
     *,
     heading: str,
@@ -116,6 +181,8 @@ def render_transactional_email(
     cta_label: str | None = None,
     footer: str | None = None,
     brand: str | None = None,
+    details: list[tuple[str, str]] | None = None,
+    alert: str | None = None,
 ) -> str:
     """
     Reusable branded transactional HTML email.
@@ -124,6 +191,8 @@ def render_transactional_email(
       heading   — main title
       body_text — plain body (paragraphs separated by blank lines)
       code      — optional large scannable value (OTP, amount, reference)
+      details   — optional (label, value) rows under the body
+      alert     — optional alert strip above the body
     """
     t = EMAIL_TOKENS
     brand_text = escape((brand or "").strip() or email_brand_name())
@@ -137,6 +206,8 @@ def render_transactional_email(
     cta_href = (cta_url or "").strip()
     cta_text = escape((cta_label or "").strip()) if cta_label else ""
     body_html = body_text_to_html(body_text)
+    alert_block = alert_strip_html(alert or "")
+    details_block = details_rows_html(list(details or []))
 
     eyebrow_block = ""
     if eyebrow_text:
@@ -190,6 +261,10 @@ def render_transactional_email(
   body, table, td, a {{ -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }}
   table, td {{ mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }}
   img {{ border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }}
+  @media only screen and (max-width: 620px) {{
+    .email-pad {{ padding: 20px 12px !important; }}
+    .email-card-pad {{ padding: 20px 16px !important; }}
+  }}
   @media (prefers-color-scheme: dark) {{
     body, .email-canvas {{ background-color: {t["canvas"]} !important; }}
     .email-card {{ background-color: {t["card"]} !important; }}
@@ -208,20 +283,22 @@ def render_transactional_email(
   </div>
   <table role="presentation" class="email-canvas" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{t["canvas"]}" style="background-color:{t["canvas"]};">
     <tr>
-      <td align="center" bgcolor="{t["canvas"]}" style="padding:32px 16px;background-color:{t["canvas"]};">
+      <td align="center" class="email-pad" bgcolor="{t["canvas"]}" style="padding:32px 16px;background-color:{t["canvas"]};">
         <table role="presentation" class="email-card" width="{CONTENT_WIDTH}" cellpadding="0" cellspacing="0" border="0" bgcolor="{t["card"]}" style="width:100%;max-width:{CONTENT_WIDTH}px;background-color:{t["card"]};border:1px solid {t["border"]};border-radius:6px;">
           <tr>
-            <td bgcolor="{t["card"]}" style="padding:24px;background-color:{t["card"]};">
+            <td class="email-card-pad" bgcolor="{t["card"]}" style="padding:24px;background-color:{t["card"]};">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 {_brand_block(brand_text)}
                 {eyebrow_block}
                 {heading_block}
                 {code_block}
+                {alert_block}
                 <tr>
                   <td class="email-ink" style="padding:0 0 4px 0;font-family:{FONT_UI};color:{t["ink"]};">
                     {body_html}
                   </td>
                 </tr>
+                {details_block}
                 {cta_block}
                 <tr>
                   <td style="padding:24px 0 0 0;border-top:1px solid {t["border"]};font-family:{FONT_UI};font-size:12px;line-height:1.45;color:{t["muted"]};">

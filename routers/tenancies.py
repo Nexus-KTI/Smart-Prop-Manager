@@ -537,6 +537,7 @@ def invite_tenant(tenancy_id: str, user: AuthedUser = Depends(get_current_user))
     invite_error: str | None = None
     try:
         from lib.delivery_outbox import enqueue_notification, flush_delivery_outbox
+        from lib.email_templates import tenancy_invite
         from lib.notify import (
             get_owner_notification_channel,
             normalize_e164,
@@ -548,16 +549,15 @@ def invite_tenant(tenancy_id: str, user: AuthedUser = Depends(get_current_user))
             if channel == "email"
             else normalize_e164(contact)
         )
+        mail = tenancy_invite(claim_url=claim_url)
         queued = enqueue_notification(
             user.db,
             idempotency_key=f"tenancy-invite:{tenancy_id}:{token}",
             channel=channel,
             contact=notify_to,
-            message=(
-                "You're invited to view rent and pay on Nexora. "
-                f"Open this link, then sign in with this phone/email: {claim_url}"
-            ),
-            email_subject="Nexora tenancy invite",
+            message=mail.text,
+            email_subject=mail.subject,
+            email_html=mail.html,
         )
         flush_delivery_outbox(db=user.db, batch_size=5)
         invite_channel = queued.get("channel") or channel

@@ -224,19 +224,18 @@ def invite_staff(
     notify: dict = {"sent": False, "channel": None, "error": None}
     try:
         from lib.delivery_outbox import enqueue_notification, flush_delivery_outbox
-        from lib.email_templates import frontend_base_url
+        from lib.email_templates import frontend_base_url, staff_invite
 
         claim_url = f"{frontend_base_url()}/staff/claim?token={token}"
+        mail = staff_invite(role=role, claim_url=claim_url)
         queued = enqueue_notification(
             svc,
             idempotency_key=f"staff-invite:{membership.get('id') or token}",
             channel=None,
             contact=contact,
-            message=(
-                f"You've been invited as {role} on Nexora. "
-                f"Sign in, then open {claim_url}"
-            ),
-            email_subject="Nexora staff invite",
+            message=mail.text,
+            email_subject=mail.subject,
+            email_html=mail.html,
         )
         flush_delivery_outbox(db=svc, batch_size=5)
         notify = {

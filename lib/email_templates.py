@@ -182,14 +182,17 @@ def landlord_renewal(
         when = f"ended on {end_str}"
         heading = "Renewal overdue"
         eyebrow = "Renewal overdue"
+        alert = "This tenancy term has already ended. Follow up or record a renewal."
     elif days_left == 0:
         when = f"ends today ({end_str})"
         heading = "Renewal due today"
         eyebrow = "Renewal due"
+        alert = "Term ends today."
     else:
         when = f"ends in {days_left} day{'s' if days_left != 1 else ''} ({end_str})"
         heading = "Renewal coming up"
         eyebrow = "Renewal reminder"
+        alert = None
 
     subject = f"Renewal: {place}"
     text = (
@@ -207,6 +210,8 @@ def landlord_renewal(
         heading=heading,
         body_text=body_text,
         code=end_str,
+        alert=alert,
+        details=[("Tenant", tenant), ("Unit", place)],
         cta_url=payments,
         cta_label="Open unit payments" if payments else None,
         footer=f"This reminder was sent by {BRAND_NAME}.",
@@ -234,3 +239,118 @@ def otp_notice(
         footer="If you did not request this, you can ignore this email.",
     )
     return EmailContent(subject=subj, text=text, html=html_body)
+
+
+def staff_invite(
+    *,
+    role: str,
+    claim_url: str,
+    inviter_label: str | None = None,
+) -> EmailContent:
+    role_clean = (role or "").strip() or "staff"
+    who = (inviter_label or "").strip() or "your landlord"
+    subject = f"Staff invite: {role_clean}"
+    text = (
+        f"You've been invited as {role_clean} on {BRAND_NAME} by {who}.\n\n"
+        f"Sign in, then open: {claim_url}"
+    )
+    html_body = render_transactional_email(
+        brand=email_brand_name(),
+        eyebrow="Staff invite",
+        heading=f"You're invited as {role_clean}",
+        body_text=(
+            f"{who} invited you to help manage properties on {BRAND_NAME}.\n\n"
+            "Sign in with this phone or email, then open the claim link."
+        ),
+        details=[("Role", role_clean), ("From", who)],
+        cta_url=claim_url,
+        cta_label="Claim invite",
+        footer=f"This invite was sent via {BRAND_NAME}.",
+    )
+    return EmailContent(subject=subject, text=text, html=html_body)
+
+
+def tenancy_invite(
+    *,
+    claim_url: str,
+    property_name: str | None = None,
+    unit_label: str | None = None,
+    landlord_label: str | None = None,
+) -> EmailContent:
+    place = _place(property_name, unit_label)
+    who = (landlord_label or "").strip() or "your landlord"
+    subject = f"Tenancy invite: {place}"
+    text = (
+        f"You're invited to view rent and pay on {BRAND_NAME} for {place}.\n\n"
+        f"From {who}. Open: {claim_url}"
+    )
+    html_body = render_transactional_email(
+        brand=email_brand_name(),
+        eyebrow="Tenancy invite",
+        heading="You're invited to your unit",
+        body_text=(
+            f"{who} invited you to view rent, receipts, and pay on {BRAND_NAME}.\n\n"
+            "Open the link, then sign in with this phone or email."
+        ),
+        details=[("Unit", place), ("From", who)],
+        cta_url=claim_url,
+        cta_label="Claim invite",
+        footer=f"This invite was sent by your landlord via {BRAND_NAME}.",
+    )
+    return EmailContent(subject=subject, text=text, html=html_body)
+
+
+def artisan_invite(*, claim_url: str, landlord_label: str | None = None) -> EmailContent:
+    who = (landlord_label or "").strip() or "a landlord"
+    subject = f"Artisan invite — {BRAND_NAME}"
+    text = (
+        f"You've been invited as an artisan on {BRAND_NAME} by {who}.\n\n"
+        f"Claim your jobs link: {claim_url}"
+    )
+    html_body = render_transactional_email(
+        brand=email_brand_name(),
+        eyebrow="Artisan invite",
+        heading="You're invited to take jobs",
+        body_text=(
+            f"{who} invited you to receive repair jobs on {BRAND_NAME}.\n\n"
+            "Open the claim link to connect your account."
+        ),
+        details=[("From", who)],
+        cta_url=claim_url,
+        cta_label="Claim invite",
+        footer=f"This invite was sent via {BRAND_NAME}.",
+    )
+    return EmailContent(subject=subject, text=text, html=html_body)
+
+
+def artisan_job_assigned(
+    *,
+    title: str,
+    jobs_url: str,
+    property_name: str | None = None,
+    unit_label: str | None = None,
+) -> EmailContent:
+    job = (title or "").strip() or "Repair job"
+    place = None
+    if (property_name or "").strip() or (unit_label or "").strip():
+        place = _place(property_name, unit_label)
+    subject = f"New job: {job[:80]}"
+    text_lines = [f"New {BRAND_NAME} job assigned: {job}."]
+    if place:
+        text_lines.append(f"Where: {place}")
+    text_lines.append(f"Open your jobs: {jobs_url}")
+    text = "\n\n".join(text_lines)
+    details: list[tuple[str, str]] = [("Job", job[:120])]
+    if place:
+        details.append(("Where", place))
+    html_body = render_transactional_email(
+        brand=email_brand_name(),
+        eyebrow="Work order",
+        heading="New job assigned",
+        body_text="Open your jobs list to accept the window and start work.",
+        details=details,
+        cta_url=jobs_url,
+        cta_label="Open jobs",
+        footer=f"This notice was sent via {BRAND_NAME}.",
+    )
+    return EmailContent(subject=subject, text=text, html=html_body)

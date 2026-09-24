@@ -60,7 +60,7 @@ def test_tenant_receipt_subject_and_link(monkeypatch):
         receipt_url="https://cdn.example.com/r.pdf",
         business_name="Acme Lets",
     )
-    assert content.subject == f"Payment receipt {MDASH} Palm Court {MIDDOT} Flat 2"
+    assert content.subject == f"Payment receipt: Palm Court {MIDDOT} Flat 2"
     assert "Acme Lets" in content.text
     assert f"{NAIRA}{THIN}5,000.00" in content.text
     assert "https://cdn.example.com/r.pdf" in content.text
@@ -78,7 +78,7 @@ def test_tenant_due_subject_and_body(monkeypatch):
         unit_label="Flat 2",
         business_name="Acme Lets",
     )
-    assert content.subject == f"Rent reminder {MDASH} Palm Court {MIDDOT} Flat 2"
+    assert content.subject == f"Rent reminder: Palm Court {MIDDOT} Flat 2"
     assert "Reminder from Acme Lets" in content.text
     assert f"{NAIRA}{THIN}200,000.00" in content.text
     assert content.html is not None
@@ -143,6 +143,75 @@ def test_otp_notice_reuses_template():
     assert "991122" in content.text
     assert content.html and "991122" in content.html
     assert "letter-spacing:0.12em" in content.html
+
+
+def test_details_and_alert_primitives():
+    from lib.email_layout import alert_strip_html, details_rows_html, render_transactional_email
+
+    assert details_rows_html([]) == ""
+    assert alert_strip_html("") == ""
+    rows = details_rows_html([("Role", "caretaker"), ("From", "Ada")])
+    assert "Role" in rows and "caretaker" in rows
+    assert "From" in rows and "Ada" in rows
+    alert = alert_strip_html("Term already ended.")
+    assert "Term already ended." in alert
+    assert "#b4402a" in alert
+
+    html = render_transactional_email(
+        heading="Staff invite",
+        body_text="Claim your invite.",
+        details=[("Role", "manager")],
+        alert="Action needed.",
+        cta_url="https://app.example.com/staff/claim",
+        cta_label="Claim invite",
+        brand="Nexora",
+    )
+    assert "Role" in html and "manager" in html
+    assert "Action needed." in html
+    assert "Claim invite" in html
+    assert "max-width:620px" in html or "max-width: 620px" in html or "@media only screen" in html
+
+
+def test_invite_templates(monkeypatch):
+    monkeypatch.setenv("FRONTEND_URL", "https://app.example.com")
+    monkeypatch.setenv("EMAIL_FROM_NAME", "Nexora")
+    from lib.email_templates import (
+        artisan_invite,
+        artisan_job_assigned,
+        staff_invite,
+        tenancy_invite,
+    )
+
+    staff = staff_invite(
+        role="caretaker",
+        claim_url="https://app.example.com/staff/claim?token=abc",
+        inviter_label="Ada",
+    )
+    assert staff.subject.startswith("Staff invite")
+    assert staff.html and "Claim invite" in staff.html
+    assert "caretaker" in staff.html
+
+    ten = tenancy_invite(
+        claim_url="https://app.example.com/tenant/claim?token=x",
+        property_name="Palm Court",
+        unit_label="Flat 2",
+        landlord_label="Ada",
+    )
+    assert "Palm Court" in ten.subject
+    assert ten.html and "Claim invite" in ten.html
+
+    art = artisan_invite(claim_url="https://app.example.com/artisan/claim?token=y")
+    assert art.html and "Claim invite" in art.html
+
+    job = artisan_job_assigned(
+        title="Fix leaky tap",
+        jobs_url="https://app.example.com/artisan/jobs",
+        property_name="Palm Court",
+        unit_label="Flat 2",
+    )
+    assert "Fix leaky tap" in job.subject
+    assert job.html and "Open jobs" in job.html
+    assert "Palm Court" in job.html
 
 
 def test_mailgun_send_includes_html(monkeypatch):

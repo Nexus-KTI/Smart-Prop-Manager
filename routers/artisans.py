@@ -72,19 +72,18 @@ def invite_artisan(payload: dict, user: AuthedUser = Depends(get_current_user)):
     notify: dict = {"sent": False, "channel": None, "error": None}
     try:
         from lib.delivery_outbox import enqueue_notification, flush_delivery_outbox
-        from lib.email_templates import frontend_base_url
+        from lib.email_templates import artisan_invite, frontend_base_url
 
         claim_url = f"{frontend_base_url()}/artisan/claim?token={token}"
+        mail = artisan_invite(claim_url=claim_url)
         queued = enqueue_notification(
             user.db,
             idempotency_key=f"artisan-invite:{created.get('id') or token}",
             channel=None,
             contact=contact,
-            message=(
-                f"You've been invited as an artisan on Nexora. "
-                f"Claim your jobs link: {claim_url}"
-            ),
-            email_subject="Nexora artisan invite",
+            message=mail.text,
+            email_subject=mail.subject,
+            email_html=mail.html,
         )
         flush_delivery_outbox(db=user.db, batch_size=5)
         notify = {
