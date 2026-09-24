@@ -170,29 +170,24 @@ Repo `Nexus-KTI/Smart-Prop-Manager` `main`; Free tier (spins down).
 User env var (`setx RENDER_API_KEY …`), then **restart Cursor** so MCP resolves
 it. Prefer the Kings-Hubbot API key (not Keyrium).
 
-### Delivery outbox on Free tier (no Render Cron billing)
+### Delivery outbox without a Render card (recommended on Free)
 
-Native `smart-prop-delivery-outbox` Cron Job requires a payment method
-(API returned **402** on create). Until you add a card + Starter cron:
+Cancel the Render “New Cron Job” / Add Card flow. Use GitHub Actions instead:
 
-1. Ensure `CRON_SECRET` is set on Smart-Prop-Manager (synced from local `.env`).
-2. Every 5 minutes, call:
+1. Repo **Settings → Secrets → Actions** → add `CRON_SECRET` (same value as
+   Smart-Prop-Manager / local `.env`).
+2. Workflow [`.github/workflows/delivery-outbox.yml`](../.github/workflows/delivery-outbox.yml)
+   POSTs `https://smart-prop-manager.onrender.com/jobs/delivery-outbox` every
+   ~5 minutes (`workflow_dispatch` for a manual run).
+3. First cold start may take ~50s — curl `--max-time 90` accounts for that.
 
-```http
-POST https://smart-prop-manager.onrender.com/jobs/delivery-outbox
-Authorization: Bearer <CRON_SECRET>
-```
+Optional: [cron-job.org](https://cron-job.org) with the same URL + Bearer header.
 
-Use [cron-job.org](https://cron-job.org) / GitHub Actions / similar. Cold starts
-on Free may take ~50s — set the external cron timeout ≥ 60s.
+### Native Render Cron (only if you add billing later)
 
-### Create native Render Cron (after billing)
-
-1. Render → Kings-Hubbot → **New → Cron Job** (or retry API once a card is on file).
-2. Repo `Nexus-KTI/Smart-Prop-Manager`, branch `main`, Docker.
-3. Schedule: `*/5 * * * *`
-4. Command: `python -m scripts.delivery_outbox`
-5. Copy env from Smart-Prop-Manager (Supabase + Twilio + Mailgun + `FRONTEND_URL`).
+1. Name: `smart-prop-delivery-outbox`
+2. Schedule: `*/5 * * * *` · Docker command: `python -m scripts.delivery_outbox`
+3. Copy API env from Smart-Prop-Manager (not Next.js `NEXT_PUBLIC_*` keys).
 
 ---
 

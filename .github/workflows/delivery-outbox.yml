@@ -1,0 +1,30 @@
+# Free-tier outbox drain — no Render Cron / no card required.
+# Set repo secret CRON_SECRET to match Smart-Prop-Manager env.
+name: delivery-outbox
+
+on:
+  schedule:
+    # Every 5 minutes (GitHub may drift a few minutes on free plans)
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: POST /jobs/delivery-outbox
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          API_BASE: https://smart-prop-manager.onrender.com
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "Missing repo secret CRON_SECRET" >&2
+            exit 1
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            --max-time 90 \
+            "${API_BASE%/}/jobs/delivery-outbox"
