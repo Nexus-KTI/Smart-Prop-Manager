@@ -8,9 +8,11 @@ import { FetchErrorState } from "@/components/FetchErrorState";
 import { useToast } from "@/components/ToastProvider";
 import {
   createMyGuestPass,
+  fetchMyAccessPassEvents,
   fetchMyAccessPasses,
   revokeMyGuestPass,
   type AccessPass,
+  type AccessPassEvent,
 } from "@/lib/api";
 
 const DEFAULT_DURATIONS = [1, 2, 4, 6] as const;
@@ -39,6 +41,7 @@ function defaultEnd(startLocal: string, hours: number): string {
 export function TenantAccessClient() {
   const { showToast } = useToast();
   const [items, setItems] = useState<AccessPass[]>([]);
+  const [gateEvents, setGateEvents] = useState<AccessPassEvent[]>([]);
   const [listCapped, setListCapped] = useState(false);
   const [listLoaded, setListLoaded] = useState(0);
   const [canCreateGuest, setCanCreateGuest] = useState(false);
@@ -87,6 +90,11 @@ export function TenantAccessClient() {
       setDurationHours((prev) =>
         durations.includes(prev) ? prev : durations[1] ?? durations[0] ?? 2,
       );
+      try {
+        setGateEvents(await fetchMyAccessPassEvents());
+      } catch {
+        setGateEvents([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load");
     } finally {
@@ -360,8 +368,8 @@ export function TenantAccessClient() {
             </p>
           ) : (
             <p className="form-hint">
-              Don’t forward the code. Revoke if it leaks. Gate scan logging
-              comes later.
+              Don’t forward the code. Revoke if it leaks. You’ll see gate admits
+              for your codes below.
             </p>
           )}
         </form>
@@ -426,6 +434,14 @@ export function TenantAccessClient() {
                   {new Date(row.valid_from).toLocaleString()} →{" "}
                   {new Date(row.valid_until).toLocaleString()}
                 </p>
+                {row.last_admitted_by_label || row.last_admitted_at ? (
+                  <p className="table-muted" style={{ margin: "6px 0 0" }}>
+                    Last at gate: {row.last_admitted_by_label || "—"}
+                    {row.last_admitted_at
+                      ? ` · ${new Date(row.last_admitted_at).toLocaleString()}`
+                      : ""}
+                  </p>
+                ) : null}
                 {canRevoke ? (
                   <button
                     type="button"
@@ -442,6 +458,58 @@ export function TenantAccessClient() {
           })}
         </ul>
       )}
+
+      {gateEvents.length > 0 ? (
+        <div style={{ marginTop: 28, maxWidth: 480 }}>
+          <p className="form-kicker">Your guests at the gate</p>
+          <p className="form-hint" style={{ marginBottom: 10 }}>
+            When your guest codes are used, revoked, or created — issuer trail
+            for your invites only.
+          </p>
+          <ul className="tenant-notice-list">
+            {gateEvents.map((ev) => {
+              const verb =
+                ev.event_type === "created"
+                  ? "Issued"
+                  : ev.event_type === "admitted"
+                    ? "Admitted"
+                    : ev.event_type === "revoked"
+                      ? "Revoked"
+                      : ev.event_type;
+              const issuer =
+                ev.issuer_label ||
+                (typeof ev.metadata?.created_by_label === "string"
+                  ? ev.metadata.created_by_label
+                  : null);
+              return (
+                <li key={ev.id} className="tenant-notice-card">
+                  <p className="form-kicker" style={{ marginBottom: 4 }}>
+                    {verb}
+                    {ev.actor_role ? ` · ${ev.actor_role}` : ""}
+                  </p>
+                  <p style={{ margin: 0 }}>
+                    <strong>{ev.subject_label || "Guest"}</strong>
+                    {ev.code ? (
+                      <>
+                        {" · "}
+                        <span className="mono-data">{ev.code}</span>
+                      </>
+                    ) : null}
+                  </p>
+                  <p className="table-muted" style={{ margin: "6px 0 0" }}>
+                    Issued by {issuer || "you"}
+                    {" · "}
+                    Actor {ev.actor_label || "—"}
+                  </p>
+                  <p className="table-muted" style={{ margin: "4px 0 0" }}>
+                    {new Date(ev.created_at).toLocaleString()}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
 
       <p style={{ marginTop: 16 }}>
         <Link href="/tenant" className="table-link">

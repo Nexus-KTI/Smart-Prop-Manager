@@ -43,6 +43,9 @@ export function AccessPassesClient() {
   const [lastAdmit, setLastAdmit] = useState<AdmitAccessResult | null>(null);
   const [lastAdmitDenied, setLastAdmitDenied] = useState<string | null>(null);
   const [events, setEvents] = useState<AccessPassEvent[]>([]);
+  const [eventsScope, setEventsScope] = useState<"property" | "portfolio">(
+    "property",
+  );
 
   useEffect(() => {
     void (async () => {
@@ -66,7 +69,9 @@ export function AccessPassesClient() {
       setListLoaded(data.loaded);
       if (propertyId) {
         try {
-          setEvents(await fetchAccessPassEvents(propertyId));
+          setEvents(
+            await fetchAccessPassEvents(propertyId, { scope: eventsScope }),
+          );
         } catch {
           setEvents([]);
         }
@@ -78,7 +83,7 @@ export function AccessPassesClient() {
     } finally {
       setLoading(false);
     }
-  }, [propertyId]);
+  }, [propertyId, eventsScope]);
 
   useEffect(() => {
     void load();
@@ -206,12 +211,11 @@ export function AccessPassesClient() {
     <section className="dashboard">
       <header className="dashboard-header dashboard-header-row">
         <div>
-          <h1 className="page-title">Gate codes</h1>
+          <h1 className="page-title">Gate</h1>
           <p className="page-subtitle">
-            Admit at the gate with the 6-character code or a scanned QR. Issue a
-            tenant move-in code first so it shows on their Access page. Tenants
-            can mint Visit or Open guest codes; you can still issue and revoke
-            any pass here.
+            Admit visitors at the gate, then review chain-of-custody for your
+            properties. Issue codes when needed — tenants can also mint guest
+            codes after move-in.
           </p>
         </div>
         <div className="dashboard-header-actions">
@@ -228,20 +232,56 @@ export function AccessPassesClient() {
         </div>
       </header>
 
-      <label className="form-field" style={{ maxWidth: 320 }}>
-        <span className="form-label">Property</span>
-        <select
-          className="form-input"
-          value={propertyId}
-          onChange={(e) => setPropertyId(e.target.value)}
-        >
-          {properties.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div
+        className="form-field"
+        style={{
+          maxWidth: 520,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          alignItems: "flex-end",
+        }}
+      >
+        <label className="form-field" style={{ flex: "1 1 220px", margin: 0 }}>
+          <span className="form-label">Property</span>
+          <select
+            className="form-input"
+            value={propertyId}
+            onChange={(e) => setPropertyId(e.target.value)}
+          >
+            {properties.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {properties.length > 1 ? (
+          <fieldset className="form-field" style={{ margin: 0, flex: "0 0 auto" }}>
+            <legend className="form-label">Gate activity</legend>
+            <div className="access-duration-chips" role="group">
+              <button
+                type="button"
+                className="btn-secondary access-duration-chip"
+                data-active={eventsScope === "property" ? "true" : undefined}
+                aria-pressed={eventsScope === "property"}
+                onClick={() => setEventsScope("property")}
+              >
+                This property
+              </button>
+              <button
+                type="button"
+                className="btn-secondary access-duration-chip"
+                data-active={eventsScope === "portfolio" ? "true" : undefined}
+                aria-pressed={eventsScope === "portfolio"}
+                onClick={() => setEventsScope("portfolio")}
+              >
+                All my properties
+              </button>
+            </div>
+          </fieldset>
+        ) : null}
+      </div>
 
       <form
         className="form-card"
@@ -318,6 +358,72 @@ export function AccessPassesClient() {
           </div>
         ) : null}
       </form>
+
+      <div style={{ marginTop: 24, maxWidth: 640 }}>
+        <p className="form-kicker">Gate activity</p>
+        <p className="form-hint" style={{ marginBottom: 10 }}>
+          {eventsScope === "portfolio"
+            ? "Activity across your assigned properties — issuer and who acted at the gate."
+            : "Chain of custody for this property — who issued, admitted, or revoked each code."}
+        </p>
+        {events.length === 0 && !loading ? (
+          <p className="table-muted" role="status">
+            No gate activity yet.
+          </p>
+        ) : (
+          <ul className="tenant-notice-list">
+            {events.map((ev) => {
+              const verb =
+                ev.event_type === "created"
+                  ? "Issued"
+                  : ev.event_type === "admitted"
+                    ? "Admitted"
+                    : ev.event_type === "revoked"
+                      ? "Revoked"
+                      : ev.event_type;
+              const issuer =
+                ev.issuer_label ||
+                (typeof ev.metadata?.created_by_label === "string"
+                  ? ev.metadata.created_by_label
+                  : null);
+              const propName =
+                eventsScope === "portfolio"
+                  ? properties.find((p) => p.id === ev.property_id)?.name
+                  : null;
+              return (
+                <li key={ev.id} className="tenant-notice-card">
+                  <p className="form-kicker" style={{ marginBottom: 4 }}>
+                    {verb}
+                    {ev.actor_role ? ` · ${ev.actor_role}` : ""}
+                    {propName ? ` · ${propName}` : ""}
+                  </p>
+                  <p style={{ margin: 0 }}>
+                    {ev.subject_label ? (
+                      <strong>{ev.subject_label}</strong>
+                    ) : (
+                      <strong>Gate code</strong>
+                    )}
+                    {ev.code ? (
+                      <>
+                        {" · "}
+                        <span className="mono-data">{ev.code}</span>
+                      </>
+                    ) : null}
+                  </p>
+                  <p className="table-muted" style={{ margin: "6px 0 0" }}>
+                    Issued by {issuer || "—"}
+                    {" · "}
+                    Actor {ev.actor_label || "Unknown"}
+                  </p>
+                  <p className="table-muted" style={{ margin: "4px 0 0" }}>
+                    {new Date(ev.created_at).toLocaleString()}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
 
       {formOpen ? (
         <form className="form-card" onSubmit={(e) => void onIssue(e)} style={{ marginTop: 16 }}>
@@ -513,48 +619,6 @@ export function AccessPassesClient() {
           </tbody>
         </table>
       </div>
-      ) : null}
-
-      {events.length > 0 ? (
-        <div style={{ marginTop: 24, maxWidth: 640 }}>
-          <p className="form-kicker">Gate activity</p>
-          <p className="form-hint" style={{ marginBottom: 10 }}>
-            Chain of custody — who issued, admitted, or revoked each code.
-          </p>
-          <ul className="tenant-notice-list">
-            {events.map((ev) => {
-              const verb =
-                ev.event_type === "created"
-                  ? "Issued"
-                  : ev.event_type === "admitted"
-                    ? "Admitted"
-                    : ev.event_type === "revoked"
-                      ? "Revoked"
-                      : ev.event_type;
-              return (
-                <li key={ev.id} className="tenant-notice-card">
-                  <p className="form-kicker" style={{ marginBottom: 4 }}>
-                    {verb}
-                    {ev.actor_role ? ` · ${ev.actor_role}` : ""}
-                  </p>
-                  <p style={{ margin: 0 }}>
-                    <strong>{ev.actor_label || "Unknown"}</strong>
-                    {ev.subject_label ? ` · ${ev.subject_label}` : ""}
-                    {ev.code ? (
-                      <>
-                        {" · "}
-                        <span className="mono-data">{ev.code}</span>
-                      </>
-                    ) : null}
-                  </p>
-                  <p className="table-muted" style={{ margin: "6px 0 0" }}>
-                    {new Date(ev.created_at).toLocaleString()}
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
       ) : null}
     </section>
   );

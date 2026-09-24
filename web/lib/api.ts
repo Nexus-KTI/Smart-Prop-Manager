@@ -1717,6 +1717,7 @@ export type AccessPassEvent = {
   actor_user_id: string;
   actor_role?: string | null;
   actor_label?: string | null;
+  issuer_label?: string | null;
   code?: string | null;
   subject_label?: string | null;
   metadata?: Record<string, unknown>;
@@ -1725,12 +1726,27 @@ export type AccessPassEvent = {
 
 export async function fetchAccessPassEvents(
   propertyId: string,
+  opts?: { scope?: "property" | "portfolio" },
 ): Promise<AccessPassEvent[]> {
-  const res = await apiFetch(
-    `/access/pass-events?property_id=${encodeURIComponent(propertyId)}`,
-  );
+  const scope = opts?.scope ?? "property";
+  const qs = new URLSearchParams({
+    property_id: propertyId,
+    scope,
+  });
+  const res = await apiFetch(`/access/pass-events?${qs.toString()}`);
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load gate activity"));
+  }
+  const data = (await res.json()) as { items?: AccessPassEvent[] };
+  return data.items ?? [];
+}
+
+export async function fetchMyAccessPassEvents(): Promise<AccessPassEvent[]> {
+  const res = await apiFetch("/access/my-pass-events");
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to load your gate activity"),
+    );
   }
   const data = (await res.json()) as { items?: AccessPassEvent[] };
   return data.items ?? [];

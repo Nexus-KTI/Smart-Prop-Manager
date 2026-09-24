@@ -8,7 +8,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from lib.access import PERM_ACCESS_VISITOR_PASSES, require_property_access
+from lib.access import (
+    PERM_ACCESS_VISITOR_PASSES,
+    accessible_property_ids_for_portfolio,
+    require_property_access,
+)
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
 
@@ -114,6 +118,20 @@ def _resolve_actor_label(user_id: str, *, role_hint: str = "User") -> str:
     except Exception:
         pass
     return f"{role_hint} · {user_id[:8]}"
+
+
+def _serialize_pass_event(row: dict) -> dict:
+    """Normalize event for UI: expose issuer_label from metadata when present."""
+    out = dict(row)
+    meta = out.get("metadata")
+    if not isinstance(meta, dict):
+        meta = {}
+        out["metadata"] = meta
+    issuer = (meta.get("created_by_label") or "").strip() or None
+    if not issuer and out.get("event_type") == "created":
+        issuer = (out.get("actor_label") or "").strip() or None
+    out["issuer_label"] = issuer
+    return out
 
 
 def _log_pass_event(
@@ -860,26 +878,94 @@ def revoke_my_guest_pass(pass_id: str, user: AuthedUser = Depends(get_current_us
     return {"item": _serialize_pass(dict(row))}
 
 
-@router.get("/pass-events")
-def list_pass_events(
-    property_id: str = Query(...),
+@router.get("/my-pass-events")
+def list_my_pass_events(
     limit: int = Query(default=40, ge=1, le=100),
     user: AuthedUser = Depends(get_current_user),
 ):
-    """Recent gate chain-of-custody events for a property (issue / admit / revoke)."""
-    ctx = require_property_access(
-        user.id, property_id, permission=PERM_ACCESS_VISITOR_PASSES
+    """Tenant trail: events for guest codes this tenant issued (plus their own actions)."""
+    tenancy = _active_tenancy_for_tenant(user)
+    if not tenancy:
+        return {"items": [], "loaded": 0, "tenancy": None}
+
+    svc = create_service_client()
+    my_passes = (
+        svc.table("access_passes")
+        .select("id")
+        .eq("created_by", user.id)
+        .eq("landlord_id", tenancy["landlord_id"])
+        .eq("property_id", tenancy["property_id"])
+        .limit(200)
+        .execute()
+        .data
+        or []
     )
+    pass_ids = [str(r["id"]) for r in my_passes if r.get("id")]
+    if not pass_ids:
+        return {
+            "items": [],
+            "loaded": 0,
+            "tenancy": {
+                "unit_label": tenancy.get("unit_label"),
+                "property_id": tenancy["property_id"],
+            },
+        }
+
     rows = (
-        create_service_client()
-        .table("access_pass_events")
+        svc.table("access_pass_events")
         .select("*")
-        .eq("landlord_id", ctx.owner_id)
-        .eq("property_id", property_id)
+        .eq("landlord_id", tenancy["landlord_id"])
+        .in_("pass_id", pass_ids)
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
         .data
         or []
     )
-    return {"items": [dict(r) for r in rows], "loaded": len(rows)}
+    items = [_serialize_pass_event(dict(r)) for r in rows]
+    return {
+        "items": items,
+        "loaded": len(items),
+        "tenancy": {
+            "unit_label": tenancy.get("unit_label"),
+            "property_id": tenancy["property_id"],
+        },
+    }
+
+
+@router.get("/pass-events")
+def list_pass_events(
+    property_id: str = Query(...),
+    scope: str = Query(default="property"),
+    limit: int = Query(default=40, ge=1, le=100),
+    user: AuthedUser = Depends(get_current_user),
+):
+    """Recent gate chain-of-custody events for a property or portfolio."""
+    scope_norm = (scope or "property").strip().lower()
+    if scope_norm not in {"property", "portfolio"}:
+        raise HTTPException(
+            status_code=400, detail="scope must be property or portfolio"
+        )
+
+    ctx = require_property_access(
+        user.id, property_id, permission=PERM_ACCESS_VISITOR_PASSES
+    )
+    svc = create_service_client()
+    q = (
+        svc.table("access_pass_events")
+        .select("*")
+        .eq("landlord_id", ctx.owner_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if scope_norm == "portfolio":
+        allowed = accessible_property_ids_for_portfolio(ctx)
+        if not allowed:
+            return {"items": [], "loaded": 0, "scope": scope_norm}
+        q = q.in_("property_id", allowed)
+    else:
+        q = q.eq("property_id", property_id)
+
+    rows = q.execute().data or []
+    items = [_serialize_pass_event(dict(r)) for r in rows]
+    return {"items": items, "loaded": len(items), "scope": scope_norm}
