@@ -20,6 +20,10 @@ Get durable delivery live and prove Phase 5 notify loops headed.
 
 ## Findings (2026-09-24)
 
-- Connected Render workspace has **no** Smart Prop services (ProjectX/kronix only).
+- Render MCP (`emmanuel@…` / My Workspace) ≠ Nexora host.
+- **Live API:** Kings-Hubbot → **Smart-Prop-Manager**
+  (`srv-danbl2rbc2fs73drq7c0`, https://smart-prop-manager.onrender.com), Free,
+  auto-deploy `main` through `9a147ae`.
+- Outbox cron still not created there — Dashboard steps in ops-checklist §5.
 - Supabase advisor WARN: leaked password protection disabled.
-- RLS-no-policy INFO on service-role tables is intentional (incl. `access_pass_events`).
+- RLS-no-policy INFO on service-role tables is intentional.

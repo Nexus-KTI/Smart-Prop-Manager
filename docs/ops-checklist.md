@@ -158,11 +158,32 @@ delivers. Ensure Render cron `smart-prop-delivery-outbox` is created from
 `render.yaml` (`*/5 * * * *`) — it is defined in-repo but may not yet be live
 in every Render workspace.
 
-**2026-09-24 check:** the Render MCP account’s only workspace (`My Workspace`,
-`tea-d28svn1r0fns73epoe20`) has ProjectX/kronix services only — **no**
-`smart-prop-api` / `smart-prop-delivery-outbox`. Deploy the blueprint from the
-Nexora Render team/account (or sync `render.yaml` there), not into this
-workspace.
+**2026-09-24 check:** the Render MCP account (`emmanuel@keyriumconsulting.com` /
+`My Workspace`) has ProjectX/kronix only — **not** Nexora.
+
+**Live Nexora API (Kings-Hubbot):** web service **Smart-Prop-Manager**
+(`srv-danbl2rbc2fs73drq7c0`) → https://smart-prop-manager.onrender.com  
+Repo `Nexus-KTI/Smart-Prop-Manager` `main`; Free tier (spins down). Deploys
+through `9a147ae` confirmed live. Create cron **on that same Kings-Hubbot
+dashboard** (Blueprint or New Cron Job), not via the Keyrium MCP workspace.
+
+### Create `smart-prop-delivery-outbox` (Dashboard)
+
+1. Render → Kings-Hubbot → **New → Cron Job** (same account as Smart-Prop-Manager).
+2. Connect `Nexus-KTI/Smart-Prop-Manager`, branch `main`, Docker runtime.
+3. Schedule: `*/5 * * * *`
+4. Docker command override: `python -m scripts.delivery_outbox`
+5. Copy env from **Smart-Prop-Manager** Environment (at least):
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+   Twilio + Mailgun/SMTP + `FRONTEND_URL` / `EMAIL_*` (same set as
+   `render.yaml` → `smart-prop-delivery-outbox`).
+6. After first run: SQL health check in §5 above; investigate `dead` / old
+   `pending`.
+
+Optional: also create `smart-prop-due-reminders` from the same blueprint if
+missing. Note: blueprint service name is `smart-prop-api`; live name is
+`Smart-Prop-Manager` — use Dashboard copy-from-service rather than blind
+Blueprint apply if names diverge.
 
 ---
 
@@ -176,7 +197,7 @@ workspace.
 
 ## 7. Smoke after deploy
 
-1. `/health` 200  
+1. `/health` 200 on https://smart-prop-manager.onrender.com/health  
 2. Login → `/properties`  
 3. Manual payment → paid ledger + one queued receipt → delivered receipt log
 4. Reminder run → one queued row → one delivered provider message
