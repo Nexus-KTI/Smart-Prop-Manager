@@ -70,8 +70,8 @@ const ARTICLES: Record<HelpAudience, HelpArticle[]> = {
     {
       id: "l-invite",
       title: "How do I invite a tenant?",
-      body: "On Properties, open a vacant unit → Start tenancy → send the claim invite (queued SMS/WhatsApp when notify is configured, or copy the link). The tenant claims it, then you activate occupancy on the tenancy.",
-      href: "/tenancies",
+      body: "If they already applied, open Applications, approve, and send the claim link from that screen. If you already know them, open the vacant unit and use Start tenancy. Either way they claim the link, then you activate occupancy on Payments.",
+      href: "/applications",
     },
     {
       id: "l-tenancies",
@@ -106,7 +106,7 @@ const ARTICLES: Record<HelpAudience, HelpArticle[]> = {
     {
       id: "l-start",
       title: "Let’s get started",
-      body: "Add a property and unit, set rent and due day, invite the tenant, then work from Properties → Payments each Friday.",
+      body: "Add a property and unit, set rent and due day, then either approve an application or start a tenancy. Work from Properties → Payments each Friday. To-dos (under More) are chores. Work orders are repairs.",
       href: "/properties",
     },
   ],

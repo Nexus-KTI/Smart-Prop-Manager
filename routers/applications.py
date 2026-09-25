@@ -431,9 +431,9 @@ def decide_application(
     claim_url = None
     if next_status == "approved" and tenancy_id:
         try:
-            from routers.tenancies import invite_tenant
+            from routers.tenancies import issue_tenancy_claim
 
-            invited = invite_tenant(str(tenancy_id), user)
+            invited = issue_tenancy_claim(user, str(tenancy_id), notify=False)
             claim_path = invited.get("claim_path")
             claim_url = invited.get("claim_url")
         except Exception:

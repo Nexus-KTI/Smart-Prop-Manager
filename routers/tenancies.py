@@ -509,8 +509,8 @@ def activate_tenancy(tenancy_id: str, user: AuthedUser = Depends(get_current_use
     return {"tenancy": _serialize(dict(row or tenancy))}
 
 
-@router.post("/{tenancy_id}/invite")
-def invite_tenant(tenancy_id: str, user: AuthedUser = Depends(get_current_user)):
+def issue_tenancy_claim(user: AuthedUser, tenancy_id: str, *, notify: bool = True) -> dict:
+    """Mint a claim link. Payments sends it; application approve does not."""
     tenancy = _load_tenancy_for_landlord(user, tenancy_id)
     contact = (tenancy.get("tenant_contact") or "").strip()
     if not contact:
@@ -535,6 +535,16 @@ def invite_tenant(tenancy_id: str, user: AuthedUser = Depends(get_current_user))
     invite_sent = False
     invite_channel: str | None = None
     invite_error: str | None = None
+    if not notify:
+        return {
+            "tenancy": _serialize(dict(row)),
+            "invite_token": token,
+            "claim_path": claim_path,
+            "claim_url": claim_url,
+            "invite_sent": False,
+            "invite_channel": None,
+            "invite_error": None,
+        }
     try:
         from lib.delivery_outbox import enqueue_notification, flush_delivery_outbox
         from lib.email_templates import tenancy_invite
@@ -573,6 +583,11 @@ def invite_tenant(tenancy_id: str, user: AuthedUser = Depends(get_current_user))
         "invite_channel": invite_channel,
         "invite_error": None if invite_sent else invite_error,
     }
+
+
+@router.post("/{tenancy_id}/invite")
+def invite_tenant(tenancy_id: str, user: AuthedUser = Depends(get_current_user)):
+    return issue_tenancy_claim(user, tenancy_id)
 
 
 @router.get("/{tenancy_id}/documents")

@@ -14,6 +14,7 @@ money loop can start. Same claim invite as unit Payments. No new tenancy product
 - [x] Approve returns `claim_path` when the tenancy invite succeeds
 - [x] Landlord sees the claim path next to unit payments
 - [x] Applicant decide mail uses that claim URL when one exists
+- [x] Approve mints the claim link without a second tenancy-invite message
 
 ## Guardrails
 
