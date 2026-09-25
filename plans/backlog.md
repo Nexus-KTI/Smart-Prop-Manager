@@ -2,9 +2,10 @@
 
 ## Now
 
-1. **Tenant money loop smoke** — tick  
+1. **Tenant money loop smoke (headed)** — finish  
    [`docs/tenant-money-loop-smoke.md`](../docs/tenant-money-loop-smoke.md)  
-   (claim → activate → pay) in a signed-in browser.
+   in a signed-in browser (OTP + Paystack/manual). Agent gate: code/API/tests  
+   aligned 2026-09-25; live claim→pay still needs you.  
 2. **Headed live** — also  
    [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) +  
    [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md) when convenient.

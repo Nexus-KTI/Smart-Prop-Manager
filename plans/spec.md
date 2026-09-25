@@ -14,7 +14,7 @@ After application approve → claim, landlord can activate and money can move
 - [x] Reused tenancy gets applicant contact/name before claim mint
 - [x] Approve returns `claim_error` when mint fails (UI does not pretend they got a link)
 - [x] Approve ticks required occupancy checklist (application decide = paper path)
-- [ ] Smoke: `docs/tenant-money-loop-smoke.md` in a signed-in browser
+- [~] Smoke: `docs/tenant-money-loop-smoke.md` — code/API/tests PASS; headed OTP/Paystack **BLOCKED** (needs your signed-in browser)
 
 ## Guardrails
 
