@@ -10,8 +10,7 @@
 
 ## Next
 
-3. Application submit/decide **notify** (outbox).  
-4. Photos or a separate marketing page — only if the apply link is not enough.
+3. Photos or a richer apply page — only if the WhatsApp link is not enough.
 
 ## Product gate
 
@@ -25,6 +24,7 @@
 
 ## Closed recently
 
+- Application submit/decide notify (outbox + HTML)
 - Applications decide loop: WhatsApp share, Lagos questions, answers on the card, approve → unit payments
 - Living plan refresh; Auth/Twilio handoff docs  
 - Outbox GH Actions; gate/repair notify; email kit; signup `038`

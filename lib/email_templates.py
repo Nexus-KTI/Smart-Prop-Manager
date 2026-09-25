@@ -353,6 +353,66 @@ def tenant_task_assigned(
     return EmailContent(subject=subject, text=text, html=html_body)
 
 
+def application_submitted(
+    *,
+    applicant_name: str,
+    applications_url: str,
+    property_name: str | None = None,
+    unit_label: str | None = None,
+) -> EmailContent:
+    who = (applicant_name or "").strip() or "An applicant"
+    place = None
+    if (property_name or "").strip() or (unit_label or "").strip():
+        place = _place(property_name, unit_label)
+    subject = f"New application: {who[:80]}"
+    text_lines = [f"{who} applied on {BRAND_NAME}."]
+    if place:
+        text_lines.append(f"Where: {place}")
+    text_lines.append(f"Review: {applications_url}")
+    details: list[tuple[str, str]] = [("Applicant", who[:120])]
+    if place:
+        details.append(("Where", place))
+    html_body = render_transactional_email(
+        brand=email_brand_name(),
+        eyebrow="Application",
+        heading="New application",
+        body_text="Open applications to approve or reject.",
+        details=details,
+        cta_url=applications_url,
+        cta_label="Review applications",
+        footer=f"This notice was sent via {BRAND_NAME}.",
+    )
+    return EmailContent(subject=subject, text="\n\n".join(text_lines), html=html_body)
+
+
+def application_decided(
+    *,
+    status: str,
+    place: str,
+    next_url: str,
+) -> EmailContent:
+    approved = (status or "").strip().lower() == "approved"
+    heading = "Application approved" if approved else "Application not approved"
+    subject = heading
+    body = (
+        f"Your application for {place} was approved. Open the unit next steps."
+        if approved
+        else f"Your application for {place} was not approved."
+    )
+    html_body = render_transactional_email(
+        brand=email_brand_name(),
+        eyebrow="Application",
+        heading=heading,
+        body_text=body,
+        details=[("Where", place)],
+        cta_url=next_url,
+        cta_label="Open" if approved else "View",
+        footer=f"This notice was sent via {BRAND_NAME}.",
+    )
+    text = f"{heading}. {place}\n\nOpen: {next_url}"
+    return EmailContent(subject=subject, text=text, html=html_body)
+
+
 def tenant_maintenance_submitted(
     *,
     title: str,

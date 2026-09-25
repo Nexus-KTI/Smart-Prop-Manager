@@ -234,7 +234,7 @@ def submit_application(token: str, payload: dict, user: AuthedUser = Depends(get
 
     rows = (
         svc.table("rental_applications")
-        .select("*")
+        .select("*, units(label), properties(name)")
         .eq("invite_token", token)
         .limit(1)
         .execute()
@@ -268,6 +268,25 @@ def submit_application(token: str, payload: dict, user: AuthedUser = Depends(get
         .data
     )
     row = _first_row(updated) or {**current, "status": "submitted"}
+    try:
+        from lib.application_notify import notify_application_submitted
+
+        place = flatten_application(
+            {
+                "units": current.get("units"),
+                "properties": current.get("properties"),
+            }
+        )
+        notify_application_submitted(
+            svc,
+            landlord_id=str(current.get("landlord_id") or ""),
+            application_id=str(row.get("id") or current.get("id")),
+            applicant_name=name,
+            property_name=place.get("property_name"),
+            unit_label=place.get("unit_label"),
+        )
+    except Exception:
+        pass
     return {"item": row}
 
 
@@ -329,7 +348,7 @@ def decide_application(
 
     rows = (
         user.db.table("rental_applications")
-        .select("*")
+        .select("*, units(label), properties(name)")
         .eq("id", application_id)
         .eq("landlord_id", user.id)
         .limit(1)
@@ -394,6 +413,23 @@ def decide_application(
             created_tenancy = _first_row(inserted)
             if created_tenancy:
                 tenancy_id = created_tenancy.get("id")
+
+    if next_status in ("approved", "rejected"):
+        try:
+            from lib.application_notify import notify_application_decided
+
+            place = flatten_application(dict(current))
+            notify_application_decided(
+                user.db,
+                application_id=str(current.get("id") or application_id),
+                status=next_status,
+                applicant_email=current.get("applicant_email"),
+                applicant_phone=current.get("applicant_phone"),
+                property_name=place.get("property_name"),
+                unit_label=place.get("unit_label"),
+            )
+        except Exception:
+            pass
 
     return {
         "item": row,

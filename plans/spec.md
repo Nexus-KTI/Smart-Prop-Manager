@@ -18,6 +18,7 @@ Approve opens unit payments for the draft tenancy.
 - [x] `/applications` shows property · unit · answers
 - [x] Approve returns `unit_id` + `tenancy_id`; toast + Open unit payments link
 - [x] pytest `tests/test_applications_decide.py`
+- [x] Submit notifies the landlord (`application-submit:{id}`); approve/reject notifies the applicant (`application-decide:{id}:{status}`); skip when the applicant has no contact (`tests/test_application_notify.py`)
 
 ## Guardrails
 
@@ -25,4 +26,5 @@ No new listing route, no FCRA/Zillow, no SQL migration (`rent_amount` already on
 
 ## Next (not this slice)
 
-Outbox notify on submit/decide. Photos or a separate marketing page.
+- [x] Outbox notify on submit (landlord) and decide (applicant)
+- Photos or a separate marketing page — only if the apply link is not enough
