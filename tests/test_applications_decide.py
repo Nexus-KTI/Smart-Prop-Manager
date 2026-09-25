@@ -142,6 +142,9 @@ def test_decide_approve_returns_new_tenancy_id():
     assert out["item"]["status"] == "approved"
     assert store["tenancies"][0]["status"] == "draft"
     assert store["tenancies"][0]["tenant_name"] == "Tunde"
+    assert store["tenancies"][0]["checklist_id_collected"] is True
+    assert store["tenancies"][0]["checklist_agreement_signed"] is True
+    assert store["tenancies"][0]["checklist_references_checked"] is True
 
 
 def test_decide_approve_returns_claim_path(monkeypatch):
@@ -173,3 +176,71 @@ def test_decide_approve_returns_claim_path(monkeypatch):
     out = applications.decide_application("app1", {"status": "approved"}, user)
     assert out["claim_path"] == "/tenant/claim?token=abc"
     assert out["tenancy_id"] == "ten-new"
+    assert out.get("claim_error") is None
+
+
+def test_decide_approve_surfaces_claim_error(monkeypatch):
+    from fastapi import HTTPException
+
+    store = {
+        "rental_applications": [
+            {
+                "id": "app1",
+                "landlord_id": "ll1",
+                "unit_id": "u1",
+                "status": "submitted",
+                "applicant_name": "Tunde",
+                "applicant_email": "t@example.com",
+                "applicant_phone": "+234800",
+            }
+        ],
+        "tenancies": [],
+    }
+    user = SimpleNamespace(id="ll1", db=_Db(store))
+
+    def _invite(_user, _tenancy_id, *, notify=True):
+        raise HTTPException(status_code=400, detail="tenant_contact is required before invite")
+
+    monkeypatch.setattr("routers.tenancies.issue_tenancy_claim", _invite)
+    out = applications.decide_application("app1", {"status": "approved"}, user)
+    assert out["claim_path"] is None
+    assert "tenant_contact" in str(out["claim_error"])
+
+
+def test_decide_approve_syncs_contact_on_existing_tenancy(monkeypatch):
+    store = {
+        "rental_applications": [
+            {
+                "id": "app1",
+                "landlord_id": "ll1",
+                "unit_id": "u1",
+                "status": "submitted",
+                "applicant_name": "Tunde",
+                "applicant_email": "t@example.com",
+                "applicant_phone": "+234800",
+            }
+        ],
+        "tenancies": [
+            {
+                "id": "ten-old",
+                "unit_id": "u1",
+                "status": "draft",
+                "tenant_contact": None,
+                "tenant_name": None,
+            }
+        ],
+    }
+    user = SimpleNamespace(id="ll1", db=_Db(store))
+
+    def _invite(_user, tenancy_id, *, notify=True):
+        assert tenancy_id == "ten-old"
+        assert store["tenancies"][0]["tenant_contact"] == "+234800"
+        return {
+            "claim_path": "/tenant/claim?token=xyz",
+            "claim_url": "https://app.example.com/tenant/claim?token=xyz",
+        }
+
+    monkeypatch.setattr("routers.tenancies.issue_tenancy_claim", _invite)
+    out = applications.decide_application("app1", {"status": "approved"}, user)
+    assert out["claim_path"] == "/tenant/claim?token=xyz"
+    assert store["tenancies"][0]["checklist_references_checked"] is True

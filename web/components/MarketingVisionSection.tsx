@@ -17,8 +17,8 @@ const CAPABILITIES: Capability[] = [
     title: "Portfolio",
     items: [
       { label: "Properties & units", status: "LIVE" },
-      { label: "Staff roles", status: "LIVE" },
-      { label: "Multi-owner portfolios", status: "LATER" },
+      { label: "Staff roles & portfolio switch", status: "LIVE" },
+      { label: "Deep multi-owner agent orgs", status: "LATER" },
     ],
   },
   {

@@ -394,9 +394,15 @@ def decide_application(
     tenancy_id = None
     # On approve: reuse an open tenancy or create a draft.
     if next_status == "approved":
+        contact = (
+            (current.get("applicant_phone") or current.get("applicant_email") or "")
+            .strip()
+            or None
+        )
+        tenant_name = (current.get("applicant_name") or "").strip() or None
         existing = (
             user.db.table("tenancies")
-            .select("id")
+            .select("id, tenant_contact, tenant_name, tenant_user_id")
             .eq("unit_id", current["unit_id"])
             .in_("status", ["draft", "pending_verification", "active"])
             .limit(1)
@@ -406,8 +412,25 @@ def decide_application(
         )
         if existing:
             tenancy_id = existing[0].get("id")
+            # Sync applicant contact onto the reused row so claim mint can succeed.
+            sync_patch: dict = {"updated_at": now}
+            if contact and not (existing[0].get("tenant_contact") or "").strip():
+                sync_patch["tenant_contact"] = contact
+            if tenant_name and not (existing[0].get("tenant_name") or "").strip():
+                sync_patch["tenant_name"] = tenant_name
+            if (
+                current.get("applicant_user_id")
+                and not existing[0].get("tenant_user_id")
+            ):
+                sync_patch["tenant_user_id"] = current.get("applicant_user_id")
+            # Application decide counts as the paper checklist for this path.
+            sync_patch["checklist_id_collected"] = True
+            sync_patch["checklist_agreement_signed"] = True
+            sync_patch["checklist_references_checked"] = True
+            user.db.table("tenancies").update(sync_patch).eq(
+                "id", tenancy_id
+            ).execute()
         else:
-            contact = current.get("applicant_phone") or current.get("applicant_email")
             inserted = (
                 user.db.table("tenancies")
                 .insert(
@@ -416,8 +439,13 @@ def decide_application(
                         "landlord_id": user.id,
                         "tenant_user_id": current.get("applicant_user_id"),
                         "status": "draft",
-                        "tenant_name": current.get("applicant_name"),
+                        "tenant_name": tenant_name,
                         "tenant_contact": contact,
+                        # Application approve stands in for the paper checklist
+                        # so activate is not blocked after claim.
+                        "checklist_id_collected": True,
+                        "checklist_agreement_signed": True,
+                        "checklist_references_checked": True,
                     }
                 )
                 .execute()
@@ -429,6 +457,7 @@ def decide_application(
 
     claim_path = None
     claim_url = None
+    claim_error = None
     if next_status == "approved" and tenancy_id:
         try:
             from routers.tenancies import issue_tenancy_claim
@@ -436,8 +465,13 @@ def decide_application(
             invited = issue_tenancy_claim(user, str(tenancy_id), notify=False)
             claim_path = invited.get("claim_path")
             claim_url = invited.get("claim_url")
-        except Exception:
-            pass
+        except Exception as exc:
+            detail = getattr(exc, "detail", None)
+            claim_error = (
+                str(detail)
+                if detail
+                else (str(exc) or "Could not mint claim link")
+            )
 
     if next_status in ("approved", "rejected"):
         try:
@@ -463,4 +497,5 @@ def decide_application(
         "tenancy_id": tenancy_id,
         "claim_path": claim_path,
         "claim_url": claim_url,
+        "claim_error": claim_error,
     }

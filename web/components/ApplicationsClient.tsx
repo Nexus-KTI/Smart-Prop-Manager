@@ -28,6 +28,7 @@ export function ApplicationsClient() {
   const [error, setError] = useState<string | null>(null);
   const [approvedUnitId, setApprovedUnitId] = useState<string | null>(null);
   const [claimPath, setClaimPath] = useState<string | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,8 +56,18 @@ export function ApplicationsClient() {
       if (status === "approved" && result.unit_id) {
         setApprovedUnitId(String(result.unit_id));
         setClaimPath(result.claim_path || null);
-        showToast("Approved", "success");
+        setClaimError(result.claim_error || null);
+        if (result.claim_path) {
+          showToast("Approved — claim link ready", "success");
+        } else {
+          showToast(
+            result.claim_error ||
+              "Approved, but claim link needs contact on unit Payments",
+            "error",
+          );
+        }
       } else {
+        setClaimError(null);
         showToast(status === "approved" ? "Approved" : status, "success");
       }
       await load();
@@ -77,13 +88,19 @@ export function ApplicationsClient() {
       {error ? <p className="form-error">{error}</p> : null}
       {approvedUnitId ? (
         <p className="page-subtitle" role="status">
-          Approved. They received the claim link.
           {claimPath ? (
             <>
-              {" "}
-              <span className="mono-data">{claimPath}</span>
+              Approved. Claim link:{" "}
+              <span className="mono-data">{claimPath}</span>. Share it if they
+              did not get email/SMS.
             </>
-          ) : null}{" "}
+          ) : (
+            <>
+              Approved, but no claim link yet
+              {claimError ? <> ({claimError})</> : null}. Open unit Payments and
+              set tenant contact, then invite.
+            </>
+          )}{" "}
           After they claim,{" "}
           <Link href={`/payments/${approvedUnitId}`} className="table-link">
             activate occupancy on unit payments

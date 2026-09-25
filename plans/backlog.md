@@ -2,15 +2,19 @@
 
 ## Now
 
-1. **Headed live** — tick [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) +  
-   [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md) in a  
-   signed-in browser (or CDP `9222`). Agent pytest gate **22 passed** 2026-09-25.
-2. **Twilio Phone alignment** — still open if OTP SMS fails  
+1. **Tenant money loop smoke** — tick  
+   [`docs/tenant-money-loop-smoke.md`](../docs/tenant-money-loop-smoke.md)  
+   (claim → activate → pay) in a signed-in browser.
+2. **Headed live** — also  
+   [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) +  
+   [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md) when convenient.
+3. **Twilio Phone alignment** — still open if OTP SMS fails  
    ([`docs/auth-dashboard-ops.md`](../docs/auth-dashboard-ops.md)).
 
 ## Next
 
-Approve → existing tenancy claim link, then the tenant money loop (activate, pay).
+Public billing / Growth & Pro later items (bank feeds, partner NIN/BVN) only with
+commercial evidence — not Now.
 
 ## Product gate
 
@@ -21,9 +25,12 @@ Approve → existing tenancy claim link, then the tenant money loop (activate, p
 
 - Native Render Cron — waived (GH Actions outbox **done**)
 - Larger leasing CRM / photos — after Slice E if demand
+- Bank feeds, partner NIN/BVN API, deep multi-owner agent orgs — Later
 
 ## Closed recently
 
+- Phone marketing header: mark-only; Start free in drawer
+- Approve claim mint: sync contact, surface `claim_error`, tick checklist for activate
 - One unit photo and apply note on `/apply/{token}`
 - Application submit/decide notify (outbox + HTML)
 - Applications decide loop: WhatsApp share, Lagos questions, answers on the card, approve → unit payments

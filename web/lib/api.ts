@@ -2398,6 +2398,7 @@ export async function decideApplication(
   tenancy_id?: string | null;
   claim_path?: string | null;
   claim_url?: string | null;
+  claim_error?: string | null;
 }> {
   const res = await apiFetch(`/applications/${applicationId}`, {
     method: "PATCH",
@@ -2411,6 +2412,7 @@ export async function decideApplication(
     tenancy_id?: string | null;
     claim_path?: string | null;
     claim_url?: string | null;
+    claim_error?: string | null;
   };
 }
 

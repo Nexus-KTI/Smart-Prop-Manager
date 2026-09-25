@@ -84,7 +84,9 @@ export function MarketingOsModules() {
           <p className="marketing-os-later-kicker">Honest about later</p>
           <p className="marketing-os-later-body">
             Not live yet: bank feeds, partner NIN/BVN checks, and deep multi-owner
-            agent orgs. We label LATER - we don’t sell it as shipped.
+            agent orgs (firm hierarchy / billing). Staff roles and basic portfolio
+            switching are live. We label LATER - we don’t sell unfinished work as
+            shipped.
           </p>
         </aside>
       </MarketingReveal>
