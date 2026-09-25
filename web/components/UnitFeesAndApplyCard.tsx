@@ -107,7 +107,7 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
         <img className="apply-photo" src={photoUrl} alt="Unit" />
       ) : null}
       <label className="form-label">
-        Unit photo
+        Photo applicants see on the apply page
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"

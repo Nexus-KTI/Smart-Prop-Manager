@@ -77,16 +77,18 @@ export function ApplicationsClient() {
       {error ? <p className="form-error">{error}</p> : null}
       {approvedUnitId ? (
         <p className="page-subtitle" role="status">
-          Approved.{" "}
-          <Link href={`/payments/${approvedUnitId}`} className="table-link">
-            Open unit payments
-          </Link>
+          Approved. They received the claim link.
           {claimPath ? (
             <>
               {" "}
               <span className="mono-data">{claimPath}</span>
             </>
-          ) : null}
+          ) : null}{" "}
+          After they claim,{" "}
+          <Link href={`/payments/${approvedUnitId}`} className="table-link">
+            activate occupancy on unit payments
+          </Link>
+          .
         </p>
       ) : null}
       {!loading && pendingCount > 0 ? (

@@ -74,8 +74,10 @@ def test_notify_decided_email(monkeypatch):
         applicant_phone="+234800",
         property_name="Palm Court",
         unit_label="Flat 2",
+        next_url="https://app.example.com/tenant/claim?token=abc",
     )
     assert out["sent"] is True
     assert sent["contact"] == "tunde@example.com"
     assert sent["idempotency_key"] == "application-decide:app-9:approved"
     assert sent["channel"] == "email"
+    assert "Claim this unit" in (sent.get("email_html") or "")

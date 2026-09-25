@@ -392,12 +392,17 @@ def application_decided(
     next_url: str,
 ) -> EmailContent:
     approved = (status or "").strip().lower() == "approved"
+    claim = approved and "/tenant/claim" in (next_url or "")
     heading = "Application approved" if approved else "Application not approved"
     subject = heading
     body = (
-        f"Your application for {place} was approved. Open the unit next steps."
-        if approved
-        else f"Your application for {place} was not approved."
+        f"Your application for {place} was approved. Claim the unit, then your landlord activates occupancy."
+        if claim
+        else (
+            f"Your application for {place} was approved. Open the unit next steps."
+            if approved
+            else f"Your application for {place} was not approved."
+        )
     )
     html_body = render_transactional_email(
         brand=email_brand_name(),
@@ -406,7 +411,7 @@ def application_decided(
         body_text=body,
         details=[("Where", place)],
         cta_url=next_url,
-        cta_label="Open" if approved else "View",
+        cta_label="Claim this unit" if claim else ("Open" if approved else "View"),
         footer=f"This notice was sent via {BRAND_NAME}.",
     )
     text = f"{heading}. {place}\n\nOpen: {next_url}"
