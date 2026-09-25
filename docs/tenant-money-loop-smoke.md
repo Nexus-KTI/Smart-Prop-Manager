@@ -3,7 +3,7 @@
 Prove landlord ↔ tenant pay path end-to-end (local).
 
 ## Prep
-- [ ] API on `:8001`, web on `:3000`
+- [ ] API on `:8000` (or `:8001` if that is what you started), web on `:3000` or `:3001`
 - [ ] Landlord logged in; unit has **tenant contact** (phone/WhatsApp)
 - [ ] Fresh tenant phone/email available for signup/claim
 
