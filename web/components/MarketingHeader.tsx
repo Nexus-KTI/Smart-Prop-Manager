@@ -190,6 +190,12 @@ export function MarketingHeader({ inviteOnly }: Props) {
               </Link>
             ))}
             <div className="marketing-mobile-nav-foot">
+              <PrimaryCta
+                href={primaryHref}
+                label={primaryLabel}
+                className="btn-primary marketing-mobile-nav-cta"
+                onClick={closeMenu}
+              />
               <Link
                 href="/login"
                 className="marketing-mobile-nav-login"

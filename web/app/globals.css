@@ -4132,6 +4132,12 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   text-decoration: none;
 }
 
+.marketing-mobile-nav-cta {
+  align-self: stretch;
+  justify-content: center;
+  text-align: center;
+}
+
 .marketing-mobile-nav-login:hover,
 .marketing-mobile-nav-login:focus-visible {
   color: var(--ink);
@@ -4221,9 +4227,9 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
     gap: 6px;
   }
 
+  /* Phone: hero owns Start free; sticky bar stays mark + theme + menu. */
   .marketing-top .marketing-nav-cta {
-    padding: 8px 12px;
-    font-size: 0.8rem;
+    display: none;
   }
 }
 
