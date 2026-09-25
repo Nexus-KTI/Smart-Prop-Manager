@@ -46,6 +46,8 @@ export type Unit = {
   service_charge_amount?: number | string | null;
   /** ISO date (YYYY-MM-DD) term end / renewal. */
   term_end?: string | null;
+  photo_url?: string | null;
+  apply_note?: string | null;
   created_at?: string | null;
   transactions?: Transaction[];
 };

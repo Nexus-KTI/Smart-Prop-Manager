@@ -46,7 +46,7 @@ co-applicant US flows · Estate OS explorer edits
 **Touch:** [`ApplicationsClient.tsx`](../web/components/ApplicationsClient.tsx), list API enrich (property/unit labels), show `screening_answers`.  
 **Accept:** Submitted row shows property · unit · answers; Approve/Reject unchanged.
 
-### Slice B — Approve → claim handoff (S)
+### Slice B — Approve → claim handoff (S) — in progress
 **Why:** Approve only creates draft tenancy; claim still manual.  
 **Touch:** approve path in `routers/applications.py` + [`UnitTenantInviteCard`](../web/components/UnitTenantInviteCard.tsx) / tenancy invite helpers; toast/deep-link to claim.  
 **Accept:** After approve, landlord gets claim link (or auto-send if contact present); applicant with `applicant_user_id` can open claim.
@@ -82,5 +82,5 @@ pytest open→submit→approve→draft; refresh gap-analysis “today”; smoke 
 ## Explicit defer
 
 - Multi-prospect CRM pipeline  
-- Photos/video on listing (can follow E)  
+- A second listing site — the apply URL stays `/apply/{token}`, with one photo and a short note  
 - Application fee collection (Paystack) until asked

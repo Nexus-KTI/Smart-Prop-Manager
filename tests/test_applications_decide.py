@@ -142,3 +142,33 @@ def test_decide_approve_returns_new_tenancy_id():
     assert out["item"]["status"] == "approved"
     assert store["tenancies"][0]["status"] == "draft"
     assert store["tenancies"][0]["tenant_name"] == "Tunde"
+
+
+def test_decide_approve_returns_claim_path(monkeypatch):
+    store = {
+        "rental_applications": [
+            {
+                "id": "app1",
+                "landlord_id": "ll1",
+                "unit_id": "u1",
+                "status": "submitted",
+                "applicant_name": "Tunde",
+                "applicant_email": "t@example.com",
+                "applicant_phone": "+234800",
+            }
+        ],
+        "tenancies": [],
+    }
+    user = SimpleNamespace(id="ll1", db=_Db(store))
+
+    def _invite(tenancy_id, _user):
+        assert tenancy_id == "ten-new"
+        return {
+            "claim_path": "/tenant/claim?token=abc",
+            "claim_url": "https://app.example.com/tenant/claim?token=abc",
+        }
+
+    monkeypatch.setattr("routers.tenancies.invite_tenant", _invite)
+    out = applications.decide_application("app1", {"status": "approved"}, user)
+    assert out["claim_path"] == "/tenant/claim?token=abc"
+    assert out["tenancy_id"] == "ten-new"

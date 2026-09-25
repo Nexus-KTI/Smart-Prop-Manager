@@ -21,6 +21,8 @@ export function ApplyClient() {
     property_address?: string | null;
     unit_label?: string | null;
     rent_amount?: number | string | null;
+    photo_url?: string | null;
+    apply_note?: string | null;
     questions: Array<{ key: string; label: string }>;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,17 +110,28 @@ export function ApplyClient() {
     );
   }
 
+  const title = `${preview.property_name || "Property"}${
+    preview.unit_label ? ` · ${preview.unit_label}` : ""
+  }`;
+  const rent =
+    preview.rent_amount != null && preview.rent_amount !== ""
+      ? formatNaira(Number(preview.rent_amount))
+      : null;
+
   return (
     <section className="dashboard">
-      <h1 className="page-title">Apply for this unit</h1>
-      <p className="page-subtitle">
-        {preview.property_name || "Property"}
-        {preview.unit_label ? ` · ${preview.unit_label}` : ""}
-        {preview.property_address ? ` · ${preview.property_address}` : ""}
-        {preview.rent_amount != null && preview.rent_amount !== ""
-          ? ` · ${formatNaira(Number(preview.rent_amount))}`
-          : ""}
-      </p>
+      {preview.photo_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="apply-photo" src={preview.photo_url} alt={title} />
+      ) : null}
+      <h1 className="page-title">{title}</h1>
+      {preview.property_address ? (
+        <p className="page-subtitle">{preview.property_address}</p>
+      ) : null}
+      {rent ? <p className="mono-data">{rent}</p> : null}
+      {preview.apply_note ? (
+        <p className="page-subtitle">{preview.apply_note}</p>
+      ) : null}
       {!authed ? (
         <p className="form-card">
           <Link href={`/login?next=/apply/${token}`} className="btn-primary">

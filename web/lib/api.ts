@@ -497,6 +497,7 @@ export async function updateUnit(
     due_month?: number | null;
     service_charge_amount?: number | null;
     term_end?: string | null;
+    apply_note?: string | null;
   },
 ): Promise<Unit> {
   const res = await apiFetch(`/properties/units/${unitId}`, {
@@ -507,6 +508,28 @@ export async function updateUnit(
     throw new Error(await readErrorDetail(res, "Could not update unit"));
   }
   return (await res.json()) as Unit;
+}
+
+export async function uploadUnitPhoto(unitId: string, file: File): Promise<string> {
+  const body = new FormData();
+  body.append("file", file);
+  const res = await apiFetch(`/properties/units/${unitId}/photo`, {
+    method: "POST",
+    body,
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not upload photo"));
+  }
+  const data = (await res.json()) as { photo_url?: string };
+  if (!data.photo_url) throw new Error("Could not upload photo");
+  return data.photo_url;
+}
+
+export async function clearUnitPhoto(unitId: string): Promise<void> {
+  const res = await apiFetch(`/properties/units/${unitId}/photo`, { method: "DELETE" });
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not remove photo"));
+  }
 }
 
 export async function deleteUnit(unitId: string): Promise<void> {
@@ -2323,6 +2346,8 @@ export async function previewApplicationToken(token: string): Promise<{
   property_name?: string | null;
   property_address?: string | null;
   rent_amount?: number | string | null;
+  photo_url?: string | null;
+  apply_note?: string | null;
   questions: Array<{ key: string; label: string }>;
 }> {
   const base = apiBaseUrl();
@@ -2338,6 +2363,8 @@ export async function previewApplicationToken(token: string): Promise<{
     property_name?: string | null;
     property_address?: string | null;
     rent_amount?: number | string | null;
+    photo_url?: string | null;
+    apply_note?: string | null;
     questions: Array<{ key: string; label: string }>;
   };
 }
@@ -2369,6 +2396,8 @@ export async function decideApplication(
   item: RentalApplication;
   unit_id?: string | null;
   tenancy_id?: string | null;
+  claim_path?: string | null;
+  claim_url?: string | null;
 }> {
   const res = await apiFetch(`/applications/${applicationId}`, {
     method: "PATCH",
@@ -2380,6 +2409,8 @@ export async function decideApplication(
     item: RentalApplication;
     unit_id?: string | null;
     tenancy_id?: string | null;
+    claim_path?: string | null;
+    claim_url?: string | null;
   };
 }
 

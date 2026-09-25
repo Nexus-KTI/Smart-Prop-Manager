@@ -10,7 +10,7 @@
 
 ## Next
 
-3. Photos or a richer apply page — only if the WhatsApp link is not enough.
+Approve → existing tenancy claim link, then the tenant money loop (activate, pay).
 
 ## Product gate
 
@@ -24,6 +24,7 @@
 
 ## Closed recently
 
+- One unit photo and apply note on `/apply/{token}`
 - Application submit/decide notify (outbox + HTML)
 - Applications decide loop: WhatsApp share, Lagos questions, answers on the card, approve → unit payments
 - Living plan refresh; Auth/Twilio handoff docs  

@@ -27,6 +27,7 @@ export function ApplicationsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvedUnitId, setApprovedUnitId] = useState<string | null>(null);
+  const [claimPath, setClaimPath] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,6 +54,7 @@ export function ApplicationsClient() {
       const result = await decideApplication(id, status);
       if (status === "approved" && result.unit_id) {
         setApprovedUnitId(String(result.unit_id));
+        setClaimPath(result.claim_path || null);
         showToast("Approved", "success");
       } else {
         showToast(status === "approved" ? "Approved" : status, "success");
@@ -79,6 +81,12 @@ export function ApplicationsClient() {
           <Link href={`/payments/${approvedUnitId}`} className="table-link">
             Open unit payments
           </Link>
+          {claimPath ? (
+            <>
+              {" "}
+              <span className="mono-data">{claimPath}</span>
+            </>
+          ) : null}
         </p>
       ) : null}
       {!loading && pendingCount > 0 ? (

@@ -70,6 +70,29 @@ def flatten_application(row: dict) -> dict:
     return out
 
 
+def apply_preview_payload(row: dict, token: str) -> dict:
+    """Public apply page fields. Photo and note come from the unit embed."""
+    unit = row.get("units") or {}
+    if isinstance(unit, list):
+        unit = unit[0] if unit else {}
+    if not isinstance(unit, dict):
+        unit = {}
+    flat = flatten_application(dict(row))
+    photo = (unit.get("photo_url") or "").strip() or None
+    note = (unit.get("apply_note") or "").strip() or None
+    return {
+        "token": token,
+        "status": row.get("status"),
+        "unit_label": flat.get("unit_label"),
+        "property_name": flat.get("property_name"),
+        "property_address": flat.get("property_address"),
+        "rent_amount": flat.get("rent_amount"),
+        "photo_url": photo,
+        "apply_note": note,
+        "questions": [dict(q) for q in APPLY_QUESTIONS],
+    }
+
+
 def _frontend_base() -> str:
     return (
         os.getenv("FRONTEND_URL")
@@ -189,7 +212,7 @@ def preview_application(token: str, request: Request):
         svc.table("rental_applications")
         .select(
             "id, status, unit_id, property_id, invite_token, "
-            "units(label, rent_amount), properties(name, address)"
+            "units(label, rent_amount, photo_url, apply_note), properties(name, address)"
         )
         .eq("invite_token", token)
         .limit(1)
@@ -202,17 +225,7 @@ def preview_application(token: str, request: Request):
     row = dict(rows[0])
     if row.get("status") not in ("open", "submitted"):
         raise HTTPException(status_code=400, detail="This application is no longer open")
-    unit = row.get("units") or {}
-    prop = row.get("properties") or {}
-    return {
-        "token": token,
-        "status": row["status"],
-        "unit_label": unit.get("label") if isinstance(unit, dict) else None,
-        "property_name": prop.get("name") if isinstance(prop, dict) else None,
-        "property_address": prop.get("address") if isinstance(prop, dict) else None,
-        "rent_amount": unit.get("rent_amount") if isinstance(unit, dict) else None,
-        "questions": [dict(q) for q in APPLY_QUESTIONS],
-    }
+    return apply_preview_payload(row, token)
 
 
 @router.post("/token/{token}/submit", status_code=status.HTTP_201_CREATED)
@@ -414,6 +427,18 @@ def decide_application(
             if created_tenancy:
                 tenancy_id = created_tenancy.get("id")
 
+    claim_path = None
+    claim_url = None
+    if next_status == "approved" and tenancy_id:
+        try:
+            from routers.tenancies import invite_tenant
+
+            invited = invite_tenant(str(tenancy_id), user)
+            claim_path = invited.get("claim_path")
+            claim_url = invited.get("claim_url")
+        except Exception:
+            pass
+
     if next_status in ("approved", "rejected"):
         try:
             from lib.application_notify import notify_application_decided
@@ -427,6 +452,7 @@ def decide_application(
                 applicant_phone=current.get("applicant_phone"),
                 property_name=place.get("property_name"),
                 unit_label=place.get("unit_label"),
+                next_url=claim_url if next_status == "approved" else None,
             )
         except Exception:
             pass
@@ -435,4 +461,6 @@ def decide_application(
         "item": row,
         "unit_id": current.get("unit_id"),
         "tenancy_id": tenancy_id,
+        "claim_path": claim_path,
+        "claim_url": claim_url,
     }

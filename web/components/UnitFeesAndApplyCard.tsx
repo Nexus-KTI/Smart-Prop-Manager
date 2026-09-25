@@ -4,10 +4,14 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { useToast } from "@/components/ToastProvider";
 import {
+  clearUnitPhoto,
   createUnitFee,
+  fetchUnitDetail,
   fetchUnitFees,
   openApplicationInvite,
   updateFeeStatus,
+  updateUnit,
+  uploadUnitPhoto,
   type ScheduledFee,
 } from "@/lib/api";
 import { FEE_STATUS_LABELS, labelOrTitle } from "@/lib/labels";
@@ -20,6 +24,9 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
   const [loading, setLoading] = useState(true);
   const [applyUrl, setApplyUrl] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -34,6 +41,13 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
       setFeesLoaded(0);
     } finally {
       setLoading(false);
+    }
+    try {
+      const detail = await fetchUnitDetail(unitId);
+      setPhotoUrl(detail.unit.photo_url || null);
+      setNote(detail.unit.apply_note || "");
+    } catch {
+      /* fees still usable if the unit row fails */
     }
   }, [unitId]);
 
@@ -88,6 +102,75 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
         Share an apply link for vacant interest, or schedule a non-rent fee the
         tenant can see.
       </p>
+      {photoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="apply-photo" src={photoUrl} alt="Unit" />
+      ) : null}
+      <label className="form-label">
+        Unit photo
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="form-input"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file) return;
+            void uploadUnitPhoto(unitId, file)
+              .then((url) => {
+                setPhotoUrl(url);
+                showToast("Photo saved");
+              })
+              .catch((err) =>
+                showToast(err instanceof Error ? err.message : "Could not upload photo", "error"),
+              );
+          }}
+        />
+      </label>
+      {photoUrl ? (
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() =>
+            void clearUnitPhoto(unitId)
+              .then(() => {
+                setPhotoUrl(null);
+                showToast("Photo removed");
+              })
+              .catch((err) =>
+                showToast(err instanceof Error ? err.message : "Could not remove photo", "error"),
+              )
+          }
+        >
+          Clear photo
+        </button>
+      ) : null}
+      <label className="form-label">
+        Note for applicants
+        <textarea
+          className="form-input"
+          rows={3}
+          maxLength={280}
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+        />
+      </label>
+      <button
+        type="button"
+        className="btn-secondary"
+        disabled={savingNote}
+        onClick={() => {
+          setSavingNote(true);
+          void updateUnit(unitId, { apply_note: note.trim() || null })
+            .then(() => showToast("Note saved"))
+            .catch((err) =>
+              showToast(err instanceof Error ? err.message : "Could not save note", "error"),
+            )
+            .finally(() => setSavingNote(false));
+        }}
+      >
+        Save note
+      </button>
       <div className="dashboard-header-actions">
         <button type="button" className="btn-secondary" onClick={() => void onApply()}>
           Invite to apply

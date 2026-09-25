@@ -1,6 +1,6 @@
 import math
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status
 
 from lib.access import (
     accessible_property_ids_for_portfolio,
@@ -26,7 +26,10 @@ UNIT_FIELDS = {
     "due_month",
     "service_charge_amount",
     "term_end",
+    "apply_note",
 }
+
+APPLY_NOTE_MAX = 280
 
 # Status needs recent paid rows only — not full payment history per list fetch.
 # order/limit must be query params (foreign_table=...), not inside select — PGRST100.
@@ -34,6 +37,21 @@ _TXN_EMBED = "transactions(status, amount, paid_at, created_at, charge_type)"
 UNITS_WITH_RECENT_TXNS = f"units(*, {_TXN_EMBED})"
 UNIT_WITH_RECENT_TXNS = f"*, {_TXN_EMBED}"
 _RECENT_TXN_LIMIT = 36
+
+
+def normalize_apply_note(raw: object) -> str | None:
+    """Trim the applicant note. Empty clears it. Over 280 is rejected."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    if len(text) > APPLY_NOTE_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail="Note must be 280 characters or fewer",
+        )
+    return text
 
 
 def _order_recent_txns(query, *, nested_under_units: bool = False):
@@ -268,6 +286,8 @@ def update_unit(
         )
 
     updates = {k: v for k, v in payload.items() if k in UNIT_FIELDS}
+    if "apply_note" in updates:
+        updates["apply_note"] = normalize_apply_note(updates["apply_note"])
     if "service_charge_amount" in updates and updates["service_charge_amount"] in (
         "",
         None,
@@ -289,6 +309,57 @@ def update_unit(
     if not rows:
         raise HTTPException(status_code=404, detail="Unit not found")
     return rows[0]
+
+
+@router.post("/units/{unit_id}/photo")
+async def upload_unit_apply_photo(
+    unit_id: str,
+    file: UploadFile = File(...),
+    user: AuthedUser = Depends(get_current_user),
+):
+    """Owner uploads the single apply-page photo. Writes photo_url server-side."""
+    ctx = require_unit_access(user.id, unit_id)
+    if ctx.role != "owner":
+        raise HTTPException(
+            status_code=403, detail="Only the owner can edit unit fields"
+        )
+    from lib.unit_photos import upload_unit_photo
+
+    raw = await file.read()
+    content_type = (file.content_type or "").strip() or "image/jpeg"
+    try:
+        url = upload_unit_photo(
+            user_id=user.id,
+            unit_id=unit_id,
+            content_type=content_type,
+            file_bytes=raw,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not upload photo",
+        ) from exc
+    user.db.table("units").update({"photo_url": url}).eq("id", unit_id).execute()
+    return {"photo_url": url}
+
+
+@router.delete("/units/{unit_id}/photo")
+def clear_unit_apply_photo(
+    unit_id: str,
+    user: AuthedUser = Depends(get_current_user),
+):
+    ctx = require_unit_access(user.id, unit_id)
+    if ctx.role != "owner":
+        raise HTTPException(
+            status_code=403, detail="Only the owner can edit unit fields"
+        )
+    user.db.table("units").update({"photo_url": None}).eq("id", unit_id).execute()
+    return {"photo_url": None}
 
 
 @router.delete("/units/{unit_id}")
@@ -427,6 +498,8 @@ def add_unit(
         raise HTTPException(status_code=404, detail="Property not found")
 
     body = {k: v for k, v in payload.items() if k in UNIT_FIELDS}
+    if "apply_note" in body:
+        body["apply_note"] = normalize_apply_note(body["apply_note"])
     if body.get("service_charge_amount") in ("", None):
         body["service_charge_amount"] = None
     if body.get("term_end") in ("", None):

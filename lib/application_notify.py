@@ -78,6 +78,7 @@ def notify_application_decided(
     applicant_phone: str | None,
     property_name: str | None = None,
     unit_label: str | None = None,
+    next_url: str | None = None,
 ) -> dict[str, Any]:
     """Queue applicant notify on approve/reject. Never raises."""
     result: dict[str, Any] = {
@@ -105,11 +106,12 @@ def notify_application_decided(
 
         place = _place(property_name, unit_label) if (property_name or unit_label) else "the unit"
         approved = (status or "").strip().lower() == "approved"
-        next_url = (
-            f"{frontend_base_url()}/tenant"
-            if approved
-            else f"{frontend_base_url()}/apply"
-        )
+        if not (next_url or "").strip():
+            next_url = (
+                f"{frontend_base_url()}/tenant"
+                if approved
+                else f"{frontend_base_url()}/apply"
+            )
         mail = application_decided(status=status, place=place, next_url=next_url)
         queued = enqueue_notification(
             db,
