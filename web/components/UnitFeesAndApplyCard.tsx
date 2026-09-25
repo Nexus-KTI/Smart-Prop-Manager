@@ -96,7 +96,21 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
           {open ? "Close fee form" : "Add fee"}
         </button>
       </div>
-      {applyUrl ? <p className="mono-data">{applyUrl}</p> : null}
+      {applyUrl ? (
+        <p className="mono-data">
+          {applyUrl}{" "}
+          <a
+            className="table-link"
+            href={`https://wa.me/?text=${encodeURIComponent(
+              `Apply for this unit on Nexora: ${applyUrl}`,
+            )}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Share on WhatsApp
+          </a>
+        </p>
+      ) : null}
       {open ? (
         <form onSubmit={onFee} className="settings-inline-form">
           <div className="form-field">

@@ -8,9 +8,10 @@ Do these two clicks in the **Nexora** Supabase project Dashboard.
 
 ## 1. Leaked password protection (HaveIBeenPwned)
 
-**Status 2026-09-25:** User reported enabled. Re-check advisor; if WARN remains,
-confirm the **Nexora** project (not another Supabase project) and hard-refresh
-Dashboard. Agent cannot toggle Auth via MCP.
+**Status 2026-09-25:** Toggle lives under **Authentication → Providers → Email →
+Prevent use of leaked passwords** (not only Attack Protection). Click **Save**
+after enabling. UI notes **Pro plan and above** — Free projects may keep the
+advisor WARN even with the switch on. Re-check the Nexora project after Save.
 
 1. Open [Supabase Dashboard](https://supabase.com/dashboard) → Nexora project.  
 2. **Authentication** → **Providers** → **Email** (or **Settings** → password security, depending on Dashboard version).  

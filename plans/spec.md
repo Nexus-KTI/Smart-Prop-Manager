@@ -1,30 +1,28 @@
-# Current initiative — Applications loop (Phase 3 extension)
+# Current initiative — Applications decide loop
 
 **Updated:** 2026-09-25  
 **Owner:** Engineering  
-**Status:** next — Slice A not started  
-**Plan:** [`docs/applications-listing-build.md`](../docs/applications-listing-build.md)
+**Status:** shipped (code)
 
 ## Goal
 
-Improve existing rental applications so Ada can decide with context and hand
-off to tenancy claim — then optional public vacant listing. Not a new PRD phase.
+The apply URL is the listing. Ada shares it (copy or WhatsApp), the applicant
+answers Lagos-lite questions, and the decide card shows where + answers.
+Approve opens unit payments for the draft tenancy.
 
-## First acceptance (Slice A only)
+## Acceptance
 
-- [ ] `/applications` shows property · unit · screening answers on submitted rows
-- [ ] List API enriches labels (no US screening)
-- [ ] pytest covers list enrichment shape
-- [ ] Gap-analysis “today” row updated (intake exists)
+- [x] Unit card: copy apply link + WhatsApp share
+- [x] Public preview includes rent; apply page shows address + rent
+- [x] Questions: move-in, occupation, guarantor name, guarantor phone
+- [x] `/applications` shows property · unit · answers
+- [x] Approve returns `unit_id` + `tenancy_id`; toast + Open unit payments link
+- [x] pytest `tests/test_applications_decide.py`
 
 ## Guardrails
 
-- Reuse `rental_applications`; no Estate OS; no FCRA/Zillow/fees USD
-- Listing page = Slice E after A–D; publications stay bulletins
+No new listing route, no FCRA/Zillow, no SQL migration (`rent_amount` already on units).
 
-## Prior initiative (ops residue)
+## Next (not this slice)
 
-- [x] Outbox drain via GH Actions + HTTP
-- [x] Leaked-password — user reported done 2026-09-25 (re-check advisor if WARN lingers)
-- [ ] Headed Phase 5 + Ada live — agent gate green; **your signed-in walk** still required
-- [ ] Twilio Phone alignment — still Dashboard ([`auth-dashboard-ops.md`](../docs/auth-dashboard-ops.md))
+Outbox notify on submit/decide. Photos or a separate marketing page.

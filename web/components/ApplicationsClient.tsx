@@ -11,6 +11,13 @@ import {
 } from "@/lib/api";
 import { APPLICATION_STATUS_LABELS, labelOrTitle } from "@/lib/labels";
 
+const ANSWER_LABELS: Record<string, string> = {
+  move_in: "Preferred move-in",
+  occupation: "What you do",
+  guarantor_name: "Guarantor name",
+  guarantor_phone: "Guarantor phone",
+};
+
 export function ApplicationsClient() {
   const { showToast } = useToast();
   const [items, setItems] = useState<RentalApplication[]>([]);
@@ -19,6 +26,7 @@ export function ApplicationsClient() {
   const [loaded, setLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [approvedUnitId, setApprovedUnitId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,8 +50,13 @@ export function ApplicationsClient() {
 
   async function decide(id: string, status: "approved" | "rejected" | "closed") {
     try {
-      await decideApplication(id, status);
-      showToast(status === "approved" ? "Approved. Draft tenancy if vacant" : status);
+      const result = await decideApplication(id, status);
+      if (status === "approved" && result.unit_id) {
+        setApprovedUnitId(String(result.unit_id));
+        showToast("Approved", "success");
+      } else {
+        showToast(status === "approved" ? "Approved" : status, "success");
+      }
       await load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Update failed", "error");
@@ -60,6 +73,14 @@ export function ApplicationsClient() {
       </header>
       {loading ? <p className="page-subtitle">Loading…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
+      {approvedUnitId ? (
+        <p className="page-subtitle" role="status">
+          Approved.{" "}
+          <Link href={`/payments/${approvedUnitId}`} className="table-link">
+            Open unit payments
+          </Link>
+        </p>
+      ) : null}
       {!loading && pendingCount > 0 ? (
         <p className="page-subtitle" role="status">
           {pendingCount === 1
@@ -101,6 +122,22 @@ export function ApplicationsClient() {
               {app.applicant_phone ? (
                 <p className="page-subtitle">{app.applicant_phone}</p>
               ) : null}
+              {app.property_name || app.unit_label ? (
+                <p className="page-subtitle">
+                  {[app.property_name, app.unit_label].filter(Boolean).join(" · ")}
+                </p>
+              ) : null}
+              {app.screening_answers
+                ? Object.entries(ANSWER_LABELS).map(([key, label]) => {
+                    const value = app.screening_answers?.[key];
+                    if (!value) return null;
+                    return (
+                      <p key={key} className="page-subtitle">
+                        {label}: {value}
+                      </p>
+                    );
+                  })
+                : null}
               {app.notes ? <p className="page-subtitle">{app.notes}</p> : null}
               {app.status === "submitted" ? (
                 <div className="dashboard-header-actions">

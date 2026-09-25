@@ -9,6 +9,7 @@ import {
   previewApplicationToken,
   submitApplication,
 } from "@/lib/api";
+import { formatNaira } from "@/lib/dashboard";
 import { createClient } from "@/lib/supabase/client";
 
 export function ApplyClient() {
@@ -19,6 +20,7 @@ export function ApplyClient() {
     property_name?: string | null;
     property_address?: string | null;
     unit_label?: string | null;
+    rent_amount?: number | string | null;
     questions: Array<{ key: string; label: string }>;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +115,9 @@ export function ApplyClient() {
         {preview.property_name || "Property"}
         {preview.unit_label ? ` · ${preview.unit_label}` : ""}
         {preview.property_address ? ` · ${preview.property_address}` : ""}
+        {preview.rent_amount != null && preview.rent_amount !== ""
+          ? ` · ${formatNaira(Number(preview.rent_amount))}`
+          : ""}
       </p>
       {!authed ? (
         <p className="form-card">

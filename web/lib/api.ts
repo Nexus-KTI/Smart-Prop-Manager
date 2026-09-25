@@ -2264,6 +2264,8 @@ export type RentalApplication = {
   applicant_phone?: string | null;
   notes?: string | null;
   screening_answers?: Record<string, string>;
+  unit_label?: string | null;
+  property_name?: string | null;
   created_at?: string;
 };
 
@@ -2320,6 +2322,7 @@ export async function previewApplicationToken(token: string): Promise<{
   unit_label?: string | null;
   property_name?: string | null;
   property_address?: string | null;
+  rent_amount?: number | string | null;
   questions: Array<{ key: string; label: string }>;
 }> {
   const base = apiBaseUrl();
@@ -2334,6 +2337,7 @@ export async function previewApplicationToken(token: string): Promise<{
     unit_label?: string | null;
     property_name?: string | null;
     property_address?: string | null;
+    rent_amount?: number | string | null;
     questions: Array<{ key: string; label: string }>;
   };
 }
@@ -2361,15 +2365,22 @@ export async function submitApplication(
 export async function decideApplication(
   applicationId: string,
   status: "approved" | "rejected" | "closed",
-): Promise<RentalApplication> {
+): Promise<{
+  item: RentalApplication;
+  unit_id?: string | null;
+  tenancy_id?: string | null;
+}> {
   const res = await apiFetch(`/applications/${applicationId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   });
   if (!res.ok) throw new Error(await readErrorDetail(res, "Could not update application"));
-  const data = (await res.json()) as { item: RentalApplication };
-  return data.item;
+  return (await res.json()) as {
+    item: RentalApplication;
+    unit_id?: string | null;
+    tenancy_id?: string | null;
+  };
 }
 
 export async function connectLandlord(payload: {

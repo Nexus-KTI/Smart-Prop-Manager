@@ -17,6 +17,15 @@ router = APIRouter(prefix="/applications", tags=["applications"])
 
 VALID_DECIDE = frozenset({"approved", "rejected", "closed"})
 
+APPLY_QUESTIONS = (
+    {"key": "move_in", "label": "Preferred move-in"},
+    {"key": "occupation", "label": "What you do (job / business)"},
+    {"key": "guarantor_name", "label": "Guarantor name"},
+    {"key": "guarantor_phone", "label": "Guarantor phone"},
+)
+ANSWER_MAX = 120
+ANSWER_LABELS = {q["key"]: q["label"] for q in APPLY_QUESTIONS}
+
 
 def _first_row(data: Any) -> dict | None:
     if isinstance(data, list) and data and isinstance(data[0], dict):
@@ -24,6 +33,41 @@ def _first_row(data: Any) -> dict | None:
     if isinstance(data, dict):
         return data
     return None
+
+
+def normalize_screening_answers(raw: Any) -> dict[str, str]:
+    """Keep known Lagos-lite keys; cap length. Unknown keys dropped."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=400, detail="Invalid screening_answers")
+    out: dict[str, str] = {}
+    for key in ANSWER_LABELS:
+        value = str(raw.get(key) or "").strip()
+        if not value:
+            continue
+        out[key] = value[:ANSWER_MAX]
+    return out
+
+
+def flatten_application(row: dict) -> dict:
+    """Promote units/properties embeds to unit_label and property_name."""
+    out = dict(row)
+    unit = out.pop("units", None) or {}
+    prop = out.pop("properties", None) or {}
+    if isinstance(unit, list):
+        unit = unit[0] if unit else {}
+    if isinstance(prop, list):
+        prop = prop[0] if prop else {}
+    if isinstance(unit, dict):
+        out["unit_label"] = unit.get("label")
+        if unit.get("rent_amount") is not None:
+            out["rent_amount"] = unit.get("rent_amount")
+    if isinstance(prop, dict):
+        out["property_name"] = prop.get("name")
+        if prop.get("address"):
+            out["property_address"] = prop.get("address")
+    return out
 
 
 def _frontend_base() -> str:
@@ -69,7 +113,7 @@ def _exact_count(db, table: str, *, eq_filters: dict, in_filters: dict | None = 
 def list_applications(user: AuthedUser = Depends(get_current_user)):
     rows = (
         user.db.table("rental_applications")
-        .select("*")
+        .select("*, units(label), properties(name)")
         .eq("landlord_id", user.id)
         .order("created_at", desc=True)
         .limit(APPLICATIONS_PAGE_LIMIT)
@@ -77,6 +121,7 @@ def list_applications(user: AuthedUser = Depends(get_current_user)):
         .data
         or []
     )
+    rows = [flatten_application(dict(r)) for r in rows]
     pending_count = _exact_count(
         user.db,
         "rental_applications",
@@ -144,7 +189,7 @@ def preview_application(token: str, request: Request):
         svc.table("rental_applications")
         .select(
             "id, status, unit_id, property_id, invite_token, "
-            "units(label), properties(name, address)"
+            "units(label, rent_amount), properties(name, address)"
         )
         .eq("invite_token", token)
         .limit(1)
@@ -165,11 +210,8 @@ def preview_application(token: str, request: Request):
         "unit_label": unit.get("label") if isinstance(unit, dict) else None,
         "property_name": prop.get("name") if isinstance(prop, dict) else None,
         "property_address": prop.get("address") if isinstance(prop, dict) else None,
-        "questions": [
-            {"key": "move_in", "label": "Preferred move-in date"},
-            {"key": "occupants", "label": "Number of occupants"},
-            {"key": "employer", "label": "Employer / source of income"},
-        ],
+        "rent_amount": unit.get("rent_amount") if isinstance(unit, dict) else None,
+        "questions": [dict(q) for q in APPLY_QUESTIONS],
     }
 
 
@@ -179,13 +221,11 @@ def submit_application(token: str, payload: dict, user: AuthedUser = Depends(get
     email = (payload.get("applicant_email") or user.email or "").strip()
     phone = (payload.get("applicant_phone") or "").strip() or None
     notes = (payload.get("notes") or "").strip() or None
-    answers = payload.get("screening_answers") or {}
+    answers = normalize_screening_answers(payload.get("screening_answers") or {})
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
-    if not isinstance(answers, dict):
-        raise HTTPException(status_code=400, detail="Invalid screening_answers")
 
     try:
         svc = create_service_client()
@@ -319,7 +359,8 @@ def decide_application(
     )
     row = _first_row(updated) or {**current, **patch}
 
-    # On approve: create draft tenancy if none open on unit
+    tenancy_id = None
+    # On approve: reuse an open tenancy or create a draft.
     if next_status == "approved":
         existing = (
             user.db.table("tenancies")
@@ -331,17 +372,31 @@ def decide_application(
             .data
             or []
         )
-        if not existing:
+        if existing:
+            tenancy_id = existing[0].get("id")
+        else:
             contact = current.get("applicant_phone") or current.get("applicant_email")
-            user.db.table("tenancies").insert(
-                {
-                    "unit_id": current["unit_id"],
-                    "landlord_id": user.id,
-                    "tenant_user_id": current.get("applicant_user_id"),
-                    "status": "draft",
-                    "tenant_name": current.get("applicant_name"),
-                    "tenant_contact": contact,
-                }
-            ).execute()
+            inserted = (
+                user.db.table("tenancies")
+                .insert(
+                    {
+                        "unit_id": current["unit_id"],
+                        "landlord_id": user.id,
+                        "tenant_user_id": current.get("applicant_user_id"),
+                        "status": "draft",
+                        "tenant_name": current.get("applicant_name"),
+                        "tenant_contact": contact,
+                    }
+                )
+                .execute()
+                .data
+            )
+            created_tenancy = _first_row(inserted)
+            if created_tenancy:
+                tenancy_id = created_tenancy.get("id")
 
-    return {"item": row}
+    return {
+        "item": row,
+        "unit_id": current.get("unit_id"),
+        "tenancy_id": tenancy_id,
+    }

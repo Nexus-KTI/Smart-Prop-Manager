@@ -1,7 +1,7 @@
 # Applications + landlord listing — procedural build
 
 **Updated:** 2026-09-25  
-**Status:** product yes to plan/build (HOLD lifted)  
+**Status:** decide loop shipped 2026-09-25 (share + questions + card + approve handoff)  
 **Stance:** Phase 3 extension — reuse `rental_applications` + existing claim invite.  
 **Not a new PRD phase. Not Estate OS.**
 
@@ -31,9 +31,17 @@ co-applicant US flows · Estate OS explorer edits
 
 ---
 
+## Shipped (2026-09-25)
+
+- WhatsApp share of `apply_url` on the unit leasing card
+- Preview questions: move-in, occupation, guarantor name, guarantor phone
+- Apply page shows property, unit, address, rent
+- Decide cards show where + answers
+- Approve returns `tenancy_id` and links to unit payments
+
 ## Build slices (ordered)
 
-### Slice A — Decide inbox quality (S)
+### Slice A — Decide inbox quality (S) — done
 **Why:** Landlord cannot see unit context or answers when deciding.  
 **Touch:** [`ApplicationsClient.tsx`](../web/components/ApplicationsClient.tsx), list API enrich (property/unit labels), show `screening_answers`.  
 **Accept:** Submitted row shows property · unit · answers; Approve/Reject unchanged.
