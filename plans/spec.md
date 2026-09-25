@@ -1,35 +1,30 @@
-# Current initiative — Close ops residue + headed proof
+# Current initiative — Applications loop (Phase 3 extension)
 
-**Updated:** 2026-09-24  
-**Owner:** Engineering / Ops  
-**Status:** in progress (outbox drain live; Auth + headed + Twilio remain)
+**Updated:** 2026-09-25  
+**Owner:** Engineering  
+**Status:** next — Slice A not started  
+**Plan:** [`docs/applications-listing-build.md`](../docs/applications-listing-build.md)
 
 ## Goal
 
-Keep money as the commercial beachhead. Finish residual ops/proof so Phase 5
-notify and chase SMS are trustworthy — no new product modules without an
-explicit call.
+Improve existing rental applications so Ada can decide with context and hand
+off to tenancy claim — then optional public vacant listing. Not a new PRD phase.
 
-## Acceptance
+## First acceptance (Slice A only)
 
-- [x] Durable outbox drain live without Render Cron card  
-      — `POST /jobs/delivery-outbox` + [`.github/workflows/delivery-outbox.yml`](../.github/workflows/delivery-outbox.yml)  
-      — Secret `CRON_SECRET` on repo; manual run OK (`claimed`/`sent` > 0)
-- [ ] Supabase Auth: leaked-password protection enabled (Dashboard)
-- [ ] Headed: [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) +  
-      [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md)
-- [ ] Supabase Phone Twilio aligned with prod sender; NG SMS chase works
-- [x] Origin labels Tenant vs You; gate/admit + tenant repair notify shipped
-- [x] Living plan matches Free-tier outbox reality (Render Cron waived)
+- [ ] `/applications` shows property · unit · screening answers on submitted rows
+- [ ] List API enriches labels (no US screening)
+- [ ] pytest covers list enrichment shape
+- [ ] Gap-analysis “today” row updated (intake exists)
 
-## Findings
+## Guardrails
 
-- Kings-Hubbot **Smart-Prop-Manager** Free web is live; Cron Job needs a card → waived.
-- GH Actions schedule every ~5 min drains outbox (cold start ≤90s).
-- Advisor still WARN: leaked-password disabled (MCP cannot toggle Auth).
-- Applications / listing page: **hold** until product decision.
+- Reuse `rental_applications`; no Estate OS; no FCRA/Zillow/fees USD
+- Listing page = Slice E after A–D; publications stay bulletins
 
-## Not this initiative
+## Prior initiative (ops residue)
 
-US TenantCloud skips; Estate OS → prod; hard paywall; bank rec; leasing CRM
-before applications decision.
+- [x] Outbox drain via GH Actions + HTTP
+- [x] Leaked-password — user reported done 2026-09-25 (re-check advisor if WARN lingers)
+- [ ] Headed Phase 5 + Ada live — agent gate green; **your signed-in walk** still required
+- [ ] Twilio Phone alignment — still Dashboard ([`auth-dashboard-ops.md`](../docs/auth-dashboard-ops.md))

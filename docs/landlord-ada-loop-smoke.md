@@ -78,4 +78,10 @@ python -m pytest tests/test_unit_status_aggregate.py tests/test_portfolio_money_
 
 **2026-09-15 proceed retry:** pytest **10 passed**; `:8000` up; gstack browse + `cookie-import-browser chrome --domain localhost` → **DPAPI decryption failed** (Windows cannot decrypt Chrome cookies for the agent). Still `/properties` → `/login`. Unblock: your headed walk, or Chrome launched with `--remote-debugging-port=9222` while signed in.
 
-**2026-09-24 agent gate:** Ada money pytest subset + Phase 5 notify/cron tests → **22 passed** (with related suites). Living plan: outbox drain via GH Actions **done**; Auth leaked-password + Phone Twilio still Dashboard. **Headed live:** still blocked without your session / CDP `9222`. Next after your live PASS: confirm Twilio alignment ([`auth-dashboard-ops.md`](auth-dashboard-ops.md)).
+**2026-09-25 agent gate:** Ada + Phase 5 related pytest → **22 passed**. Local servers/CDP down. **Headed live still yours.** Applications/listing HOLD lifted — procedural build in [`applications-listing-build.md`](applications-listing-build.md). Advisor may still WARN leaked-password if toggle was on a different project — re-check Nexora Auth settings.
+
+**Unblock headed (copy-paste):**  
+1. Sign in as landlord on local or https://smart-prop-web.vercel.app  
+2. Walk Friday path: Properties → Payments / Action needed → Reminders filters  
+3. Phase 5: Access admit + tenant repair on `/tenant/requests` → landlord notify  
+4. Tick boxes in this file + [`phase5-smoke.md`](phase5-smoke.md)

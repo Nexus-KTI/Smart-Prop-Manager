@@ -59,3 +59,11 @@ Record: unit id, invite token, request id, pass id, API error detail.
 - [x] Outbox HTTP + GH Actions drain proven earlier same day
 - [ ] **Headed live** — needs your signed-in landlord / tenant / artisan session  
   (agent has no product cookie; same block as Ada smoke)
+
+## Agent gate (2026-09-25)
+
+- [x] Re-ran Ada + Phase 5 related pytest → **22 passed**
+- [x] Local API/web/CDP not running — live headed still **your browser**
+- [ ] Tick Prep + sections 2–3 above signed in; note FAIL ids if any
+
+**Unblock headed:** start product locally or use production web, sign in as Ada, walk admit + repair notify; or Chrome `--remote-debugging-port=9222` and tell the agent.

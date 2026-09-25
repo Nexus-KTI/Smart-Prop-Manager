@@ -2,37 +2,33 @@
 
 ## Now
 
-1. **Supabase leaked-password** — Auth → Password security → enable HaveIBeenPwned  
-   ([docs](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)).  
-   See [`docs/ops-checklist.md`](../docs/ops-checklist.md) §6b.
-2. **Headed proof** — walk [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) then  
-   [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md) signed in  
-   (or Chrome `--remote-debugging-port=9222`). Fix only on FAIL.
-3. **Twilio alignment** — Supabase Auth → Phone provider = prod Twilio (not trial /  
-   not a stale SID). Verify NG OTP + chase SMS. [`docs/ops-checklist.md`](../docs/ops-checklist.md) §1.
+1. **Headed live** — tick [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) +  
+   [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md) in a  
+   signed-in browser (or CDP `9222`). Agent pytest gate **22 passed** 2026-09-25.
+2. **Applications Slice A** — decide inbox quality (unit + answers).  
+   Spec: [`plans/spec.md`](spec.md) · full procedural:  
+   [`docs/applications-listing-build.md`](../docs/applications-listing-build.md)
+3. **Twilio Phone alignment** — still open if OTP SMS fails  
+   ([`docs/auth-dashboard-ops.md`](../docs/auth-dashboard-ops.md)).
 
-## Next (money trust only)
+## Next (applications slices B→E)
 
-4. Chase / receipt / outbox edge cases **only if headed smoke FAIL**.
-5. Stay on rent-and-chase beachhead — no Estate OS invents.
+4. Slice B — approve → claim handoff  
+5. Slice C — Lagos-lite questions  
+6. Slice D — submit/decide notify  
+7. Slice E — public vacant listing page (product check before build)
 
-## Product gate (do not build)
+## Product gate
 
-6. **HOLD — applications / landlord listing page**  
-   Lagos-fit discussion lives in [`docs/gap-analysis.md`](../docs/gap-analysis.md).  
-   **Default: no build** until an explicit product/CCO yes.  
-   Not implied by gap-analysis or TenantCloud research.
+- Applications/listing **HOLD lifted** 2026-09-25 (explicit plan/build ask).  
+- Default remains: no US TC features; listing ≠ publications.
 
 ## Deferred / waived
 
-- Native Render `smart-prop-delivery-outbox` Cron Job — **waived** (no card).  
-  Replacement: GH Actions + `POST /jobs/delivery-outbox` (**done**).
-- Production Twilio account upgrade — part of Now #3 if still on trial.
+- Native Render Cron — waived (GH Actions outbox **done**)
+- Larger leasing CRM / photos — after Slice E if demand
 
 ## Closed recently
 
-- Outbox drain via GH Actions + HTTP cron endpoint  
-- Gate admit notify; tenant repair → landlord notify; origin labels  
-- Email kit (details/alert + invites/jobs/tasks/gate)  
-- Signup attribution `038`; gate role visibility  
-- Residual resilience waves 1–5
+- Living plan refresh; Auth/Twilio handoff docs  
+- Outbox GH Actions; gate/repair notify; email kit; signup `038`
