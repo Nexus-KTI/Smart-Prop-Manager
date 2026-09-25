@@ -4171,6 +4171,24 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
     padding: 8px 10px 8px 14px;
   }
 
+  /* Focused lockup: mark only (same clip pattern as collapsed sidebar). */
+  .marketing-top .marketing-logo-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .marketing-top .marketing-logo-mark svg {
+    width: 30px;
+    height: 30px;
+  }
+
   .marketing-nav {
     display: none;
   }
@@ -4206,10 +4224,6 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   .marketing-top .marketing-nav-cta {
     padding: 8px 12px;
     font-size: 0.8rem;
-  }
-
-  .marketing-logo-stamp {
-    display: none;
   }
 }
 

@@ -105,7 +105,12 @@ export function MarketingHeader({ inviteOnly }: Props) {
     <header className="marketing-top" data-menu-open={open ? "true" : undefined}>
       <div className="marketing-top-shell">
         <div className="marketing-top-inner">
-          <Link href="/" className="marketing-logo" onClick={closeMenu}>
+          <Link
+            href="/"
+            className="marketing-logo"
+            aria-label={BRAND_NAME}
+            onClick={closeMenu}
+          >
             <span className="marketing-logo-mark" aria-hidden="true">
               <BrandMark size={28} />
             </span>

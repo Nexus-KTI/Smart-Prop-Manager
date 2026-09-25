@@ -44,7 +44,11 @@ export default function MarketingLayout({
       <footer className="marketing-footer marketing-footer-tc">
         <div className="marketing-container marketing-footer-grid">
           <div className="marketing-footer-brand-block">
-            <Link href="/" className="marketing-footer-brand marketing-logo">
+            <Link
+              href="/"
+              className="marketing-footer-brand marketing-logo"
+              aria-label={BRAND_NAME}
+            >
               <span className="marketing-logo-mark" aria-hidden="true">
                 <BrandMark size={24} />
               </span>
