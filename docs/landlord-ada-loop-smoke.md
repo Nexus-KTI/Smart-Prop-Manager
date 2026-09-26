@@ -78,7 +78,7 @@ python -m pytest tests/test_unit_status_aggregate.py tests/test_portfolio_money_
 
 **2026-09-15 proceed retry:** pytest **10 passed**; `:8000` up; gstack browse + `cookie-import-browser chrome --domain localhost` → **DPAPI decryption failed** (Windows cannot decrypt Chrome cookies for the agent). Still `/properties` → `/login`. Unblock: your headed walk, or Chrome launched with `--remote-debugging-port=9222` while signed in.
 
-**2026-09-25 agent gate:** Ada + Phase 5 related pytest → **22 passed**. Local servers/CDP down. **Headed live still yours.** Applications/listing HOLD lifted — procedural build in [`applications-listing-build.md`](applications-listing-build.md). Advisor may still WARN leaked-password if toggle was on a different project — re-check Nexora Auth settings.
+**2026-09-26 agent gate:** Ada + Phase 5 related pytest → **22 passed**. Paystack / cards confirmed. **Headed Friday chase still yours** (no landlord cookie for the agent).
 
 **Unblock headed (copy-paste):**  
 1. Sign in as landlord on local or https://smart-prop-web.vercel.app  
