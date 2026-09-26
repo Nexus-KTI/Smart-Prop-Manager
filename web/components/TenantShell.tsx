@@ -138,7 +138,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
               onMouseLeave={unlockPeek}
             >
               <div className="sidebar-brand">
-                <span className="sidebar-brand-lockup">
+                <Link href="/" className="sidebar-brand-lockup" aria-label={`${BRAND_NAME} home`}>
                   <span className="sidebar-brand-mark" aria-hidden="true">
                     <BrandMark size={22} />
                   </span>
@@ -146,7 +146,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
                     <span className="sidebar-brand-name">{BRAND_NAME}</span>
                     <span className="sidebar-brand-stamp">{BRAND_STAMP}</span>
                   </span>
-                </span>
+                </Link>
               </div>
               <nav className="sidebar-nav" aria-label="Tenant">
                 {primaryNav.map(renderNavLink)}

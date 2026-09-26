@@ -12,7 +12,9 @@ import {
 
 import { BrandMark } from "@/components/BrandMark";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { fetchMe } from "@/lib/api";
 import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
+import { createClient } from "@/lib/supabase/client";
 
 type Props = {
   inviteOnly: boolean;
@@ -56,8 +58,39 @@ export function MarketingHeader({ inviteOnly }: Props) {
   const burgerRef = useRef<HTMLButtonElement>(null);
   const firstLinkRef = useRef<HTMLAnchorElement>(null);
   const pathname = usePathname();
-  const primaryLabel = inviteOnly ? "Request access" : "Start free";
-  const primaryHref = inviteOnly ? "/#get-started" : "/signup";
+  const [dashboardHref, setDashboardHref] = useState<string | null>(null);
+  const signedIn = Boolean(dashboardHref);
+  const primaryLabel = signedIn
+    ? "Dashboard"
+    : inviteOnly
+      ? "Request access"
+      : "Start free";
+  const primaryHref = dashboardHref
+    ? dashboardHref
+    : inviteOnly
+      ? "/#get-started"
+      : "/signup";
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getSession();
+        if (!data.session || cancelled) return;
+        setDashboardHref("/properties");
+        const me = await fetchMe();
+        if (cancelled) return;
+        if (me.role === "tenant") setDashboardHref("/tenant");
+        else if (me.role === "artisan") setDashboardHref("/artisan");
+      } catch {
+        /* keep the signed-out call to action */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -137,9 +170,11 @@ export function MarketingHeader({ inviteOnly }: Props) {
 
           <div className="marketing-top-actions">
             <ThemeToggle variant="icon" className="marketing-theme-toggle" />
-            <Link href="/login" className="marketing-nav-signin">
-              Log in
-            </Link>
+            {signedIn ? null : (
+              <Link href="/login" className="marketing-nav-signin">
+                Log in
+              </Link>
+            )}
             <PrimaryCta
               href={primaryHref}
               label={primaryLabel}
@@ -196,13 +231,15 @@ export function MarketingHeader({ inviteOnly }: Props) {
                 className="btn-primary marketing-mobile-nav-cta"
                 onClick={closeMenu}
               />
-              <Link
-                href="/login"
-                className="marketing-mobile-nav-login"
-                onClick={closeMenu}
-              >
-                Log in
-              </Link>
+              {signedIn ? null : (
+                <Link
+                  href="/login"
+                  className="marketing-mobile-nav-login"
+                  onClick={closeMenu}
+                >
+                  Log in
+                </Link>
+              )}
             </div>
           </div>
         </nav>

@@ -12,6 +12,7 @@ function isPublicPath(pathname: string): boolean {
     pathname === "/pricing" ||
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/apply/") ||
+    pathname.startsWith("/list/") ||
     pathname === "/tenant/claim" ||
     pathname === "/staff/claim" ||
     pathname === "/artisan/claim"
@@ -157,9 +158,12 @@ export async function updateSession(request: NextRequest) {
       .maybeSingle();
     if (profile?.role === "tenant") {
       const isTenantSurface =
+        pathname === "/" ||
+        pathname === "/pricing" ||
         pathname === "/tenant" ||
         pathname.startsWith("/tenant/") ||
         pathname.startsWith("/apply/") ||
+        pathname.startsWith("/list/") ||
         pathname.startsWith("/auth/");
       if (!isTenantSurface) {
         const url = request.nextUrl.clone();
@@ -169,8 +173,11 @@ export async function updateSession(request: NextRequest) {
     }
     if (profile?.role === "artisan") {
       const isArtisanSurface =
+        pathname === "/" ||
+        pathname === "/pricing" ||
         pathname === "/artisan" ||
         pathname.startsWith("/artisan/") ||
+        pathname.startsWith("/list/") ||
         pathname.startsWith("/auth/");
       if (!isArtisanSurface) {
         const url = request.nextUrl.clone();
