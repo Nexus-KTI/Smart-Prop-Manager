@@ -2,11 +2,10 @@
 
 ## Now
 
-1. **Tenant money loop smoke (headed)** — finish  
+1. **Optional headed polish** — browser OTP + Paystack UI on  
    [`docs/tenant-money-loop-smoke.md`](../docs/tenant-money-loop-smoke.md)  
-   in a signed-in browser (OTP + Paystack/manual). Agent gate: code/API/tests  
-   aligned 2026-09-25; live claim→pay still needs you.  
-2. **Headed live** — also  
+   (API procedural gate **PASS** 2026-09-26 via `scripts/smoke_money_loop.py`).
+2. **Headed live** —  
    [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) +  
    [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md) when convenient.
 3. **Twilio Phone alignment** — still open if OTP SMS fails  
