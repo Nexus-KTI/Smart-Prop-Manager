@@ -1,28 +1,26 @@
-# Current initiative — Paystack keys, cards, autopay cron
+# Current initiative — Friday chase live (Ada + phase5)
 
 **Updated:** 2026-09-26  
-**Owner:** Engineering + you (headed popup)  
-**Status:** keys + due/autopay GH Action shipped; headed Paystack UI still yours
+**Owner:** You (headed) + Engineering (gates)  
+**Status:** Paystack/cards confirmed; headed chase is Now
 
 ## Goal
 
-Public key on the web, secret on the API. Tenants save a card in Settings and
-enable Autopay so rent can charge on due day without chase.
+Prove the Friday rent-and-chase path and phase5 ops in a signed-in browser.
+No Growth billing until that is trusted.
 
 ## Acceptance
 
-- [x] `PAYSTACK_SECRET_KEY` (API) verified against Paystack test API
-- [x] `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` in `web/.env` / `.env.local`
-- [x] Root `PAYSTACK_PUBLIC_KEY` documented unused in `.env.example`
-- [x] GitHub Actions `reminders-due` POSTs `/reminders/jobs/due` daily
-- [x] Pytest rejects bad save-card confirm payloads
-- [ ] Headed: Pay rent + Settings → Cards + Home Autopay  
-      ([`docs/tenant-money-loop-smoke.md`](../docs/tenant-money-loop-smoke.md))
+- [x] Paystack keys + save-card / Autopay path (you confirmed)
+- [x] Agent Ada + phase5 pytest gate re-run (see backlog Now)
+- [ ] Headed [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md)
+- [ ] Headed [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) (gate admit + repair → artisan)
+- [ ] Twilio Phone only if OTP SMS fails
 
-## Monetization (unchanged)
+## Monetization (locked)
 
-Free cash/transfer recording. Growth later. No rent take-rate.
+Free cash/transfer. Growth later as landlord Naira subscription. No rent take-rate.
 
 ## Guardrails
 
-Do not put the secret in `NEXT_PUBLIC_*`. Do not build a second card vault.
+Do not build billing, bank feeds, or NIN/BVN in this pass.

@@ -60,10 +60,10 @@ Record: unit id, invite token, request id, pass id, API error detail.
 - [ ] **Headed live** — needs your signed-in landlord / tenant / artisan session  
   (agent has no product cookie; same block as Ada smoke)
 
-## Agent gate (2026-09-25)
+## Agent gate (2026-09-26)
 
 - [x] Re-ran Ada + Phase 5 related pytest → **22 passed**
-- [x] Local API/web/CDP not running — live headed still **your browser**
-- [ ] Tick Prep + sections 2–3 above signed in; note FAIL ids if any
+- [x] Paystack / cards / Autopay confirmed by you
+- [ ] Tick Prep + Ada headed + phase5 sections 2–3 signed in
 
-**Unblock headed:** start product locally or use production web, sign in as Ada, walk admit + repair notify; or Chrome `--remote-debugging-port=9222` and tell the agent.
+**Unblock headed:** sign in as Ada, walk Action needed chase; then gate admit + repair notify. Or Chrome `--remote-debugging-port=9222` and tell the agent.

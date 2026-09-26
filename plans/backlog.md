@@ -2,14 +2,14 @@
 
 ## Now
 
-1. **Headed Paystack UI** — rent popup + Settings → Cards + Home Autopay on  
-   [`docs/tenant-money-loop-smoke.md`](../docs/tenant-money-loop-smoke.md)  
-   (API secret + public key + money-loop smoke **PASS**;  
-   `reminders-due` GH Action ships due reminders + autopay).
-2. **Headed live** —  
-   [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) +  
-   [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md) when convenient.
-3. **Twilio Phone alignment** — still open if OTP SMS fails  
+1. **Headed Friday chase** — tick  
+   [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md)  
+   in a signed-in landlord browser (Properties → Payments / Action needed).  
+   Agent Ada + phase5 pytest gate **22 passed** 2026-09-26.
+2. **Headed phase5** —  
+   [`docs/phase5-smoke.md`](../docs/phase5-smoke.md)  
+   (gate admit + tenant repair → artisan) when you have sessions.
+3. **Twilio Phone alignment** — only if OTP SMS fails  
    ([`docs/auth-dashboard-ops.md`](../docs/auth-dashboard-ops.md)).
 
 ## Next
@@ -31,6 +31,7 @@ No artisan payout rail until ops demand is real.
 
 ## Closed recently
 
+- Paystack key split; saved-card + Autopay; you confirmed headed Paystack
 - Paystack key split + saved-card/autopay cron path documented
 - Property-scoped staff invites (all properties or a named subset)
 - Public vacant listing `/list/{token}` handing off to `/apply/{token}`
