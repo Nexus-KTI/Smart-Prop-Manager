@@ -2,10 +2,10 @@
 
 ## Now
 
-1. **Optional headed polish** — browser OTP + Paystack UI on  
+1. **Headed Paystack UI** — rent popup + Settings → Cards + Home Autopay on  
    [`docs/tenant-money-loop-smoke.md`](../docs/tenant-money-loop-smoke.md)  
-   (API procedural gate **PASS** 2026-09-26; reconfirmed same day via  
-   `scripts/smoke_money_loop.py`).
+   (API secret + public key + money-loop smoke **PASS**;  
+   `reminders-due` GH Action ships due reminders + autopay).
 2. **Headed live** —  
    [`docs/phase5-smoke.md`](../docs/phase5-smoke.md) +  
    [`docs/landlord-ada-loop-smoke.md`](../docs/landlord-ada-loop-smoke.md) when convenient.
@@ -25,12 +25,13 @@ No artisan payout rail until ops demand is real.
 
 ## Deferred / waived
 
-- Native Render Cron — waived (GH Actions outbox **done**)
+- Native Render Cron — waived (GH Actions outbox + **reminders-due** done)
 - Larger leasing CRM / photos — after Slice E if demand
 - Bank feeds, partner NIN/BVN API, deep multi-owner agent orgs — Later
 
 ## Closed recently
 
+- Paystack key split + saved-card/autopay cron path documented
 - Property-scoped staff invites (all properties or a named subset)
 - Public vacant listing `/list/{token}` handing off to `/apply/{token}`
 - Tenancy docs draft counsel banner; production `DOCS_*` flags stay false

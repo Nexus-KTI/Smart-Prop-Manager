@@ -1,0 +1,30 @@
+# Free-tier due reminders + autopay — no Render Cron / no card required.
+# Set repo secret CRON_SECRET to match Smart-Prop-Manager env.
+# Runs Africa/Lagos morning (07:00 WAT ≈ 06:00 UTC).
+name: reminders-due
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  due:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /reminders/jobs/due
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          API_BASE: https://smart-prop-manager.onrender.com
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "Missing repo secret CRON_SECRET" >&2
+            exit 1
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            --max-time 120 \
+            "${API_BASE%/}/reminders/jobs/due"

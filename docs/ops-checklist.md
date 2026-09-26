@@ -50,7 +50,9 @@ Required:
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 - `FRONTEND_URL=https://smart-prop-web.vercel.app`
 - `CORS_ORIGINS=https://smart-prop-web.vercel.app,http://localhost:3000,http://127.0.0.1:3000` (include production web origin)
-- `PAYSTACK_SECRET_KEY` (+ web public key on Next)
+- `PAYSTACK_SECRET_KEY` on the **API only** (Render Smart-Prop-Manager)
+- `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` on the **web only** (Vercel / `web/.env.local`)
+- Do **not** put the secret in any `NEXT_PUBLIC_*` var. Root `PAYSTACK_PUBLIC_KEY` is unused.
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM` (and `TWILIO_WHATSAPP_FROM` only if using WA)
 - Mailgun: `EMAIL_SERVICE_PROVIDER=mailgun`, `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_SENDER_EMAIL`, `EMAIL_FROM_NAME=Nexora`, `FROM_EMAIL`
 - `CRON_SECRET` (HTTP due job) · cron service inherits Mailgun + Twilio from web in `render.yaml`
@@ -102,10 +104,18 @@ Operational rights, hold, incident and rollback steps are in
 
 ## 4. Due reminders cron
 
-- Render cron `smart-prop-due-reminders` schedule `0 8 * * *` → `python -m lib.reminder_job`
-- Or `POST /reminders/jobs/due` with `Authorization: Bearer $CRON_SECRET`
+- Preferred (Free tier): GitHub Actions [`.github/workflows/reminders-due.yml`](../.github/workflows/reminders-due.yml)
+  daily `0 6 * * *` UTC (~07:00 WAT) → `POST /reminders/jobs/due` with
+  `Authorization: Bearer $CRON_SECRET` (same secret as delivery-outbox).
+- Optional Render cron `smart-prop-due-reminders` schedule `0 8 * * *` →
+  `python -m lib.reminder_job` (needs a paid cron / card).
+- Or manual: `POST /reminders/jobs/due` with `Authorization: Bearer $CRON_SECRET`
+  or `X-Cron-Secret`.
+- That job runs **due reminders, renewal notices, and autopay**
+  (`lib/autopay_job.py` charges saved Paystack cards on rent due day).
 - After run: due/renewal messages are queued; the delivery cron writes
-  `reminders` rows with `sent` or a clear terminal `error_detail`.
+  `reminders` rows with `sent` or a clear terminal `error_detail`. Autopay
+  marks matching transactions `paid` or `failed`.
 
 ---
 
