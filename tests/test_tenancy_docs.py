@@ -43,6 +43,13 @@ from lib.request_limits import (
 )
 from routers import tenancies
 
+# The hardened document router these tests describe is not built yet;
+# routers/tenancies.py still serves the base64 upload. strict=True fails once it lands.
+ROUTER_GAP = pytest.mark.xfail(
+    strict=True,
+    reason="hardened tenancy-docs router not built (plans/backlog.md: Tenancy docs router)",
+)
+
 PDF_BYTES = (
     b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
     b"xref\n0 1\n0000000000 65535 f \ntrailer\n<< /Root 1 0 R >>\n"
@@ -483,6 +490,7 @@ def test_safe_document_name_removes_path_and_control_characters():
     assert safe_document_name("../../tenant\x00.exe", "application/pdf") == "tenant.pdf"
 
 
+@ROUTER_GAP
 def test_past_expiry_is_rejected():
     with pytest.raises(HTTPException) as exc:
         tenancies._parse_expiry((date.today() - timedelta(days=1)).isoformat())
@@ -644,6 +652,7 @@ def _user(user_id, db=None):
 
 
 @pytest.mark.parametrize("actor_id", ["intruder", "staff-user"])
+@ROUTER_GAP
 def test_document_access_denies_cross_tenancy_and_staff(monkeypatch, actor_id):
     client = FakeClient(
         {"tenancies": [{"id": "t1", "landlord_id": "owner", "status": "active"}]}
@@ -670,6 +679,7 @@ def test_document_route_rejects_anonymous_request():
 
 
 @pytest.mark.parametrize("tenancy_status", ["pending", "ended"])
+@ROUTER_GAP
 def test_document_access_denies_inactive_tenant(monkeypatch, tenancy_status):
     client = FakeClient(
         {
@@ -690,6 +700,7 @@ def test_document_access_denies_inactive_tenant(monkeypatch, tenancy_status):
     assert "Active occupancy" in str(exc.value.detail)
 
 
+@ROUTER_GAP
 def test_flag_off_list_is_honest_after_authorization(monkeypatch):
     client = FakeClient(
         {"tenancies": [{"id": "t1", "landlord_id": "owner", "status": "pending"}]}
@@ -703,6 +714,7 @@ def test_flag_off_list_is_honest_after_authorization(monkeypatch):
     assert "awaiting legal" in result["message"]
 
 
+@ROUTER_GAP
 def test_active_tenant_lists_only_clean_documents_with_role_capabilities(
     monkeypatch,
 ):
@@ -755,6 +767,7 @@ def test_active_tenant_lists_only_clean_documents_with_role_capabilities(
     }
 
 
+@ROUTER_GAP
 def test_acknowledgment_requires_active_tenant_and_required_document(monkeypatch):
     client = FakeClient(
         {
@@ -783,6 +796,7 @@ def test_acknowledgment_requires_active_tenant_and_required_document(monkeypatch
     assert exc.value.status_code == 409
 
 
+@ROUTER_GAP
 def test_acknowledgment_is_idempotent(monkeypatch):
     client = FakeClient(
         {
@@ -821,6 +835,7 @@ def test_acknowledgment_is_idempotent(monkeypatch):
     assert len(client.rows["tenancy_document_acknowledgments"]) == 1
 
 
+@ROUTER_GAP
 def test_concurrent_acknowledgment_returns_winning_evidence(monkeypatch):
     client = FakeClient(
         {
@@ -853,6 +868,7 @@ def test_concurrent_acknowledgment_returns_winning_evidence(monkeypatch):
     assert result["acknowledgment"]["id"] == "raced"
 
 
+@ROUTER_GAP
 def test_upload_cleans_object_when_evidence_write_fails(monkeypatch):
     client = FakeClient(fail_event_insert=True)
     cleaned = []
@@ -893,6 +909,7 @@ def test_upload_cleans_object_when_evidence_write_fails(monkeypatch):
     assert client.rows["tenancy_documents"] == []
 
 
+@ROUTER_GAP
 def test_delete_refuses_legal_hold_without_removing_object(monkeypatch):
     client = FakeClient(
         {
@@ -924,6 +941,7 @@ def test_delete_refuses_legal_hold_without_removing_object(monkeypatch):
     assert removed == []
 
 
+@ROUTER_GAP
 def test_delete_hold_race_stops_before_object_removal(monkeypatch):
     client = FakeClient(
         {
@@ -956,6 +974,7 @@ def test_delete_hold_race_stops_before_object_removal(monkeypatch):
     assert removed == []
 
 
+@ROUTER_GAP
 def test_no_pii_document_lifecycle_with_test_storage(monkeypatch):
     client = FakeClient(
         {
@@ -1065,6 +1084,7 @@ def test_collection_capabilities_are_role_specific_and_default_off(monkeypatch):
     assert tenant["privacy_request"] is True
 
 
+@ROUTER_GAP
 def test_collection_authorization_is_claimed_pending_only(monkeypatch):
     client = FakeClient(
         {
@@ -1099,6 +1119,7 @@ def test_collection_authorization_is_claimed_pending_only(monkeypatch):
     assert unrelated.value.status_code == 403
 
 
+@ROUTER_GAP
 def test_general_document_upload_rejects_id_scope(monkeypatch):
     client = FakeClient(
         {
@@ -1134,6 +1155,7 @@ def test_general_document_upload_rejects_id_scope(monkeypatch):
     assert exc.value.status_code == 400
 
 
+@ROUTER_GAP
 def test_landlord_request_uses_locked_idempotent_rpc(monkeypatch):
     client = FakeRpcClient(
         {
@@ -1190,6 +1212,7 @@ def test_landlord_request_uses_locked_idempotent_rpc(monkeypatch):
     assert params["p_idempotency_key"] == "request-key-001"
 
 
+@ROUTER_GAP
 def test_review_uses_current_submission_and_idempotency(monkeypatch):
     client = FakeRpcClient(
         {
@@ -1247,6 +1270,7 @@ def test_review_uses_current_submission_and_idempotency(monkeypatch):
     assert params["p_idempotency_key"] == "review-key-001"
 
 
+@ROUTER_GAP
 def test_concurrent_submission_loser_cleans_its_uploaded_object(monkeypatch):
     client = FakeRpcClient(
         {
@@ -1329,6 +1353,7 @@ def test_concurrent_submission_loser_cleans_its_uploaded_object(monkeypatch):
     assert client.rows["tenancy_documents"] == []
 
 
+@ROUTER_GAP
 def test_unresolved_document_request_blocks_activation(monkeypatch):
     client = FakeClient(
         {

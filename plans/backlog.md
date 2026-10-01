@@ -18,6 +18,13 @@ Growth & Pro (landlord Naira subscription, then bank feeds / partner NIN-BVN)
 only after landlords already chase rent weekly in the app. No rent take-rate.
 No artisan payout rail until ops demand is real.
 
+- **Tenancy docs router** — `routers/tenancies.py` still serves the base64
+  upload. Build the hardened endpoints `tests/test_tenancy_docs.py` describes
+  (multipart + `validate_document`/`scan_document`, active-tenant only, legal
+  hold delete, requests/review via `029` RPCs, cleanup on failure), then drop
+  the `ROUTER_GAP` xfail markers. Spec first; launch stays behind
+  [`docs/tenancy-docs-launch-gate.md`](../docs/tenancy-docs-launch-gate.md).
+
 ## Product gate
 
 - Applications/listing **HOLD lifted** 2026-09-25 (explicit plan/build ask).  
