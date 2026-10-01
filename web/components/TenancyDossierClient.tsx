@@ -11,6 +11,7 @@ import {
   fetchTenancyDocuments,
   fetchUnitTenancy,
   inviteTenant,
+  openTenancyDocument,
   updateTenancyChecklist,
   uploadTenancyDocument,
   type Tenancy,
@@ -36,7 +37,7 @@ export function TenancyDossierClient({
       id: string;
       doc_type: string;
       file_name: string;
-      url?: string | null;
+      can_open?: boolean;
       expires_on?: string | null;
       requires_ack?: boolean;
       acknowledged_at?: string | null;
@@ -50,6 +51,7 @@ export function TenancyDossierClient({
   const [loading, setLoading] = useState(true);
   const [requireAck, setRequireAck] = useState(false);
   const [expiresOn, setExpiresOn] = useState("");
+  const [docType, setDocType] = useState("agreement");
 
   useEffect(() => {
     if (!invitePath) {
@@ -69,7 +71,7 @@ export function TenancyDossierClient({
         const docs = await fetchTenancyDocuments(row.id);
         setDocsMessage(docs.message ?? null);
         setDocItems(docs.items);
-        setDocsEnabled(docs.docs_upload_enabled);
+        setDocsEnabled(docs.capabilities.upload);
       } else {
         setDocsMessage(null);
         setDocItems([]);
@@ -170,23 +172,15 @@ export function TenancyDossierClient({
     window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
   }
 
-  async function onUpload(file: File, docType: string) {
+  async function onUpload(file: File) {
     if (!tenancy) return;
     setBusy(true);
     setError(null);
     try {
-      const buffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i += 1) {
-        binary += String.fromCharCode(bytes[i]!);
-      }
       await uploadTenancyDocument({
         tenancyId: tenancy.id,
         doc_type: docType,
-        file_name: file.name,
-        content_type: file.type || "application/pdf",
-        content_base64: btoa(binary),
+        file,
         expires_on: expiresOn || null,
         requires_ack: requireAck,
       });
@@ -195,6 +189,17 @@ export function TenancyDossierClient({
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onOpen(documentId: string) {
+    if (!tenancy) return;
+    setError(null);
+    try {
+      const result = await openTenancyDocument(tenancy.id, documentId);
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open document");
     }
   }
 
@@ -393,15 +398,28 @@ export function TenancyDossierClient({
                 </span>
               </label>
               <label className="form-field">
-                <span className="form-label">Upload PDF (agreement / ID / other)</span>
+                <span className="form-label">Document type</span>
+                <select
+                  className="form-input"
+                  value={docType}
+                  onChange={(e) => setDocType(e.target.value)}
+                  disabled={busy}
+                >
+                  <option value="agreement">Tenancy agreement</option>
+                  <option value="reference">Reference</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label className="form-field">
+                <span className="form-label">Upload PDF, JPEG, or PNG (8 MB max)</span>
                 <input
                   type="file"
-                  accept="application/pdf,image/*"
+                  accept="application/pdf,image/jpeg,image/png"
                   disabled={busy}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (!file) return;
-                    void onUpload(file, "other");
+                    void onUpload(file);
                     event.target.value = "";
                   }}
                 />
@@ -413,7 +431,7 @@ export function TenancyDossierClient({
               <p className="dashboard-empty-title mono-data">No documents yet.</p>
               <p className="dashboard-empty-copy">
                 {docsEnabled
-                  ? "Upload a PDF or photo above for the lease agreement or ID."
+                  ? "Upload the tenancy agreement or a reference above."
                   : "Nothing to show here until document storage is enabled for this estate."}
               </p>
             </div>
@@ -425,10 +443,14 @@ export function TenancyDossierClient({
                     {doc.file_name}{" "}
                     <span className="table-muted">({doc.doc_type})</span>
                   </span>
-                  {doc.url ? (
-                    <a href={doc.url} className="table-link" target="_blank" rel="noreferrer">
+                  {doc.can_open ? (
+                    <button
+                      type="button"
+                      className="table-link"
+                      onClick={() => void onOpen(doc.id)}
+                    >
                       Open
-                    </a>
+                    </button>
                   ) : null}
                 </li>
               ))}

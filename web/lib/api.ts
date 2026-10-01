@@ -2103,9 +2103,16 @@ const DISABLED_DOCUMENT_COLLECTION: DocumentCollectionCapabilities = {
   privacy_request: false,
 };
 
+export type TenancyDocumentCapabilities = {
+  read: boolean;
+  upload: boolean;
+  acknowledge: boolean;
+  delete: boolean;
+};
+
 export async function fetchTenancyDocuments(tenancyId: string): Promise<{
   docs_upload_enabled: boolean;
-  capabilities: { read: boolean; acknowledge: boolean };
+  capabilities: TenancyDocumentCapabilities;
   items: Array<{
     id: string;
     doc_type: string;
@@ -2124,32 +2131,18 @@ export async function fetchTenancyDocuments(tenancyId: string): Promise<{
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load documents"));
   }
-  const data = (await res.json()) as {
-    docs_upload_enabled: boolean;
-    items: Array<{
-      id: string;
-      doc_type: string;
-      file_name: string;
-      url?: string | null;
-      expires_on?: string | null;
-      requires_ack?: boolean;
-      acknowledged_at?: string | null;
-      acknowledgment_text_version?: string | null;
-      scan_status?: "pending" | "clean" | "rejected";
-    }>;
-    message?: string;
-  };
-  const readable = Boolean(data.docs_upload_enabled);
+  const data = (await res.json()) as Awaited<
+    ReturnType<typeof fetchTenancyDocuments>
+  >;
   return {
     ...data,
-    capabilities: {
-      read: readable,
-      acknowledge: readable,
+    capabilities: data.capabilities ?? {
+      read: false,
+      upload: false,
+      acknowledge: false,
+      delete: false,
     },
-    items: (data.items ?? []).map((item) => ({
-      ...item,
-      can_open: Boolean(item.url),
-    })),
+    items: data.items ?? [],
   };
 }
 
@@ -2190,10 +2183,13 @@ export async function openTenancyDocument(
   tenancyId: string,
   documentId: string,
 ): Promise<{ url: string; expires_in?: number }> {
-  const documents = await fetchTenancyDocuments(tenancyId);
-  const document = documents.items.find((item) => item.id === documentId);
-  if (!document?.url) throw new Error("Document is not available to open");
-  return { url: document.url };
+  const res = await apiFetch(
+    `/tenancies/${tenancyId}/documents/${documentId}/open`,
+  );
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Could not open document"));
+  }
+  return (await res.json()) as { url: string; expires_in?: number };
 }
 
 export async function submitRequestedTenancyDocument(_payload: {
@@ -2225,22 +2221,18 @@ export async function createTenancyPrivacyRequest(
 export async function uploadTenancyDocument(payload: {
   tenancyId: string;
   doc_type: string;
-  file_name: string;
-  content_type: string;
-  content_base64: string;
+  file: File;
   expires_on?: string | null;
   requires_ack?: boolean;
 }): Promise<void> {
+  const body = new FormData();
+  body.append("file", payload.file);
+  body.append("doc_type", payload.doc_type);
+  if (payload.expires_on) body.append("expires_on", payload.expires_on);
+  body.append("requires_ack", payload.requires_ack ? "true" : "false");
   const res = await apiFetch(`/tenancies/${payload.tenancyId}/documents`, {
     method: "POST",
-    body: JSON.stringify({
-      doc_type: payload.doc_type,
-      file_name: payload.file_name,
-      content_type: payload.content_type,
-      content_base64: payload.content_base64,
-      expires_on: payload.expires_on || null,
-      requires_ack: Boolean(payload.requires_ack),
-    }),
+    body,
   });
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Could not upload document"));
