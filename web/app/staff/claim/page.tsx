@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 import { AuthLoadingGate } from "@/components/auth/AuthLoadingGate";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { claimStaffInvite } from "@/lib/api";
+import { BrandMark, BrandStamp } from "@/components/BrandMark";
 import { BRAND_NAME } from "@/lib/brand";
 
 function ClaimInner() {
@@ -37,7 +38,15 @@ function ClaimInner() {
 
   return (
     <section className="auth-card">
-      <p className="auth-brand">{BRAND_NAME}</p>
+      <p className="auth-brand">
+        <span className="auth-brand-mark" aria-hidden="true">
+          <BrandMark size={22} />
+        </span>
+        <span className="auth-brand-text">
+          {BRAND_NAME}{" "}
+          <BrandStamp className="marketing-brand-stamp" />
+        </span>
+      </p>
       <h1 className="page-title">Claim staff invite</h1>
       <p className="page-subtitle">
         Sign in with the phone on your invite, then we link your Manager or

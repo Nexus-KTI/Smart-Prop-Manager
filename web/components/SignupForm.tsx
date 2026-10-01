@@ -12,10 +12,10 @@ import {
 import { PasswordFields } from "@/components/auth/PasswordFields";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { claimTenancyInvite, updateMe } from "@/lib/api";
-import { BrandMark } from "@/components/BrandMark";
+import { BrandMark, BrandStamp } from "@/components/BrandMark";
 import { LetsTalkSupport } from "@/components/LetsTalkSupport";
 import { authOtpChannelLabel } from "@/lib/auth-otp-channel";
-import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
+import { BRAND_NAME } from "@/lib/brand";
 import {
   formatPasswordAuthError,
   validatePasswordPair,
@@ -466,7 +466,7 @@ export function SignupForm() {
           </span>
           <span className="auth-brand-text">
             {BRAND_NAME}{" "}
-            <span className="marketing-logo-stamp">{BRAND_STAMP}</span>
+            <BrandStamp className="marketing-brand-stamp" />
           </span>
         </Link>
         <p className="signup-topbar-auth">

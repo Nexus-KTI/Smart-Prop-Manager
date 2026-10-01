@@ -135,7 +135,7 @@ html[data-sidebar-collapsed="true"] .sidebar {
 .sidebar-brand-lockup {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   min-width: 0;
   color: var(--ink);
 }
@@ -155,16 +155,18 @@ html[data-sidebar-collapsed="true"] .sidebar {
 
 .sidebar-brand-text {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
+/* Wordmark font-size = mark px: Geist cap height (~0.71em) matches the N glyph (0.75 of its box). */
 .sidebar-brand-name {
-  font-size: 1.05rem;
+  font-size: 1.375rem;
   font-weight: 600;
   letter-spacing: -0.02em;
+  color: var(--accent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -172,10 +174,30 @@ html[data-sidebar-collapsed="true"] .sidebar {
 
 .sidebar-brand-stamp {
   font-size: 0.68rem;
-  font-weight: 650;
+  line-height: 1.1;
+  flex-shrink: 0;
+}
+
+/* Parent stamp: muted "by" + KTI in a --brand box, centred on the wordmark. */
+.brand-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.brand-stamp-box {
+  display: inline-block;
+  padding: 0.12em 0.36em 0.08em;
+  border-radius: 3px;
+  background: var(--brand);
+  color: var(--surface);
+  font-weight: 700;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--brand);
   line-height: 1.1;
 }
 
@@ -1286,8 +1308,8 @@ html[data-sidebar-collapsed="true"] .shell-main {
 .signup-brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-size: 1.1rem;
+  gap: 4px;
+  font-size: 1.375rem;
   font-weight: 650;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -1704,9 +1726,9 @@ html[data-sidebar-collapsed="true"] .shell-main {
 .auth-brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   margin: 0 0 12px;
-  font-size: 1.05rem;
+  font-size: 1.375rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -1720,7 +1742,10 @@ html[data-sidebar-collapsed="true"] .shell-main {
 }
 
 .auth-brand-text {
-  display: inline;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
 }
 
 /* Auth card chrome: .form-card supplies --surface / --border / 6px radius. */
@@ -1885,8 +1910,11 @@ html[data-sidebar-collapsed="true"] .shell-main {
 }
 
 .onboarding-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.375rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -3817,9 +3845,9 @@ html[data-theme="dark"] .marketing-top-inner {
   display: inline-flex;
   flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   justify-self: start;
-  font-size: 1.05rem;
+  font-size: 1.625rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -3837,23 +3865,23 @@ html[data-theme="dark"] .marketing-top-inner {
 
 .marketing-logo-text {
   display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
 }
 
 .marketing-logo-name {
   font-weight: 650;
   letter-spacing: -0.03em;
-  color: var(--ink);
+  color: var(--accent);
 }
 
+/* Full lockup: thin divider, then the parent stamp. */
 .marketing-logo-stamp {
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--brand);
+  padding-left: 10px;
+  border-left: 1px solid color-mix(in srgb, var(--muted) 45%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.6;
 }
 
 .marketing-nav {
@@ -4486,8 +4514,8 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   display: inline-flex;
   flex-direction: row;
   align-items: center;
-  gap: 10px;
-  font-size: 1.05rem;
+  gap: 4px;
+  font-size: 1.5rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -4544,11 +4572,7 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 }
 
 .marketing-brand-stamp {
-  font-size: 0.9rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--brand);
+  font-size: 0.68rem;
 }
 
 .marketing-tagline {
@@ -6700,7 +6724,7 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 
 @media (max-width: 560px) {
   .marketing-logo-stamp {
-    font-size: 0.68rem;
+    font-size: 0.7rem;
   }
 }
 

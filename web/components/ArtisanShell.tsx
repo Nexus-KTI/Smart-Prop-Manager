@@ -12,8 +12,8 @@ import { HelpFab, HelpIconButton, HelpProvider } from "@/components/HelpSheet";
 import { ShellTopbar } from "@/components/ShellTopbar";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
 import { ToastProvider } from "@/components/ToastProvider";
-import { BrandMark } from "@/components/BrandMark";
-import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
+import { BrandMark, BrandStamp } from "@/components/BrandMark";
+import { BRAND_NAME } from "@/lib/brand";
 import { useSidebarRail } from "@/lib/use-sidebar-rail";
 
 export function ArtisanShell({ children }: { children: React.ReactNode }) {
@@ -55,7 +55,7 @@ export function ArtisanShell({ children }: { children: React.ReactNode }) {
                   </span>
                   <span className="sidebar-brand-text">
                     <span className="sidebar-brand-name">{BRAND_NAME}</span>
-                    <span className="sidebar-brand-stamp">{BRAND_STAMP}</span>
+                    <BrandStamp className="sidebar-brand-stamp" />
                   </span>
                 </Link>
               </div>

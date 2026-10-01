@@ -1,4 +1,4 @@
-# Smart Prop Manager
+# Nexora
 
 Lagos-focused property management for landlords: portfolio, rent tracking, Paystack/manual payments, receipts, and reminders (SMS / WhatsApp / email).
 

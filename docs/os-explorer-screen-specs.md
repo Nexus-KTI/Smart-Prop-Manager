@@ -5,7 +5,7 @@ Source: `docs/PRD-nexora-estate-os.md`
 Also consulted: `docs/PRD.md` (Phase 1 fidelity), `docs/design-system.md`  
 Explorer root: `web/app/(design)/os-explorer/`  
 Gate: `NEXT_PUBLIC_DESIGN_MODE=true|1` (layout `notFound()` when off; never in production AppShell nav)  
-Brand in chrome: **Nexora** (wireframe-only label; production may still say Smart Prop)
+Brand in chrome: **Nexora**
 
 **Chrome account:** Sidebar **Signed in** block + banner avatar show mock Ada Okafor (Landlord) with Settings and Log out. Log out is mock only (`/os-explorer?logged_out=1`).
 
@@ -231,5 +231,4 @@ Brand in chrome: **Nexora** (wireframe-only label; production may still say Smar
 3. **Background check UX** — PRD says partner/API or checklist, open Q4 unanswered. Spec uses a checklist row + “pending partner” mock state.
 4. **Access codes** — Software-only vs hardware (open Q5). Spec assumes software code display only.
 5. **Auth for `/os-explorer`** — Production middleware still requires login for non-public routes. Spec does **not** ask wireframer to change middleware (out of write scope). Explorer may need an authenticated session to click through in browser; DESIGN_MODE only gates layout `notFound` + absence from AppShell.
-6. **Brand string** — Production metadata still “Smart Prop”; explorer chrome uses **Nexora** per master PRD brand lock (open Q8 timing).
-7. **IoT** — Explicitly excluded from screens (Phase 5 notes partner-led later; never-say in UI).
+6. **IoT** — Explicitly excluded from screens (Phase 5 notes partner-led later; never-say in UI).

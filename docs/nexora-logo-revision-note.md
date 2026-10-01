@@ -8,7 +8,7 @@
 
 ## Symbol
 
-The product mark is a capital N with two horizontal ledger cuts. Geometry lives only in `web/public/brand/mark.svg`. `scripts/sync_brand_mark.py` copies that path into `BrandMark` and the filled SVGs.
+The product mark is a capital N with a solid diagonal and two horizontal ledger cuts through each stem. Geometry lives only in `web/public/brand/mark.svg`. `scripts/sync_brand_mark.py` copies that path into `BrandMark` and the filled SVGs.
 
 House clipart, a solid N, and the archived slanted-bar mark are not the product mark.
 

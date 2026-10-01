@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { BrandMark } from "@/components/BrandMark";
+import { BrandMark, BrandStamp } from "@/components/BrandMark";
 import { MarketingFooterSocial } from "@/components/MarketingFooterSocial";
 import { MarketingHeader } from "@/components/MarketingHeader";
 import {
   BRAND_ASSETS,
   BRAND_FULL,
   BRAND_NAME,
-  BRAND_STAMP,
   BRAND_TAGLINE,
 } from "@/lib/brand";
 import { inviteOnlySignup } from "@/lib/invite";
@@ -54,7 +53,7 @@ export default function MarketingLayout({
               </span>
               <span className="marketing-logo-text">
                 <span className="marketing-logo-name">{BRAND_NAME}</span>
-                <span className="marketing-logo-stamp">{BRAND_STAMP}</span>
+                <BrandStamp className="marketing-logo-stamp" />
               </span>
             </Link>
             <p className="marketing-footer-tag">{BRAND_TAGLINE}</p>

@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AuthLoadingGate } from "@/components/auth/AuthLoadingGate";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { claimTenancyInvite } from "@/lib/api";
+import { BrandMark, BrandStamp } from "@/components/BrandMark";
 import { BRAND_NAME } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeTenancyClaimToken } from "@/lib/tenancy-invite";
@@ -82,7 +83,15 @@ function ClaimInner() {
 
   return (
     <section className="auth-card">
-      <p className="auth-brand">{BRAND_NAME}</p>
+      <p className="auth-brand">
+        <span className="auth-brand-mark" aria-hidden="true">
+          <BrandMark size={22} />
+        </span>
+        <span className="auth-brand-text">
+          {BRAND_NAME}{" "}
+          <BrandStamp className="marketing-brand-stamp" />
+        </span>
+      </p>
       <h1 className="page-title">Claim your tenancy</h1>
       <p className="page-subtitle">
         Use the invite link from your landlord. New here? Create an account with

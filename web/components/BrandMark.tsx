@@ -1,4 +1,4 @@
-import { BRAND_NAME } from "@/lib/brand";
+import { BRAND_COMPANY } from "@/lib/brand";
 
 type BrandMarkProps = {
   className?: string;
@@ -28,37 +28,17 @@ export function BrandMark({
       <path
         fill="currentColor"
         fillRule="evenodd"
-        d="M5 4h8.5v9L21 4h6v24h-8.5v-9L11 28H5V4zm3.5 9h15v2h-15v-2zm0 5.5h15v2h-15v-2z"
+        d="M5 4H11L21.667 20H27V28H21L10.333 12H5ZM21 4H27V12H21ZM5 14H11V18H5ZM21 14H27V18H21ZM5 20H11V28H5Z"
       />
     </svg>
   );
 }
 
-type BrandLogoProps = {
-  className?: string;
-  markSize?: number;
-  /** Show wordmark next to mark (Product lockup). */
-  showName?: boolean;
-  /** Show by KTI stamp text (not the orange box — CSS handles stamp color). */
-  showStamp?: boolean;
-  stamp?: string;
-};
-
-/** Product lockup: Mark + optional wordmark. Tagline stays marketing-only. */
-export function BrandLogo({
-  className,
-  markSize = 22,
-  showName = true,
-  showStamp = false,
-  stamp,
-}: BrandLogoProps) {
+/** Parent stamp: "by" + KTI in a --brand box. Size comes from the surface class. */
+export function BrandStamp({ className }: { className?: string }) {
   return (
-    <span className={className}>
-      <BrandMark size={markSize} />
-      {showName ? <span className="brand-logo-name">{BRAND_NAME}</span> : null}
-      {showStamp && stamp ? (
-        <span className="brand-logo-stamp">{stamp}</span>
-      ) : null}
+    <span className={className ? `brand-stamp ${className}` : "brand-stamp"}>
+      by <span className="brand-stamp-box">{BRAND_COMPANY}</span>
     </span>
   );
 }

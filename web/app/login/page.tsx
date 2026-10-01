@@ -1,11 +1,11 @@
 import { Suspense } from "react";
 import Link from "next/link";
 
-import { BrandMark } from "@/components/BrandMark";
+import { BrandMark, BrandStamp } from "@/components/BrandMark";
 import { AuthLoadingGate } from "@/components/auth/AuthLoadingGate";
 import { LoginForm } from "@/components/LoginForm";
 import { authOtpChannelLabel } from "@/lib/auth-otp-channel";
-import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
+import { BRAND_NAME } from "@/lib/brand";
 import { inviteOnlySignup } from "@/lib/invite";
 
 export default function LoginPage() {
@@ -22,7 +22,7 @@ export default function LoginPage() {
             </span>
             <span className="auth-brand-text">
               {BRAND_NAME}{" "}
-              <span className="marketing-brand-stamp">{BRAND_STAMP}</span>
+              <BrandStamp className="marketing-brand-stamp" />
             </span>
           </p>
           <h1 className="page-title">Log in</h1>

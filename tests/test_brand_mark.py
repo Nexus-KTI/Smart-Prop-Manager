@@ -29,7 +29,7 @@ def _d(text: str, label: str) -> str:
 
 def test_derived_marks_match_mark_svg():
     source = _d(MARK_SVG.read_text(encoding="utf-8"), "mark.svg")
-    assert "zm3.5 9h15v2h-15v-2z" in source
+    assert source.count("M") == 5, "ledger N = diagonal + 4 stem pieces, non-overlapping"
 
     tsx = _d(BRAND_MARK_TSX.read_text(encoding="utf-8"), "BrandMark.tsx")
     assert tsx == source

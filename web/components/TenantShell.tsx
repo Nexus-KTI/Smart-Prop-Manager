@@ -26,9 +26,9 @@ import { ShellTopbar } from "@/components/ShellTopbar";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
 import { ToastProvider } from "@/components/ToastProvider";
-import { BrandMark } from "@/components/BrandMark";
+import { BrandMark, BrandStamp } from "@/components/BrandMark";
 import { docsUploadEnabledClient } from "@/lib/api";
-import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
+import { BRAND_NAME } from "@/lib/brand";
 import {
   formatUnreadBadge,
   useMessageUnreadCount,
@@ -144,7 +144,7 @@ export function TenantShell({ children }: { children: React.ReactNode }) {
                   </span>
                   <span className="sidebar-brand-text">
                     <span className="sidebar-brand-name">{BRAND_NAME}</span>
-                    <span className="sidebar-brand-stamp">{BRAND_STAMP}</span>
+                    <BrandStamp className="sidebar-brand-stamp" />
                   </span>
                 </Link>
               </div>

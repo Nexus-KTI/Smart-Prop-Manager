@@ -1,4 +1,4 @@
-# Smart Prop — Transactional email design system
+# Nexora — Transactional email design system
 
 **Role:** Extend the product design language into email-safe HTML  
 **Related:** [`design-system.md`](design-system.md) · [`lib/email_layout.py`](../lib/email_layout.py) · [`lib/email_templates.py`](../lib/email_templates.py)

@@ -10,10 +10,10 @@ import {
   type CSSProperties,
 } from "react";
 
-import { BrandMark } from "@/components/BrandMark";
+import { BrandMark, BrandStamp } from "@/components/BrandMark";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { fetchMe } from "@/lib/api";
-import { BRAND_NAME, BRAND_STAMP } from "@/lib/brand";
+import { BRAND_NAME } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/client";
 
 type Props = {
@@ -145,11 +145,11 @@ export function MarketingHeader({ inviteOnly }: Props) {
             onClick={closeMenu}
           >
             <span className="marketing-logo-mark" aria-hidden="true">
-              <BrandMark size={28} />
+              <BrandMark size={26} />
             </span>
             <span className="marketing-logo-text">
               <span className="marketing-logo-name">{BRAND_NAME}</span>
-              <span className="marketing-logo-stamp">{BRAND_STAMP}</span>
+              <BrandStamp className="marketing-logo-stamp" />
             </span>
           </Link>
 
