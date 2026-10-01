@@ -27,22 +27,29 @@ jobs:
 
   api-e2e-smoke:
     runs-on: ubuntu-latest
-    # Requires repo secrets pointing at a staging API + Supabase smoke user
-    if: ${{ secrets.SMOKE_SUPABASE_URL != '' && secrets.SMOKE_API_URL != '' }}
+    # Requires repo secrets pointing at a staging API + Supabase smoke user.
+    # `secrets` is not allowed in a job-level `if`, so steps gate on env instead.
+    env:
+      SUPABASE_URL: ${{ secrets.SMOKE_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SMOKE_SUPABASE_ANON_KEY }}
+      NEXT_PUBLIC_API_URL: ${{ secrets.SMOKE_API_URL }}
+      SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+      SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
     steps:
+      - name: Skip notice
+        if: env.SUPABASE_URL == '' || env.NEXT_PUBLIC_API_URL == ''
+        run: echo "Staging smoke secrets not set; skipping smoke_e2e."
       - uses: actions/checkout@v4
+        if: env.SUPABASE_URL != '' && env.NEXT_PUBLIC_API_URL != ''
       - uses: actions/setup-python@v5
+        if: env.SUPABASE_URL != '' && env.NEXT_PUBLIC_API_URL != ''
         with:
           python-version: "3.12"
       - name: Install dependencies
+        if: env.SUPABASE_URL != '' && env.NEXT_PUBLIC_API_URL != ''
         run: pip install -r requirements.txt
       - name: Run smoke_e2e against staging
-        env:
-          SUPABASE_URL: ${{ secrets.SMOKE_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SMOKE_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.SMOKE_API_URL }}
-          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
-          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+        if: env.SUPABASE_URL != '' && env.NEXT_PUBLIC_API_URL != ''
         run: python scripts/smoke_e2e.py
 
   web-lint:

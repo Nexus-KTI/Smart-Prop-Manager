@@ -82,6 +82,7 @@ def test_notify_swallows_smtp_errors(monkeypatch):
     )
     monkeypatch.setenv("MAILGUN_API_KEY", "test-key")
     monkeypatch.setenv("MAILGUN_DOMAIN", "example.com")
+    monkeypatch.setenv("MAILGUN_SENDER_EMAIL", "noreply@example.com")
 
     def _boom(*_args, **_kwargs):
         raise RuntimeError("SMTP down")
