@@ -70,6 +70,35 @@ def flatten_application(row: dict) -> dict:
     return out
 
 
+def listing_is_public(status: object) -> bool:
+    """A listing page exists only while the apply invite is still open."""
+    return status == "open"
+
+
+def listing_preview_payload(row: dict, token: str) -> dict:
+    """Public vacant-unit card. Area is the property address; no extra columns."""
+    preview = apply_preview_payload(row, token)
+    address = preview.get("property_address")
+    return {
+        "token": token,
+        "status": preview.get("status"),
+        "unit_label": preview.get("unit_label"),
+        "property_name": preview.get("property_name"),
+        "area": address,
+        "property_address": address,
+        "rent_amount": preview.get("rent_amount"),
+        "photo_url": preview.get("photo_url"),
+        "apply_note": preview.get("apply_note"),
+        "apply_path": f"/apply/{token}",
+    }
+
+
+def public_listing_or_404(row: dict | None, token: str) -> dict:
+    if not row or not listing_is_public(row.get("status")):
+        raise HTTPException(status_code=404, detail="Listing not found")
+    return listing_preview_payload(row, token)
+
+
 def apply_preview_payload(row: dict, token: str) -> dict:
     """Public apply page fields. Photo and note come from the unit embed."""
     unit = row.get("units") or {}
@@ -188,11 +217,48 @@ def open_application_invite(unit_id: str, user: AuthedUser = Depends(get_current
     if not created:
         raise HTTPException(status_code=500, detail="Could not create application invite")
     path = f"/apply/{token}"
+    list_path = f"/list/{token}"
     return {
         "item": created,
         "apply_path": path,
         "apply_url": f"{_frontend_base()}{path}",
+        "list_path": list_path,
+        "list_url": f"{_frontend_base()}{list_path}",
     }
+
+
+def _load_invite_row(token: str) -> dict | None:
+    try:
+        svc = create_service_client()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Service unavailable") from exc
+    rows = (
+        svc.table("rental_applications")
+        .select(
+            "id, status, unit_id, property_id, invite_token, "
+            "units(label, rent_amount, photo_url, apply_note), properties(name, address)"
+        )
+        .eq("invite_token", token)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        return None
+    return dict(rows[0])
+
+
+@router.get("/listing/{token}")
+def preview_listing(token: str, request: Request):
+    """Public vacant-unit page. Only an open invite returns fields."""
+    enforce_rate_limit(
+        f"app-listing:ip:{client_ip(request)}",
+        limit=30,
+        window_seconds=60,
+        detail="Too many listing lookups. Try again shortly.",
+    )
+    return public_listing_or_404(_load_invite_row(token), token)
 
 
 @router.get("/token/{token}")

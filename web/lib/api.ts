@@ -2331,6 +2331,8 @@ export async function openApplicationInvite(unitId: string): Promise<{
   item: RentalApplication;
   apply_path: string;
   apply_url: string;
+  list_path: string;
+  list_url: string;
 }> {
   const res = await apiFetch(`/applications/unit/${unitId}`, { method: "POST" });
   if (!res.ok) throw new Error(await readErrorDetail(res, "Could not open apply link"));
@@ -2338,6 +2340,40 @@ export async function openApplicationInvite(unitId: string): Promise<{
     item: RentalApplication;
     apply_path: string;
     apply_url: string;
+    list_path: string;
+    list_url: string;
+  };
+}
+
+export async function previewListingToken(token: string): Promise<{
+  token: string;
+  status: string;
+  unit_label?: string | null;
+  property_name?: string | null;
+  area?: string | null;
+  property_address?: string | null;
+  rent_amount?: number | string | null;
+  photo_url?: string | null;
+  apply_note?: string | null;
+  apply_path: string;
+}> {
+  const base = apiBaseUrl();
+  const res = await fetchWithTimeout(
+    `${base}/applications/listing/${encodeURIComponent(token)}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Listing not found"));
+  return (await res.json()) as {
+    token: string;
+    status: string;
+    unit_label?: string | null;
+    property_name?: string | null;
+    area?: string | null;
+    property_address?: string | null;
+    rent_amount?: number | string | null;
+    photo_url?: string | null;
+    apply_note?: string | null;
+    apply_path: string;
   };
 }
 

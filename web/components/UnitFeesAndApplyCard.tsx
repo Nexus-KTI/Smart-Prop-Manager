@@ -23,6 +23,7 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
   const [feesLoaded, setFeesLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
   const [applyUrl, setApplyUrl] = useState<string | null>(null);
+  const [listUrl, setListUrl] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -62,7 +63,12 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
         typeof window !== "undefined"
           ? `${window.location.origin}${res.apply_path}`
           : res.apply_url;
+      const listing =
+        typeof window !== "undefined"
+          ? `${window.location.origin}${res.list_path || res.apply_path.replace("/apply/", "/list/")}`
+          : res.list_url;
       setApplyUrl(url);
+      setListUrl(listing);
       try {
         await navigator.clipboard.writeText(url);
         showToast("Apply link copied");
@@ -190,7 +196,22 @@ export function UnitFeesAndApplyCard({ unitId }: { unitId: string }) {
             target="_blank"
             rel="noreferrer"
           >
-            Share on WhatsApp
+            Share apply link on WhatsApp
+          </a>
+        </p>
+      ) : null}
+      {listUrl ? (
+        <p className="mono-data">
+          Listing page: {listUrl}{" "}
+          <a
+            className="table-link"
+            href={`https://wa.me/?text=${encodeURIComponent(
+              `Vacant unit on Nexora: ${listUrl}`,
+            )}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Share listing on WhatsApp
           </a>
         </p>
       ) : null}
