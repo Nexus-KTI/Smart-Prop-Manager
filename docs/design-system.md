@@ -1,4 +1,4 @@
-# Smart Prop — Design System (as shipped)
+# Nexora — Design System (as shipped)
 
 **Role:** Creative director (document reality; do not invent a second language)  
 **Compiled:** 2026-08-04  
@@ -27,7 +27,7 @@ All product and marketing brand color must resolve to these CSS variables.
 | `--border` | `#e2e4e1` | Hairlines, inputs, table wraps |
 | `--ink` | `#14171a` | Titles, primary text |
 | `--accent` | `#0f6e4f` | Primary buttons, links, active nav, money/ops trust |
-| `--brand` | `#e65100` | KTI parent mark - stamps, process line, collapsed "N" mark |
+| `--brand` | `#e65100` | KTI parent mark - `by KTI` stamp box, marketing process line |
 | `--alert` | `#b4402a` | Destructive / overdue emphasis |
 | `--muted` | `#6b7280` | Subtitles, secondary labels, placeholders |
 
@@ -48,7 +48,7 @@ All product and marketing brand color must resolve to these CSS variables.
 **Rules**
 
 - No Rentora `#3183c8`, no Tailwind palette classes as brand color.
-- `--accent` (forest) is the product action color. `--brand` (KTI orange from the Kings Technologies Innovations logo) is the parent identity accent only - stamps (`by KTI`), marketing process line, collapsed sidebar mark. Do not replace primary buttons or active nav with orange.
+- `--accent` (forest) is the product action color. `--brand` (KTI orange from the Kings Technologies Innovations logo) is the parent identity accent only - stamps (`by KTI`), marketing process line. The Nexora mark itself is always forest (`--accent`), including the collapsed sidebar. Do not replace primary buttons or active nav with orange.
 - Primary button label uses `color: var(--surface)` on `background: var(--accent)`.
 - Mixes allowed: `color-mix(in srgb, var(--accent) …, var(--surface|ink))` for hover/active washes; `--brand` mixes are fine for soft marketing atmosphere only.
 - Marketing alt sections: `.section-bg-alt` → `--background-alt` (must win over `.marketing-section`).
@@ -178,6 +178,25 @@ Shared API: `showToast(message, tone?)` in `ToastProvider` — one toast at a ti
 **Not toasts:** persistent “needs attention” → bell / Action needed; field validation → inline; full-page load failure → `FetchErrorState`; destructive intent → confirm dialog first, then toast.
 
 Errors: `role="alert"` + `aria-live="assertive"`. Success/neutral: `status` / `polite`. No decorative shadows; tokens only. No toast queues or action buttons on the toast.
+
+---
+
+## Logo & lockups
+
+Decision record: [`nexora-logo-revision-note.md`](nexora-logo-revision-note.md). Geometry: `web/public/brand/mark.svg` only.
+
+| Surface | Lockup | Classes |
+|---------|--------|---------|
+| Marketing header + footer | Mark · **nexora** · divider · by KTI | `.marketing-logo`, `.marketing-logo-name`, `.marketing-logo-stamp` |
+| Auth, signup, onboarding | Mark · **nexora** · compact stamp | `.auth-brand` / `.signup-brand` / `.onboarding-brand`, `.auth-brand-text`, `.marketing-brand-stamp` |
+| Landlord / tenant / artisan sidebar | Mark · **nexora** · compact stamp | `.sidebar-brand-lockup`, `.sidebar-brand-name`, `.sidebar-brand-stamp` |
+| Admin sidebar | Mark · **nexora** · ADMIN (no stamp) | `.sidebar-brand-role` |
+| Collapsed sidebar, favicon, app icons | Mark only | `BrandMark` |
+
+- **Wordmark:** `{BRAND_NAME}` in the DOM, rendered lowercase via `text-transform` at 1.15× the mark size, `--accent`, weight 600–650. Copy, titles, emails, and receipts keep **Nexora**.
+- **Gap:** 4px between mark and wordmark. Do not add tracking or a second color inside the wordmark.
+- **Stamp:** `BrandStamp` only — muted "by" + `--brand` box with `--surface` text. Never orange on the mark or wordmark.
+- **Rasters:** `python scripts/sync_brand_mark.py` regenerates SVG copies, `favicon.ico`, `apple-icon.png`, and manifest PNGs. Link preview: `node scripts/render-og-image.mjs` (from `web/`) writes `app/opengraph-image.png`. Only the root layout may define `openGraph`.
 
 ---
 

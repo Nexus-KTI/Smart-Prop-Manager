@@ -17,6 +17,9 @@ export const BRAND_ASSETS = {
   markInk: "/brand/mark-ink.svg",
   appIcon: "/brand/app-icon.svg",
   avatarCircle: "/brand/avatar-circle.svg",
+  icon192: "/brand/icon-192.png",
+  icon512: "/brand/icon-512.png",
+  iconMaskable512: "/brand/icon-maskable-512.png",
 } as const;
 /** E.164 preferred. Empty = hide support FAB / welcome support CTA. */
 export const SUPPORT_WHATSAPP = (

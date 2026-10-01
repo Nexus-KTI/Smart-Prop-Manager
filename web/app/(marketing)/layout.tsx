@@ -5,7 +5,6 @@ import { BrandMark, BrandStamp } from "@/components/BrandMark";
 import { MarketingFooterSocial } from "@/components/MarketingFooterSocial";
 import { MarketingHeader } from "@/components/MarketingHeader";
 import {
-  BRAND_ASSETS,
   BRAND_FULL,
   BRAND_NAME,
   BRAND_TAGLINE,
@@ -17,13 +16,6 @@ export const metadata: Metadata = {
   title: `${BRAND_FULL} · Estate OS for Nigerian landlords`,
   description:
     "Nexora by KTI: Estate OS for Nigerian landlords - money, tenancies, messages, repairs, access, staff, and books. Who paid. Who owes. What’s next.",
-  openGraph: {
-    title: `${BRAND_FULL} · Estate OS for Nigerian landlords`,
-    description:
-      "Unit truth for rent and chase, plus tenancies, messages, work orders, access, and staff - cash, transfer, card, WhatsApp.",
-    type: "website",
-    images: [{ url: BRAND_ASSETS.appIcon }],
-  },
 };
 
 export default function MarketingLayout({
