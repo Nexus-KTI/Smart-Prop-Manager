@@ -1057,6 +1057,8 @@ export type StaffMembership = {
   invite_contact?: string | null;
   invite_token?: string | null;
   claim_path?: string | null;
+  scope_all_properties?: boolean;
+  properties?: Array<{ id: string; name: string }>;
   can_money?: boolean;
   can_money_log_cash?: boolean;
   can_chase?: boolean;

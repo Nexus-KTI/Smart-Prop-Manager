@@ -43,12 +43,74 @@ def _portfolio_owner_header(
     return (owner_id or x_portfolio_owner_id or "").strip() or None
 
 
-def _serialize_membership(row: dict) -> dict:
+def normalize_staff_property_scope(raw: object) -> tuple[list[str], bool]:
+    """Return (property_ids, scope_all). An empty list means every property."""
+    items = raw if isinstance(raw, list) else []
+    property_ids: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        pid = str(item or "").strip()
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        property_ids.append(pid)
+    return property_ids, len(property_ids) == 0
+
+
+def _serialize_membership(row: dict, properties: list[dict] | None = None) -> dict:
     token = row.get("invite_token")
+    scope_all = bool(row.get("scope_all_properties", True))
+    scoped = [] if scope_all else list(properties or [])
     return {
         **row,
         "claim_path": f"/staff/claim?token={token}" if token else None,
+        "scope_all_properties": scope_all,
+        "properties": scoped,
     }
+
+
+def _properties_by_membership(svc, rows: list[dict]) -> dict[str, list[dict]]:
+    limited = [
+        str(row["id"])
+        for row in rows
+        if row.get("id") and not row.get("scope_all_properties", True)
+    ]
+    if not limited:
+        return {}
+    links = (
+        svc.table("staff_membership_properties")
+        .select("membership_id, property_id")
+        .in_("membership_id", limited)
+        .execute()
+        .data
+        or []
+    )
+    property_ids = list({str(link["property_id"]) for link in links if link.get("property_id")})
+    names: dict[str, str] = {}
+    if property_ids:
+        props = (
+            svc.table("properties")
+            .select("id, name")
+            .in_("id", property_ids)
+            .execute()
+            .data
+            or []
+        )
+        names = {
+            str(prop["id"]): (prop.get("name") or "").strip() or "Property"
+            for prop in props
+            if prop.get("id")
+        }
+    grouped: dict[str, list[dict]] = {}
+    for link in links:
+        mid = str(link.get("membership_id") or "")
+        pid = str(link.get("property_id") or "")
+        if not mid or not pid:
+            continue
+        grouped.setdefault(mid, []).append(
+            {"id": pid, "name": names.get(pid) or "Property"}
+        )
+    return grouped
 
 
 @router.get("/portfolios")
@@ -106,20 +168,27 @@ def list_team(
         ctx.require(PERM_TEAM_INVITE)
 
     owner_id = user.id if ctx.role == "owner" else ctx.owner_id
-    rows = (
-        create_service_client()
-        .table("staff_memberships")
-        .select("*")
-        .eq("owner_id", owner_id)
-        .neq("status", "revoked")
-        .order("created_at", desc=True)
-        .execute()
-        .data
-        or []
-    )
+    svc = create_service_client()
+    rows = [
+        dict(r)
+        for r in (
+            svc.table("staff_memberships")
+            .select("*")
+            .eq("owner_id", owner_id)
+            .neq("status", "revoked")
+            .order("created_at", desc=True)
+            .execute()
+            .data
+            or []
+        )
+    ]
+    scoped = _properties_by_membership(svc, rows)
     return {
         "owner_id": owner_id,
-        "items": [_serialize_membership(dict(r)) for r in rows],
+        "items": [
+            _serialize_membership(row, scoped.get(str(row.get("id") or "")))
+            for row in rows
+        ],
     }
 
 
@@ -174,21 +243,24 @@ def invite_staff(
         flags["can_money"] = False
         flags["can_team_invite"] = False
 
-    property_ids = [str(p) for p in (payload.get("property_ids") or []) if p]
-    scope_all = len(property_ids) == 0
+    property_ids, scope_all = normalize_staff_property_scope(payload.get("property_ids"))
     svc = create_service_client()
 
+    property_names: dict[str, str] = {}
     if property_ids:
-        owned = {
-            str(r["id"])
-            for r in (
-                svc.table("properties")
-                .select("id")
-                .eq("owner_id", owner_id)
-                .execute()
-                .data
-                or []
-            )
+        owned_rows = (
+            svc.table("properties")
+            .select("id, name")
+            .eq("owner_id", owner_id)
+            .execute()
+            .data
+            or []
+        )
+        owned = {str(r["id"]) for r in owned_rows}
+        property_names = {
+            str(r["id"]): (r.get("name") or "").strip() or "Property"
+            for r in owned_rows
+            if r.get("id")
         }
         for pid in property_ids:
             if pid not in owned:
@@ -256,7 +328,13 @@ def invite_staff(
     )
 
     return {
-        "membership": _serialize_membership(dict(membership)),
+        "membership": _serialize_membership(
+            dict(membership),
+            [
+                {"id": pid, "name": property_names.get(pid) or "Property"}
+                for pid in property_ids
+            ],
+        ),
         "invite_token": token,
         "claim_path": f"/staff/claim?token={token}",
         "notify": notify,

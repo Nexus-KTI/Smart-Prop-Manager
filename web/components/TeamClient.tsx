@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { FetchErrorState } from "@/components/FetchErrorState";
 import { useToast } from "@/components/ToastProvider";
 import {
+  fetchProperties,
   fetchStaffTeam,
   inviteStaff,
   revokeStaffMembership,
@@ -16,23 +17,39 @@ import {
   STAFF_STATUS_LABELS,
   labelOrTitle,
 } from "@/lib/labels";
+import type { Property } from "@/lib/types";
+
+function scopeLabel(membership: StaffMembership): string {
+  if (membership.scope_all_properties !== false) return "All properties";
+  const names = (membership.properties || [])
+    .map((property) => property.name)
+    .filter(Boolean);
+  return names.length > 0 ? names.join(", ") : "Selected properties";
+}
 
 export function TeamClient() {
   const { showToast } = useToast();
   const [items, setItems] = useState<StaffMembership[]>([]);
+  const [properties, setProperties] = useState<Property[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [claimPath, setClaimPath] = useState<string | null>(null);
   const [role, setRole] = useState<"manager" | "caretaker">("caretaker");
   const [contact, setContact] = useState("");
+  const [scopeAll, setScopeAll] = useState(true);
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchStaffTeam();
+      const [data, propertyRows] = await Promise.all([
+        fetchStaffTeam(),
+        fetchProperties().catch(() => [] as Property[]),
+      ]);
       setItems(data.items);
+      setProperties(propertyRows);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load team");
     } finally {
@@ -46,12 +63,22 @@ export function TeamClient() {
 
   async function onInvite(event: FormEvent) {
     event.preventDefault();
+    if (!scopeAll && selectedPropertyIds.length === 0) {
+      showToast("Choose at least one property", "error");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const result = await inviteStaff({ role, contact: contact.trim() });
+      const result = await inviteStaff({
+        role,
+        contact: contact.trim(),
+        ...(scopeAll ? {} : { property_ids: selectedPropertyIds }),
+      });
       setClaimPath(result.claim_path);
       setContact("");
+      setScopeAll(true);
+      setSelectedPropertyIds([]);
       if (result.notify?.sent) {
         showToast("Staff invited — notify queued", "success");
       } else if (result.notify?.error) {
@@ -120,6 +147,53 @@ export function TeamClient() {
             placeholder="+234…"
           />
         </label>
+        <fieldset className="form-field">
+          <legend className="form-label">Properties</legend>
+          <label className="form-field" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="radio"
+              name="staff-scope"
+              checked={scopeAll}
+              disabled={busy}
+              onChange={() => setScopeAll(true)}
+            />
+            <span>All properties</span>
+          </label>
+          <label className="form-field" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="radio"
+              name="staff-scope"
+              checked={!scopeAll}
+              disabled={busy || properties.length === 0}
+              onChange={() => setScopeAll(false)}
+            />
+            <span>Selected properties</span>
+          </label>
+          {!scopeAll ? (
+            <div className="stack-list">
+              {properties.map((property) => {
+                const checked = selectedPropertyIds.includes(property.id);
+                return (
+                  <label key={property.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={busy}
+                      onChange={() => {
+                        setSelectedPropertyIds((current) =>
+                          checked
+                            ? current.filter((id) => id !== property.id)
+                            : [...current, property.id],
+                        );
+                      }}
+                    />
+                    <span>{property.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : null}
+        </fieldset>
         <button type="submit" className="btn-primary" disabled={busy}>
           Invite staff
         </button>
@@ -136,6 +210,7 @@ export function TeamClient() {
             <tr>
               <th>Role</th>
               <th>Contact</th>
+              <th>Properties</th>
               <th>Status</th>
               <th />
             </tr>
@@ -143,7 +218,7 @@ export function TeamClient() {
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={4} className="table-muted">
+                <td colSpan={5} className="table-muted">
                   No staff yet.
                 </td>
               </tr>
@@ -152,6 +227,7 @@ export function TeamClient() {
                 <tr key={m.id}>
                   <td>{labelOrTitle(STAFF_ROLE_LABELS, m.role)}</td>
                   <td className="mono-data">{m.invite_contact || "-"}</td>
+                  <td>{scopeLabel(m)}</td>
                   <td>
                     <span className="status-badge pending">
                       {labelOrTitle(STAFF_STATUS_LABELS, m.status)}
