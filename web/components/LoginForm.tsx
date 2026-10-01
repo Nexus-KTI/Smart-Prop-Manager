@@ -177,6 +177,11 @@ export function LoginForm() {
 
   return (
     <div className="form-card auth-card">
+      {searchParams.get("expired") === "1" ? (
+        <p className="form-notice" role="status">
+          You were signed out for security. Log in again to continue.
+        </p>
+      ) : null}
       <div className="auth-tabs" role="tablist" aria-label="Sign in method">
         <button
           type="button"

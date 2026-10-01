@@ -402,13 +402,15 @@ def run_renewal_reminders(*, today: date | None = None) -> dict[str, int]:
 
 
 def run_reminder_jobs(*, today: date | None = None) -> dict[str, Any]:
-    """Run due + renewal + autopay jobs (same Render cron / HTTP job route)."""
+    """Run due + renewal + autopay + stale-session jobs (same daily cron)."""
     from lib.autopay_job import run_autopay_charges
+    from lib.session_policy import revoke_stale_sessions
 
     return {
         "due": run_due_reminders(today=today),
         "renewal": run_renewal_reminders(today=today),
         "autopay": run_autopay_charges(today=today),
+        "sessions": revoke_stale_sessions(),
     }
 
 

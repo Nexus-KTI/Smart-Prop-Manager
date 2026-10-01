@@ -2,6 +2,16 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { isAdminEmail } from "@/lib/admin";
+import {
+  type AccessTokenClaims,
+  formatLastSeen,
+  LAST_SEEN_COOKIE,
+  LAST_SEEN_REFRESH_SECONDS,
+  parseLastSeen,
+  policyKindFor,
+  readAccessTokenClaims,
+  sessionExpiry,
+} from "@/lib/sessionPolicy";
 
 const AUTH_ROUTES = new Set(["/login", "/signup", "/forgot-password"]);
 
@@ -85,6 +95,88 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  let rolePromise: Promise<string | null> | null = null;
+  function getRole(): Promise<string | null> {
+    const userId = user?.id;
+    if (!userId) return Promise.resolve(null);
+    rolePromise ??= (async () => {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle();
+      return (profile?.role as string | undefined) ?? null;
+    })();
+    return rolePromise;
+  }
+
+  let pendingLastSeen: string | null = null;
+  if (user) {
+    const now = Date.now() / 1000;
+    let claims: AccessTokenClaims = { sessionId: null, authAt: null };
+    try {
+      const { data } = await supabase.auth.getSession();
+      claims = readAccessTokenClaims(data.session?.access_token);
+    } catch {
+      // Claims unavailable: fall through without enforcing.
+    }
+    const lastSeen = parseLastSeen(
+      request.cookies.get(LAST_SEEN_COOKIE)?.value,
+      claims.sessionId,
+    );
+    const kind = policyKindFor(
+      await getRole(),
+      isAdminEmail(user.email) || isAdminRoute,
+    );
+    const expiry = sessionExpiry({
+      kind,
+      authAt: claims.authAt,
+      lastSeen,
+      now,
+    });
+
+    if (expiry) {
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch (error) {
+        console.error("[middleware] expired session signOut failed", error);
+      }
+      let response = supabaseResponse;
+      if (!isPublic) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/login";
+        url.search = "";
+        url.searchParams.set("expired", "1");
+        response = NextResponse.redirect(url);
+        supabaseResponse.cookies
+          .getAll()
+          .forEach((cookie) => response.cookies.set(cookie));
+      }
+      response.cookies.delete(LAST_SEEN_COOKIE);
+      return response;
+    }
+
+    if (
+      claims.sessionId &&
+      (lastSeen === null || now - lastSeen > LAST_SEEN_REFRESH_SECONDS)
+    ) {
+      pendingLastSeen = formatLastSeen(claims.sessionId, now);
+    }
+  }
+
+  function withLastSeen(response: NextResponse): NextResponse {
+    if (pendingLastSeen) {
+      response.cookies.set(LAST_SEEN_COOKIE, pendingLastSeen, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: request.nextUrl.protocol === "https:",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 90,
+      });
+    }
+    return response;
+  }
+
   async function mfaPending(): Promise<boolean> {
     if (!user) return false;
     try {
@@ -105,7 +197,7 @@ export async function updateSession(request: NextRequest) {
       url.searchParams.set("mfa", "1");
       return NextResponse.redirect(url);
     }
-    return supabaseResponse;
+    return withLastSeen(supabaseResponse);
   }
 
   async function userIsAdmin(): Promise<boolean> {
@@ -127,16 +219,12 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (profile?.role === "tenant") {
+    const role = await getRole();
+    if (role === "tenant") {
       url.pathname = "/tenant";
       return NextResponse.redirect(url);
     }
-    if (profile?.role === "artisan") {
+    if (role === "artisan") {
       url.pathname = "/artisan";
       return NextResponse.redirect(url);
     }
@@ -151,12 +239,8 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (profile?.role === "tenant") {
+    const role = await getRole();
+    if (role === "tenant") {
       const isTenantSurface =
         pathname === "/" ||
         pathname === "/pricing" ||
@@ -171,7 +255,7 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url);
       }
     }
-    if (profile?.role === "artisan") {
+    if (role === "artisan") {
       const isArtisanSurface =
         pathname === "/" ||
         pathname === "/pricing" ||
@@ -191,7 +275,7 @@ export async function updateSession(request: NextRequest) {
       // Claim is allowed before role flips to artisan; other artisan routes are not.
       const url = request.nextUrl.clone();
       url.pathname =
-        profile?.role === "tenant" ? "/tenant" : "/properties";
+        role === "tenant" ? "/tenant" : "/properties";
       return NextResponse.redirect(url);
     }
   }
@@ -208,5 +292,5 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return supabaseResponse;
+  return withLastSeen(supabaseResponse);
 }

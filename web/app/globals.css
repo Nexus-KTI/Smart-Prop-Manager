@@ -2709,6 +2709,16 @@ html[data-sidebar-collapsed="true"] .shell-main {
   font-size: 0.9rem;
 }
 
+.form-notice {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
 .table-actions {
   display: flex;
   flex-wrap: wrap;

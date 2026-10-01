@@ -111,8 +111,9 @@ Operational rights, hold, incident and rollback steps are in
   `python -m lib.reminder_job` (needs a paid cron / card).
 - Or manual: `POST /reminders/jobs/due` with `Authorization: Bearer $CRON_SECRET`
   or `X-Cron-Secret`.
-- That job runs **due reminders, renewal notices, and autopay**
-  (`lib/autopay_job.py` charges saved Paystack cards on rent due day).
+- That job runs **due reminders, renewal notices, autopay, and stale-session
+  revoke** (`lib/autopay_job.py` charges saved Paystack cards on rent due day;
+  `lib/session_policy.py` — see §6b Session length).
 - After run: due/renewal messages are queued; the delivery cron writes
   `reminders` rows with `sent` or a clear terminal `error_detail`. Autopay
   marks matching transactions `paid` or `failed`.
@@ -159,7 +160,7 @@ Repo files under `sql/` (apply in order if rebuilding):
 
 `000` → … → `031` → `032_resilience_payments_outbox_limits` →
 `033_reminders_queued_status` → `034`…`037` access passes/events →
-`038_signup_attribution`
+`038_signup_attribution` → `039_unit_apply_photo` → `040_session_policy`
 
 Remote (Supabase): `032` and `033` DDL are live and recorded as verify-only
 migration stamps (`20260917172210` / `20260917172220`). Do **not** re-apply the
@@ -216,6 +217,25 @@ Optional: [cron-job.org](https://cron-job.org) with the same URL + Bearer header
   [docs](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection)  
   **2026-09-24:** advisor still WARN — not toggleable via SQL/MCP.
 - [ ] Phone provider Twilio = prod sender (same SID/From as Render chase SMS)
+
+### Session length (free plan, 2026-09-30)
+
+Supabase refresh tokens never expire on Free, so Nexora enforces its own limits:
+
+| Who | Idle limit | Absolute limit |
+|-----|-----------|----------------|
+| Landlord / staff | 7 days | 30 days |
+| Tenant / artisan | 14 days | 60 days |
+| Admin | 12 hours | 24 hours |
+
+- Web middleware (`web/lib/sessionPolicy.ts`) signs out on the next request and
+  redirects to `/login?expired=1`. Idle = `nx_seen` cookie; absolute = JWT `amr`
+  sign-in time.
+- Server backstop: `public.revoke_stale_sessions()` (`sql/040_session_policy.sql`,
+  applied 2026-09-30) runs inside the daily `POST /reminders/jobs/due` job
+  (`sessions.revoked` in the response). Keep both limits in sync.
+- If Nexora moves to Supabase Pro, also set Auth → Sessions inactivity timeout
+  and time-box as the hard ceiling.
 
 ---
 
