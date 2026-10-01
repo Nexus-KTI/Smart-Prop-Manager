@@ -9,6 +9,7 @@ import {
   AuthCaptcha,
   requireCaptchaToken,
 } from "@/components/auth/AuthCaptcha";
+import { OtpCodeField } from "@/components/auth/OtpCodeField";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { LetsTalkSupport } from "@/components/LetsTalkSupport";
 import { formatEmailLoginError } from "@/lib/auth-errors";
@@ -109,13 +110,17 @@ export function LoginForm() {
     }
   }
 
-  async function onMfaSubmit(event: FormEvent<HTMLFormElement>) {
+  function onMfaSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!mfaFactorId) return;
+    void verifyMfa(mfaCode);
+  }
+
+  async function verifyMfa(code: string) {
+    if (!mfaFactorId || pending) return;
     setError(null);
     setPending(true);
     try {
-      await verifyMfaCode(mfaFactorId, mfaCode);
+      await verifyMfaCode(mfaFactorId, code);
       setPending(false);
       await continueAfterAuth();
     } catch (err) {
@@ -135,24 +140,20 @@ export function LoginForm() {
   if (mfaFactorId) {
     return (
       <div className="form-card auth-card">
-        <form className="auth-tab-panel" onSubmit={(e) => void onMfaSubmit(e)}>
+        <form className="auth-tab-panel" onSubmit={onMfaSubmit}>
           <p className="form-hint">
             Enter the 6-digit code from your authenticator app.
           </p>
           {error ? <p className="form-error">{error}</p> : null}
-          <label className="form-field">
-            <span className="form-label">Authentication code</span>
-            <input
-              className="form-input"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={8}
-              required
-              value={mfaCode}
-              onChange={(e) => setMfaCode(e.target.value)}
-              disabled={pending}
-            />
-          </label>
+          <OtpCodeField
+            id="mfa-code"
+            label="Authentication code"
+            value={mfaCode}
+            onChange={setMfaCode}
+            onComplete={(code) => void verifyMfa(code)}
+            disabled={pending}
+            autoFocus
+          />
           <div className="form-actions auth-actions">
             <button
               type="button"

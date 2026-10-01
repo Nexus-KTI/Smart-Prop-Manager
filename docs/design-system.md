@@ -191,6 +191,7 @@ Decision record: [`nexora-logo-revision-note.md`](nexora-logo-revision-note.md).
 | Auth, signup, onboarding | Mark · **nexora** · compact stamp | `.auth-brand` / `.signup-brand` / `.onboarding-brand`, `.auth-brand-text`, `.marketing-brand-stamp` |
 | Landlord / tenant / artisan sidebar | Mark · **nexora** · compact stamp | `.sidebar-brand-lockup`, `.sidebar-brand-name`, `.sidebar-brand-stamp` |
 | Admin sidebar | Mark · **nexora** · ADMIN (no stamp) | `.sidebar-brand-role` |
+| Product top bar, ≤640px only | Mark · **nexora** (no stamp; drawer keeps the full lockup) | `.shell-topbar-brand`, `.shell-topbar-brand-name` |
 | Collapsed sidebar, favicon, app icons | Mark only | `BrandMark` |
 
 - **Wordmark:** `{BRAND_NAME}` in the DOM, rendered lowercase via `text-transform` at 1.15× the mark size, `--accent`, weight 600–650. Copy, titles, emails, and receipts keep **Nexora**.

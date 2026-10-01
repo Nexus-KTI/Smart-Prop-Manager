@@ -205,13 +205,18 @@ export function PhoneOtpFlow({
     }
   }
 
-  async function verifyOtp(event: FormEvent<HTMLFormElement>) {
+  function onOtpSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    void verifyOtp(otp);
+  }
+
+  async function verifyOtp(code: string) {
+    if (pending) return;
     setError(null);
     setInfo(null);
     setPending(true);
 
-    const token = otp.replace(/\D/g, "").slice(0, 6);
+    const token = code.replace(/\D/g, "").slice(0, 6);
     if (token.length !== 6) {
       setPending(false);
       setError(authOtpChannelEnterCodeHelp(otpChannel));
@@ -279,13 +284,17 @@ export function PhoneOtpFlow({
     setPending(false);
   }
 
-  async function onMfaSubmit(event: FormEvent<HTMLFormElement>) {
+  function onMfaSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!mfaFactorId) return;
+    void verifyMfa(mfaCode);
+  }
+
+  async function verifyMfa(code: string) {
+    if (!mfaFactorId || pending) return;
     setError(null);
     setPending(true);
     try {
-      await verifyMfaCode(mfaFactorId, mfaCode);
+      await verifyMfaCode(mfaFactorId, code);
       await onSuccess(e164Phone);
       setPending(false);
     } catch (err) {
@@ -296,24 +305,20 @@ export function PhoneOtpFlow({
 
   if (step === "mfa") {
     return (
-      <form className={className} onSubmit={(e) => void onMfaSubmit(e)}>
+      <form className={className} onSubmit={onMfaSubmit}>
         <p className="form-hint">
           Enter the 6-digit code from your authenticator app.
         </p>
         {error ? <p className="form-error">{error}</p> : null}
-        <label className="form-field">
-          <span className="form-label">Authentication code</span>
-          <input
-            className="form-input"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={8}
-            required
-            value={mfaCode}
-            onChange={(e) => setMfaCode(e.target.value)}
-            disabled={pending}
-          />
-        </label>
+        <OtpCodeField
+          id="mfa-code"
+          label="Authentication code"
+          value={mfaCode}
+          onChange={setMfaCode}
+          onComplete={(code) => void verifyMfa(code)}
+          disabled={pending}
+          autoFocus
+        />
         <div className="form-actions auth-actions">
           <button className="btn-primary" type="submit" disabled={pending}>
             {pending ? "Verifying…" : "Verify and continue"}
@@ -339,11 +344,17 @@ export function PhoneOtpFlow({
 
   if (step === "otp") {
     return (
-      <form className={className} onSubmit={verifyOtp}>
+      <form className={className} onSubmit={onOtpSubmit}>
         {error ? <p className="form-error">{error}</p> : null}
         {info ? <p className="form-success">{info}</p> : null}
 
-        <OtpCodeField value={otp} onChange={setOtp} disabled={pending} />
+        <OtpCodeField
+          value={otp}
+          onChange={setOtp}
+          onComplete={(code) => void verifyOtp(code)}
+          disabled={pending}
+          autoFocus
+        />
 
         <div
           className={

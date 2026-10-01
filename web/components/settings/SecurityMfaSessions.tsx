@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { OtpCodeField } from "@/components/auth/OtpCodeField";
 import { createClient } from "@/lib/supabase/client";
 
 type TotpFactor = {
@@ -97,8 +98,8 @@ export function SecurityMfaSessions({ onToast }: Props) {
     }
   }
 
-  async function confirmEnroll() {
-    if (!enroll || code.trim().length < 6) return;
+  async function confirmEnroll(nextCode: string = code) {
+    if (!enroll || pending || nextCode.trim().length < 6) return;
     setPending(true);
     setError(null);
     try {
@@ -110,7 +111,7 @@ export function SecurityMfaSessions({ onToast }: Props) {
       const verify = await supabase.auth.mfa.verify({
         factorId: enroll.factorId,
         challengeId: challenge.data.id,
-        code: code.trim(),
+        code: nextCode.trim(),
       });
       if (verify.error) throw verify.error;
       setEnroll(null);
@@ -205,18 +206,13 @@ export function SecurityMfaSessions({ onToast }: Props) {
               className="settings-mfa-qr"
             />
             <p className="mono-data form-hint">Secret: {enroll.secret}</p>
-            <label className="form-field">
-              <span className="form-label">Verification code</span>
-              <input
-                className="form-input"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={8}
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                disabled={pending}
-              />
-            </label>
+            <OtpCodeField
+              id="mfa-enroll-code"
+              value={code}
+              onChange={setCode}
+              onComplete={(next) => void confirmEnroll(next)}
+              disabled={pending}
+            />
             <div className="dashboard-header-actions">
               <button
                 type="button"

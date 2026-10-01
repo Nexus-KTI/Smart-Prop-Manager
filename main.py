@@ -62,6 +62,13 @@ def _cors_origins() -> list[str]:
     return origins
 
 
+def _cors_origin_regex() -> str | None:
+    """Any localhost port off Render (Render sets RENDER=true on its hosts)."""
+    if (os.getenv("RENDER") or "").strip():
+        return None
+    return r"http://(localhost|127\.0\.0\.1)(:\d+)?"
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     yield
@@ -80,6 +87,7 @@ app.add_middleware(DocumentUploadLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
+    allow_origin_regex=_cors_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -722,8 +722,13 @@ html[data-sidebar-collapsed="true"] .shell-main {
   align-items: center;
   gap: 12px;
   /* Match .shell-content horizontal inset — do not add a second page pad. */
-  padding: 16px var(--shell-inset) 0;
+  padding: 16px var(--shell-inset) 8px;
   min-height: 56px;
+  /* Pinned while the page scrolls; below sidebar (20) / drawer backdrop (25). */
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background: var(--background);
 }
 
 .shell-topbar-start,
@@ -738,6 +743,37 @@ html[data-sidebar-collapsed="true"] .shell-main {
   margin-left: auto;
 }
 
+.shell-topbar-utilities {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Mobile-only lockup; the sidebar carries the brand on wider screens. */
+.shell-topbar-brand {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-left: 2px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.shell-topbar-brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.shell-topbar-brand-name {
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-transform: lowercase;
+  color: var(--accent);
+  white-space: nowrap;
+}
 .shell-topbar-icon-btn {
   appearance: none;
   position: relative;
@@ -3349,7 +3385,7 @@ html[data-sidebar-collapsed="true"] .shell-main {
   }
 
   .shell-topbar {
-    padding: 16px var(--shell-inset) 0;
+    padding: 16px var(--shell-inset) 8px;
   }
 
   .stat-row {
@@ -3643,11 +3679,32 @@ html[data-sidebar-collapsed="true"] .shell-main {
   }
 
   .shell-topbar {
-    padding: 12px var(--shell-inset) 0;
+    padding: 12px var(--shell-inset) 8px;
   }
 
   .user-menu-trigger {
-    max-width: min(200px, 52vw);
+    max-width: none;
+    padding: 4px;
+  }
+
+  .user-menu-name {
+    display: none;
+  }
+
+  .shell-topbar-start {
+    flex: 1;
+  }
+
+  .shell-topbar-brand {
+    display: inline-flex;
+  }
+
+  .shell-topbar-utilities {
+    margin-left: auto;
+  }
+
+  .shell-topbar-end {
+    margin-left: 0;
   }
 
   .auth-page {

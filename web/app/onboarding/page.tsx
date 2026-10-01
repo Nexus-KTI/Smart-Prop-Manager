@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 import { BrandMark, BrandStamp } from "@/components/BrandMark";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { BRAND_NAME } from "@/lib/brand";
@@ -8,6 +10,14 @@ export default async function OnboardingPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (user) {
+    const { count, error } = await supabase
+      .from("properties")
+      .select("id", { count: "exact", head: true });
+    if (!error && (count ?? 0) > 0) redirect("/properties");
+  }
+
   const meta = user?.user_metadata ?? {};
   const userName = String(meta.full_name || meta.name || "").trim();
 
