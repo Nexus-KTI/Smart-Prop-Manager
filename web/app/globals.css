@@ -161,15 +161,26 @@ html[data-sidebar-collapsed="true"] .sidebar {
   min-width: 0;
 }
 
-/* Wordmark font-size = mark px: Geist cap height (~0.71em) matches the N glyph (0.75 of its box). */
+/* Lowercase wordmark at 1.15× the mark px: Geist x-height (0.54em) sits just under the N glyph (0.75 of its box).
+   Text stays "Nexora" for copy and screen readers; only the logo renders lowercase. */
 .sidebar-brand-name {
-  font-size: 1.375rem;
+  font-size: 1.58rem;
+  text-transform: lowercase;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--accent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sidebar-brand-role {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .sidebar-brand-stamp {
@@ -1745,6 +1756,8 @@ html[data-sidebar-collapsed="true"] .shell-main {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  font-size: 1.15em;
+  text-transform: lowercase;
   color: var(--accent);
 }
 
@@ -3871,8 +3884,10 @@ html[data-theme="dark"] .marketing-top-inner {
 }
 
 .marketing-logo-name {
+  font-size: 1.15em;
   font-weight: 650;
   letter-spacing: -0.03em;
+  text-transform: lowercase;
   color: var(--accent);
 }
 
@@ -4865,7 +4880,7 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   left: 0;
   display: flex;
   width: calc(var(--arrow-box-size) * 2);
-  /* Touch / coarse pointer: arrow already settled in the box. */
+  /* Rest: second arrow in the box (all pointers). */
   transform: translateX(-50%);
   transition: transform 420ms var(--ease-out);
 }
@@ -4894,14 +4909,8 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
-/* Desktop hover: empty box at rest, arrow slides in on hover / keyboard focus. */
+/* Desktop hover: arrow at rest; on hover it exits right as a fresh one enters from the left. */
 @media (hover: hover) and (pointer: fine) {
-  .marketing-arrow-box-track {
-    /* Park both arrows fully left of the clip — box reads empty at rest. */
-    transform: translateX(-100%);
-  }
-
-  /* Don’t burn cycles nudging off-screen glyphs while the box is empty. */
   .marketing-arrow-box .marketing-arrow {
     animation: none;
   }
@@ -4914,8 +4923,7 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 
   .marketing-hero-secondary:hover .marketing-arrow-box-track,
   .marketing-hero-secondary:focus-visible .marketing-arrow-box-track {
-    /* First arrow crosses the box; second settles inside. */
-    transform: translateX(-50%);
+    transform: translateX(0);
   }
 
   @media (prefers-reduced-motion: no-preference) {

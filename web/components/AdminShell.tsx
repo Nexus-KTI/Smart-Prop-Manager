@@ -14,7 +14,7 @@ import { HelpFab, HelpIconButton, HelpProvider } from "@/components/HelpSheet";
 import { ShellTopbar } from "@/components/ShellTopbar";
 import { ToastProvider } from "@/components/ToastProvider";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
-import { BrandMark, BrandStamp } from "@/components/BrandMark";
+import { BrandMark } from "@/components/BrandMark";
 import { BRAND_NAME } from "@/lib/brand";
 import { useSidebarRail } from "@/lib/use-sidebar-rail";
 
@@ -62,8 +62,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                     <BrandMark size={22} />
                   </span>
                   <span className="sidebar-brand-text">
-                    <span className="sidebar-brand-name">{BRAND_NAME} Admin</span>
-                    <BrandStamp className="sidebar-brand-stamp" />
+                    <span className="sidebar-brand-name">{BRAND_NAME}</span>
+                    <span className="sidebar-brand-role">Admin</span>
                   </span>
                 </Link>
               </div>

@@ -22,7 +22,9 @@ House clipart, a solid N, and the archived slanted-bar mark are not the product 
 | **Product** | Mark + Nexora + by KTI stamp | App shell, auth |
 | **Mark** | Mark alone | Favicon, collapsed sidebar, WhatsApp, store |
 
-The tagline stays on marketing. The expanded sidebar shows the orange **by KTI** stamp; the collapsed rail shows the forest mark only.
+The tagline stays on marketing. The expanded sidebar shows the orange **by KTI** stamp; the collapsed rail shows the forest mark only. The admin sidebar shows **ADMIN** in place of the stamp.
+
+**Wordmark case:** the logo renders lowercase **nexora** (CSS `text-transform`, 1.15× the mark size). Copy, emails, receipts, titles, and legal text keep **Nexora**.
 
 ---
 
