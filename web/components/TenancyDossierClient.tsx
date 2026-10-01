@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { DocsDraftBanner } from "@/components/DocsDraftBanner";
 import { FetchErrorState } from "@/components/FetchErrorState";
 import {
   activateTenancy,
@@ -369,6 +370,7 @@ export function TenancyDossierClient({
             </p>
           ) : (
             <div className="form-card" style={{ maxWidth: 420 }}>
+              <DocsDraftBanner />
               <label className="form-field">
                 <span className="form-label">Expires on (optional)</span>
                 <input

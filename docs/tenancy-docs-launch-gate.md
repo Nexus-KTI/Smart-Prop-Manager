@@ -4,6 +4,15 @@
 **Production rule:** do not enable either document capability until every
 required approval below is recorded.
 
+## Local review switch
+
+Counsel can click the real landlord dossier and tenant documents screens on a
+developer machine only. In the local API `.env`, set `DOCS_READ_ENABLED=true`
+and `DOCS_UPLOAD_ENABLED=true`. Leave `DOCS_ACK_TEXT_VERSION` blank. The
+screens show a draft banner: acknowledgment text is not an electronic
+signature and is not approved. Do not copy those flags to Render or Vercel.
+Production stays dark until the checkboxes below are recorded.
+
 This is an operational checklist, not legal advice and not substitute wording
 for Nigerian counsel.
 

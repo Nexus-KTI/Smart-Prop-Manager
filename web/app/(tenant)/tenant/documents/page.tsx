@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { DocsDraftBanner } from "@/components/DocsDraftBanner";
 import { FetchErrorState } from "@/components/FetchErrorState";
 import { useToast } from "@/components/ToastProvider";
 import {
@@ -469,12 +470,7 @@ export default function TenantDocumentsPage() {
             {message ||
               "Documents belong to the landlord; Nexora stores them for this tenancy."}
           </p>
-          {canRead ? (
-            <p className="table-muted">
-              Acknowledgment records receipt/read status; it is not a legal
-              signature.
-            </p>
-          ) : null}
+          {canRead ? <DocsDraftBanner /> : null}
           {!canRead ? (
             <div className="dashboard-empty" role="status">
               <p className="dashboard-empty-title">
