@@ -228,7 +228,11 @@ export function MarketingHeader({ inviteOnly }: Props) {
               <PrimaryCta
                 href={primaryHref}
                 label={primaryLabel}
-                className="btn-primary marketing-mobile-nav-cta"
+                className={
+                  signedIn
+                    ? "btn-primary marketing-mobile-nav-cta marketing-mobile-nav-cta--dashboard"
+                    : "btn-primary marketing-mobile-nav-cta"
+                }
                 onClick={closeMenu}
               />
               {signedIn ? null : (

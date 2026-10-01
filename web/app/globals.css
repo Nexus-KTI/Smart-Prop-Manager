@@ -4258,6 +4258,11 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   display: none;
 }
 
+/* Signed in: the hero has no way back into the app, so the menu must. */
+.marketing-mobile-nav-cta.marketing-mobile-nav-cta--dashboard {
+  display: inline-flex;
+}
+
 .marketing-mobile-nav-backdrop {
   position: fixed;
   inset: 0;
