@@ -34,7 +34,7 @@ Calm landlord-ops trust. Forest accent for money actions. Quiet canvas; amount/c
 - UI: `-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`
 - Code / money: `ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`
 
-Brand mark: wordmark text (`EMAIL_FROM_NAME` or “Smart Prop”). Optional image via `EMAIL_LOGO_URL`.
+Brand mark: wordmark text (`EMAIL_FROM_NAME` or Nexora). Optional image via `EMAIL_LOGO_URL`.
 
 ---
 

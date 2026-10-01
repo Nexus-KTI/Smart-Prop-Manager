@@ -7,7 +7,7 @@ type BrandMarkProps = {
   title?: string;
 };
 
-/** Option B mark — N + ledger cuts. Uses currentColor. */
+/** Ledger N. Path `d` is copied from web/public/brand/mark.svg by scripts/sync_brand_mark.py. Uses currentColor. */
 export function BrandMark({
   className,
   size = 20,

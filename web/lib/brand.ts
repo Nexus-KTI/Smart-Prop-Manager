@@ -8,8 +8,8 @@ export const BRAND_ONE_LINER =
   "Nexora is an Estate OS for Nigerian landlords: unit money truth first, then tenancies, messages, repairs, access, staff, and books - without US proptech pitch speak in the logged-in product.";
 
 /**
- * Brand mark paths under /public/brand (Option B preview).
- * Swap files in place when designer finals land — keep these paths stable.
+ * Brand mark paths under /public/brand.
+ * Geometry lives in mark.svg; run scripts/sync_brand_mark.py after editing it.
  */
 export const BRAND_ASSETS = {
   mark: "/brand/mark.svg",
@@ -17,7 +17,6 @@ export const BRAND_ASSETS = {
   markInk: "/brand/mark-ink.svg",
   appIcon: "/brand/app-icon.svg",
   avatarCircle: "/brand/avatar-circle.svg",
-  markOptionA: "/brand/mark-option-a.svg",
 } as const;
 /** E.164 preferred. Empty = hide support FAB / welcome support CTA. */
 export const SUPPORT_WHATSAPP = (

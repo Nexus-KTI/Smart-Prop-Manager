@@ -1,16 +1,14 @@
-# Nexora brand assets (Option B preview)
+# Nexora brand assets
 
-**Approved mark:** Option B — N + ledger cuts.  
-Designer finals should replace these files **in place** (keep filenames).
+**Approved mark:** ledger N in [`mark.svg`](mark.svg). That file is the only geometry. After editing it, run `python scripts/sync_brand_mark.py` so the copies below stay in sync.
 
 | File | Use |
 |------|-----|
 | `mark.svg` | Product mark, `currentColor` |
-| `mark-forest.svg` | Forest fill |
-| `mark-ink.svg` | Ink mono |
-| `app-icon.svg` | Favicon / store tile (flat forest) |
+| `mark-forest.svg` | Forest fill `#0F6E4F` |
+| `mark-ink.svg` | Ink mono `#14171A` |
+| `app-icon.svg` | Favicon / store tile (flat forest, white mark, radius 8). `web/app/icon.svg` is the same tile. |
 | `avatar-circle.svg` | WhatsApp / circular |
-| `mark-option-a.svg` | Archived baseline (fallback) |
 
 Lockups: **Mark** = these files · **Product** = Mark + “Nexora” · **Full** = Product + tagline + by KTI (marketing only).
 

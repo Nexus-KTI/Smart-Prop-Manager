@@ -1,20 +1,16 @@
 # Nexora logo — lock decision
 
-**Status:** Approved — **ship Option B (Ledger / Unit)**  
+**Status:** Shipped — ledger N  
 **Product name:** Nexora (never “Smart Prop Manager”)  
 **Parent:** by KTI · orange stamp only `#E65100`
 
 ---
 
-## Symbol decision
+## Symbol
 
-| Option | Role |
-|--------|------|
-| **A** Baseline bars | Fallback if B fails at ≤16px |
-| **B** Ledger / unit | **Primary — ship this** |
-| **C** Distinctive block | Deck-only optional; not product chrome |
+The product mark is a capital N with two horizontal ledger cuts. Geometry lives only in `web/public/brand/mark.svg`. `scripts/sync_brand_mark.py` copies that path into `BrandMark` and the filled SVGs.
 
-**Why B:** Money-truth signal (who paid / who owes) without house clipart; more distinctive than generic fintech bars.
+House clipart, a solid N, and the archived slanted-bar mark are not the product mark.
 
 ---
 
@@ -23,10 +19,10 @@
 | Lockup | Contents | Use |
 |--------|----------|-----|
 | **Full** | Mark + Nexora + tagline + by KTI | Marketing, pitch, investor one-pager |
-| **Product** | Mark + Nexora | App shell, auth, emails |
+| **Product** | Mark + Nexora + by KTI stamp | App shell, auth |
 | **Mark** | Mark alone | Favicon, collapsed sidebar, WhatsApp, store |
 
-Tagline + by KTI never in product chrome.
+The tagline stays on marketing. The expanded sidebar shows the orange **by KTI** stamp; the collapsed rail shows the forest mark only.
 
 ---
 
@@ -44,18 +40,10 @@ Flat marks only — no shadows, glows, or gradients on icons.
 
 ---
 
-## Still needed from designer (source)
-
-1. Final **SVG** for Option B (outline + filled) + wordmark outlines  
-2. Proven **16×16** crop of B (ledger lines still read)  
-3. PNG @1x/2x/3x + 1024 app icon  
-
-Until then: engineering uses preview B in `web/public/brand/` + `BrandMark.tsx` (swap files in place when finals arrive).
-
----
-
 ## Engineering
 
-- Paths: `BRAND_ASSETS` in `web/lib/brand.ts`  
-- Collapsed sidebar mark: `--accent` (forest), not orange  
-- Option A archive: `web/public/brand/mark-option-a.svg`
+- Source path: `web/public/brand/mark.svg`
+- Derived files: `mark-forest.svg`, `mark-ink.svg`, `app-icon.svg`, `avatar-circle.svg`, `web/app/icon.svg`
+- Paths: `BRAND_ASSETS` in `web/lib/brand.ts`
+- Collapsed sidebar mark: `--accent` (forest), not orange
+- Drift check: `tests/test_brand_mark.py`
