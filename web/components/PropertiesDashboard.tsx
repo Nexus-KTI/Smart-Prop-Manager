@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { fetchUrgentActionsSummary } from "@/lib/api";
+import { fetchUrgentActionsSummary, type PortfolioSummary } from "@/lib/api";
 import {
   formatDueDate,
   formatNaira,
@@ -20,6 +20,19 @@ import { ListPagination } from "@/components/ListPagination";
 
 type OccupancyFilter = "all" | "occupied" | "vacant";
 type PaymentFilter = "all" | UnitStatus;
+
+type PropertyGroup = {
+  key: string;
+  propertyId: string | null;
+  name: string;
+  /** Property with zero units (one placeholder row from the portfolio). */
+  needsUnit: boolean;
+  rows: DashboardRow[];
+};
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
 
 const LIST_PAGE_SIZE = 10;
 
@@ -149,6 +162,8 @@ type Props = {
   stats: DashboardStats;
   /** For getting-started checklist and add-unit links. */
   properties: Property[];
+  /** Exact portfolio counts; null falls back to loaded rows. */
+  summary?: PortfolioSummary | null;
   highlightUnitId?: string | null;
   highlightPropertyId?: string | null;
   initialOccupancy?: OccupancyFilter;
@@ -161,6 +176,7 @@ export function PropertiesDashboard({
   rows,
   stats,
   properties,
+  summary = null,
   highlightUnitId = null,
   highlightPropertyId = null,
   initialOccupancy = "all",
@@ -172,18 +188,16 @@ export function PropertiesDashboard({
     ...property,
     units: Array.isArray(property.units) ? property.units : [],
   }));
-  const { items: checklistItems } = buildGettingStarted(normalized);
+  const { items: checklistItems, unitCount } = buildGettingStarted(normalized);
   const highlightRef = useRef<HTMLTableRowElement | null>(null);
-  const firstPropertyId = normalized[0]?.id;
-  const addUnitHref = firstPropertyId
-    ? `/properties/${firstPropertyId}/units/new`
-    : "/onboarding";
   const gettingStartedComplete = checklistItems.every((item) => item.done);
   // Checklist may guide next steps after Skip, but must never replace the table
   // when any property row exists (including zero-unit / needsUnit rows).
   const showChecklist = !gettingStartedComplete;
   const showTable = rows.length > 0;
-  const showHeaderActions = normalized.length > 0;
+  const propertyTotal = summary?.property_count ?? normalized.length;
+  const unitTotal = summary?.unit_count ?? unitCount;
+  const hasProperties = propertyTotal > 0 || normalized.length > 0;
 
   const [occupancyFilter, setOccupancyFilter] =
     useState<OccupancyFilter>(initialOccupancy);
@@ -213,15 +227,24 @@ export function PropertiesDashboard({
     };
   }, []);
 
+  /** Units only — zero-unit property rows are not vacant units. */
   const occupancyCounts = useMemo(() => {
+    if (summary) {
+      return {
+        all: summary.unit_count,
+        occupied: summary.occupied,
+        vacant: summary.vacant,
+      };
+    }
     let occupied = 0;
     let vacant = 0;
     for (const row of rows) {
+      if (row.needsUnit) continue;
       if (rowIsVacant(row)) vacant += 1;
       else occupied += 1;
     }
-    return { all: rows.length, occupied, vacant };
-  }, [rows]);
+    return { all: occupied + vacant, occupied, vacant };
+  }, [rows, summary]);
 
   const paymentCounts = useMemo(() => {
     const counts: Record<UnitStatus, number> = {
@@ -263,6 +286,51 @@ export function PropertiesDashboard({
     const start = (safeListPage - 1) * LIST_PAGE_SIZE;
     return visibleRows.slice(start, start + LIST_PAGE_SIZE);
   }, [visibleRows, safeListPage]);
+
+  /** Whole-portfolio counts per property, independent of filters/page. */
+  const propertySummaries = useMemo(() => {
+    const map = new Map<string, { units: number; vacant: number }>();
+    if (summary) {
+      for (const entry of summary.properties) {
+        map.set(entry.property_id, { units: entry.units, vacant: entry.vacant });
+      }
+      return map;
+    }
+    for (const row of rows) {
+      if (!row.propertyId) continue;
+      const entry = map.get(row.propertyId) ?? { units: 0, vacant: 0 };
+      if (!row.needsUnit) {
+        entry.units += 1;
+        if (rowIsVacant(row)) entry.vacant += 1;
+      }
+      map.set(row.propertyId, entry);
+    }
+    return map;
+  }, [rows, summary]);
+
+  const pagedGroups = useMemo(() => {
+    const groups: PropertyGroup[] = [];
+    const byKey = new Map<string, PropertyGroup>();
+    for (const row of pagedRows) {
+      const key = row.propertyId ?? `row-${row.unit}`;
+      let group = byKey.get(key);
+      if (!group) {
+        group = {
+          key,
+          propertyId: row.propertyId ?? null,
+          name:
+            row.propertyName?.trim() ||
+            (row.needsUnit ? row.unit : "Untitled property"),
+          needsUnit: Boolean(row.needsUnit),
+          rows: [],
+        };
+        byKey.set(key, group);
+        groups.push(group);
+      }
+      if (!row.needsUnit) group.rows.push(row);
+    }
+    return groups;
+  }, [pagedRows]);
 
   useEffect(() => {
     if (!highlightUnitId && !highlightPropertyId) return;
@@ -332,77 +400,79 @@ export function PropertiesDashboard({
     });
   }, [highlightUnitId, highlightPropertyId, pagedRows.length]);
 
-  // List rhythm: title + subtitle → optional stats → checklist and/or table.
+  const failedSends = actionsFailed ?? 0;
+
+  // Property-first rhythm: title + counts → Add property → alert →
+  // compact money snapshot → filters → properties with their units.
   return (
-    <section className="dashboard">
-      <header className="dashboard-header dashboard-header-row">
-        <div>
+    <section className="dashboard properties-page">
+      <header className="properties-head">
+        <div className="properties-head-text">
           <h1 className="page-title">Properties</h1>
-          <p className="page-subtitle">
-            Units, rent, and payment status across your portfolio.
+          <p className="properties-count">
+            {hasProperties
+              ? `${plural(propertyTotal, "property", "properties")} · ${plural(unitTotal, "unit", "units")}`
+              : "Add a property to start tracking rent."}
           </p>
         </div>
-        {showHeaderActions ? (
-          <div className="dashboard-header-actions">
-            {chaseOverdue > 0 ? (
-              <Link href="/reminders?filter=overdue" className="btn-secondary">
-                {chaseOverdue} overdue → Chase
-              </Link>
-            ) : null}
-            <Link href={addUnitHref} className="btn-secondary">
-              Add unit
-            </Link>
-            <Link href="/properties/new" className="btn-primary">
-              Add property
-            </Link>
-          </div>
-        ) : (
-          <div className="dashboard-header-actions">
-            <Link href="/onboarding" className="btn-primary">
-              Add property
-            </Link>
-          </div>
-        )}
+        <Link
+          href={hasProperties ? "/properties/new" : "/onboarding"}
+          className="btn-primary properties-add"
+        >
+          Add property
+        </Link>
       </header>
 
-      {(actionsFailed ?? 0) > 0 ? (
-        <p className="page-subtitle" role="status">
-          {actionsFailed === 1
-            ? "1 chase send failed."
-            : `${actionsFailed} chase sends failed.`}{" "}
-          <Link href="/reminders?filter=failed" className="table-link">
-            Retry on Action needed
-          </Link>
-        </p>
-      ) : null}
-
-      <div className="stat-row">
-        <div className="stat-block">
-          <p className="stat-label">Total Collected</p>
-          <p className="stat-value mono-data">
-            {formatNaira(stats.totalCollected)}
-          </p>
-        </div>
-        <div className="stat-block">
-          <p className="stat-label">Outstanding</p>
-          <p className="stat-value mono-data">
-            {formatNaira(stats.outstanding)}
-          </p>
-        </div>
-        <div className="stat-block">
-          <p className="stat-label">Units Overdue</p>
-          <p className="stat-value mono-data">{chaseOverdue}</p>
+      {chaseOverdue > 0 || failedSends > 0 ? (
+        <div className="properties-alert" role="status">
           {chaseOverdue > 0 ? (
-            <p className="table-muted" style={{ marginTop: 4 }}>
+            <p className="properties-alert-line">
+              <span className="properties-alert-text">
+                {plural(chaseOverdue, "unit", "units")} overdue
+              </span>
               <Link href="/reminders?filter=overdue" className="table-link">
                 Chase on Action needed
               </Link>
             </p>
           ) : null}
+          {failedSends > 0 ? (
+            <p className="properties-alert-line">
+              <span className="properties-alert-text">
+                {plural(failedSends, "chase send", "chase sends")} failed
+              </span>
+              <Link href="/reminders?filter=failed" className="table-link">
+                Retry on Action needed
+              </Link>
+            </p>
+          ) : null}
         </div>
-      </div>
+      ) : null}
 
-      {showChecklist ? (
+      <dl className="properties-snapshot">
+        <div className="properties-snapshot-item">
+          <dt className="stat-label">Collected</dt>
+          <dd className="properties-snapshot-value mono-data">
+            {formatNaira(stats.totalCollected)}
+          </dd>
+        </div>
+        <div className="properties-snapshot-item">
+          <dt className="stat-label">Outstanding</dt>
+          <dd className="properties-snapshot-value mono-data">
+            {formatNaira(stats.outstanding)}
+          </dd>
+        </div>
+        <div className="properties-snapshot-item">
+          <dt className="stat-label">Overdue</dt>
+          <dd
+            className="properties-snapshot-value mono-data"
+            data-tone={chaseOverdue > 0 ? "alert" : undefined}
+          >
+            {chaseOverdue}
+          </dd>
+        </div>
+      </dl>
+
+      {showChecklist && !showTable ? (
         <GettingStartedChecklist items={checklistItems} />
       ) : null}
 
@@ -442,12 +512,12 @@ export function PropertiesDashboard({
               </div>
             </div>
 
-            <div className="portfolio-occupancy-bar">
+            <div className="portfolio-occupancy-bar portfolio-occupancy-bar--secondary">
               <p className="form-label" id="portfolio-payment-label">
                 Payment
               </p>
               <div
-                className="theme-segment"
+                className="theme-segment theme-segment--quiet"
                 role="group"
                 aria-labelledby="portfolio-payment-label"
               >
@@ -490,81 +560,98 @@ export function PropertiesDashboard({
                   <th>Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                {pagedRows.length === 0 ? (
+              {pagedRows.length === 0 ? (
+                <tbody>
                   <tr>
                     <td colSpan={6} className="table-empty">
                       {emptyFilterCopy()}
                     </td>
                   </tr>
-                ) : null}
-                {pagedRows.map((row) => {
-                  const rowKey = row.needsUnit
-                    ? `property-${row.propertyId}-empty`
-                    : (row.unitId ?? row.propertyId ?? row.unit);
+                </tbody>
+              ) : null}
+              {pagedGroups.map((group) => {
+                const summary = group.propertyId
+                  ? propertySummaries.get(group.propertyId)
+                  : undefined;
+                const highlightedProperty =
+                  group.needsUnit &&
+                  Boolean(group.propertyId) &&
+                  highlightPropertyId === group.propertyId;
+                const meta = group.needsUnit
+                  ? "No units yet"
+                  : summary
+                    ? summary.vacant > 0
+                      ? `${plural(summary.units, "unit", "units")} · ${summary.vacant} vacant`
+                      : plural(summary.units, "unit", "units")
+                    : null;
+
+                return (
+                  <tbody
+                    key={group.key}
+                    className="property-group"
+                    data-needs-unit={group.needsUnit ? "true" : undefined}
+                  >
+                    <tr
+                      ref={highlightedProperty ? highlightRef : undefined}
+                      className={
+                        highlightedProperty
+                          ? "property-group-head table-row-highlight"
+                          : "property-group-head"
+                      }
+                      data-highlighted={highlightedProperty ? "true" : undefined}
+                    >
+                      <th colSpan={6} scope="rowgroup">
+                        <div className="property-group-bar">
+                          <div className="property-group-title">
+                            {group.propertyId ? (
+                              <Link
+                                href={`/properties/${group.propertyId}`}
+                                className="property-group-name"
+                              >
+                                {group.name}
+                              </Link>
+                            ) : (
+                              <span className="property-group-name">
+                                {group.name}
+                              </span>
+                            )}
+                            {meta ? (
+                              <span className="property-group-meta">{meta}</span>
+                            ) : null}
+                          </div>
+                          {group.propertyId ? (
+                            <div className="table-actions property-group-actions">
+                              <Link
+                                href={`/properties/${group.propertyId}/units/new`}
+                                className={
+                                  group.needsUnit
+                                    ? "btn-secondary btn-table-cta property-group-add"
+                                    : "table-link property-group-add"
+                                }
+                              >
+                                Add unit
+                              </Link>
+                              <Link
+                                href={`/properties/${group.propertyId}/edit`}
+                                className="table-link table-link--quiet"
+                              >
+                                Edit property
+                              </Link>
+                            </div>
+                          ) : null}
+                        </div>
+                        {group.needsUnit ? (
+                          <p className="table-muted property-group-hint">
+                            Add a unit to track rent and reminders.
+                          </p>
+                        ) : null}
+                      </th>
+                    </tr>
+                    {group.rows.map((row) => {
+                  const rowKey = row.unitId ?? row.propertyId ?? row.unit;
                   const highlightedUnit =
                     Boolean(row.unitId) && highlightUnitId === row.unitId;
-                  const highlightedProperty =
-                    Boolean(row.needsUnit) &&
-                    Boolean(row.propertyId) &&
-                    highlightPropertyId === row.propertyId;
-                  const highlighted = highlightedUnit || highlightedProperty;
-
-                  if (row.needsUnit && row.propertyId) {
-                    return (
-                      <tr
-                        key={rowKey}
-                        ref={highlighted ? highlightRef : undefined}
-                        className={
-                          highlighted
-                            ? "table-row-needs-unit table-row-highlight"
-                            : "table-row-needs-unit"
-                        }
-                        data-needs-unit="true"
-                        data-highlighted={highlighted ? "true" : undefined}
-                      >
-                        <td data-label="Unit">
-                          <Link
-                            href={`/properties/${row.propertyId}`}
-                            className="table-link"
-                          >
-                            {row.unit}
-                          </Link>
-                          <p className="table-muted table-empty-hint">
-                            No units yet. Add a unit to track rent and reminders.
-                          </p>
-                        </td>
-                        <td data-label="Tenant" className="table-muted">
-                          -
-                        </td>
-                        <td data-label="Rent" className="mono-data table-muted">
-                          -
-                        </td>
-                        <td data-label="Due date" className="mono-data table-muted">
-                          -
-                        </td>
-                        <td data-label="Status">
-                          <span className="status-badge pending">NO UNIT</span>
-                        </td>
-                        <td data-label="Actions">
-                          <div className="table-actions">
-                            <Link
-                              href={`/properties/${row.propertyId}/units/new`}
-                              className="btn-secondary btn-table-cta"
-                            >
-                              Add unit
-                            </Link>
-                            <Link
-                              href={`/properties/${row.propertyId}/edit`}
-                              className="table-link"
-                            >
-                              Edit property
-                            </Link>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
+                  const unitName = row.unitLabel ?? row.unit;
 
                   return (
                     <tr
@@ -581,29 +668,32 @@ export function PropertiesDashboard({
                             href={`/payments/${row.unitId}`}
                             className="table-link"
                           >
-                            {row.unit}
-                          </Link>
-                        ) : row.propertyId ? (
-                          <Link
-                            href={`/properties/${row.propertyId}`}
-                            className="table-link"
-                          >
-                            {row.unit}
+                            {unitName}
                           </Link>
                         ) : (
-                          row.unit
+                          unitName
                         )}
                       </td>
-                      <td data-label="Tenant">{row.tenant}</td>
+                      <td data-label="Tenant">
+                        {rowIsVacant(row) ? (
+                          <span className="table-muted">Vacant</span>
+                        ) : (
+                          row.tenant
+                        )}
+                      </td>
                       <td data-label="Rent" className="mono-data">
                         {formatNaira(row.rent)}
                         {row.serviceCharge && row.serviceCharge > 0 ? (
-                          <p className="table-muted mono-data" style={{ margin: "2px 0 0" }}>
+                          <span className="table-muted mono-data unit-service-charge">
                             + {formatNaira(row.serviceCharge)} SC
-                          </p>
+                          </span>
                         ) : null}
                       </td>
-                      <td data-label="Due date" className="mono-data">
+                      <td
+                        data-label="Due date"
+                        className="mono-data"
+                        data-empty={row.dueDate ? undefined : "true"}
+                      >
                         {formatDueDate(row.dueDate)}
                       </td>
                       <td data-label="Status">
@@ -643,25 +733,19 @@ export function PropertiesDashboard({
                           {row.unitId ? (
                             <Link
                               href={`/properties/units/${row.unitId}/edit`}
-                              className="table-link"
+                              className="table-link table-link--quiet"
                             >
                               Edit unit
-                            </Link>
-                          ) : null}
-                          {row.propertyId ? (
-                            <Link
-                              href={`/properties/${row.propertyId}/edit`}
-                              className="table-link"
-                            >
-                              Edit property
                             </Link>
                           ) : null}
                         </div>
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
+                    })}
+                  </tbody>
+                );
+              })}
             </table>
           </div>
 
@@ -679,6 +763,10 @@ export function PropertiesDashboard({
               loading={loadingMore}
               onLoadMore={onLoadMore}
             />
+          ) : null}
+
+          {showChecklist ? (
+            <GettingStartedChecklist items={checklistItems} />
           ) : null}
         </>
       ) : null}

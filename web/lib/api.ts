@@ -261,6 +261,23 @@ export async function fetchPortfolioUnitsPage(
   return readCursorPage<PortfolioUnit>(res, "Failed to load portfolio units");
 }
 
+export type PortfolioSummary = {
+  property_count: number;
+  unit_count: number;
+  occupied: number;
+  vacant: number;
+  properties: Array<{ property_id: string; units: number; vacant: number }>;
+};
+
+/** Whole-portfolio counts, independent of cursor paging. */
+export async function fetchPortfolioSummary(): Promise<PortfolioSummary> {
+  const res = await apiFetch("/properties/portfolio/summary");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load portfolio counts"));
+  }
+  return (await res.json()) as PortfolioSummary;
+}
+
 export async function fetchPropertyUnitsPage(
   propertyId: string,
   cursor?: string | null,

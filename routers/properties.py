@@ -221,6 +221,51 @@ def list_portfolio_units(
     return {"items": items, "next_cursor": next_cursor}
 
 
+def summarize_portfolio_counts(rows: list[dict]) -> dict:
+    """Exact property/unit/vacancy counts; vacant = unit without a tenant name."""
+    properties: list[dict] = []
+    unit_total = 0
+    vacant_total = 0
+    for row in rows:
+        units = row.get("units") or []
+        vacant = sum(1 for u in units if not str(u.get("tenant_name") or "").strip())
+        unit_total += len(units)
+        vacant_total += vacant
+        properties.append(
+            {"property_id": row.get("id"), "units": len(units), "vacant": vacant}
+        )
+    return {
+        "property_count": len(properties),
+        "unit_count": unit_total,
+        "occupied": unit_total - vacant_total,
+        "vacant": vacant_total,
+        "properties": properties,
+    }
+
+
+@router.get("/portfolio/summary")
+def portfolio_summary(
+    user: AuthedUser = Depends(get_current_user),
+    portfolio_owner_id: str | None = Depends(_portfolio_owner),
+):
+    """Whole-portfolio counts for list headers (independent of cursor paging)."""
+    ctx = resolve_portfolio(user.id, portfolio_owner_id)
+    db = _db_for_ctx(user, ctx)
+    property_ids = accessible_property_ids_for_portfolio(ctx)
+    if not property_ids:
+        return summarize_portfolio_counts([])
+    rows = (
+        db.table("properties")
+        .select("id, units(id, tenant_name)")
+        .eq("owner_id", ctx.owner_id)
+        .in_("id", property_ids)
+        .execute()
+        .data
+        or []
+    )
+    return summarize_portfolio_counts(rows)
+
+
 @router.get("/")
 def list_properties(
     user: AuthedUser = Depends(get_current_user),

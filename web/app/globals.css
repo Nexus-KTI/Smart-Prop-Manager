@@ -2966,6 +2966,212 @@ html[data-sidebar-collapsed="true"] .shell-main {
   white-space: nowrap;
 }
 
+/* Properties — property-first: head → alert → snapshot strip → filters → groups. */
+.properties-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.properties-head-text {
+  min-width: 0;
+}
+
+.properties-head .page-title {
+  margin: 0;
+}
+
+.properties-count {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.properties-add {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.properties-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--alert) 35%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--alert) 8%, transparent);
+}
+
+.properties-alert-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.properties-alert-text {
+  color: var(--alert);
+  font-weight: 600;
+}
+
+.properties-snapshot {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 0 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.properties-snapshot-item {
+  min-width: 0;
+  padding: 10px 16px;
+}
+
+.properties-snapshot-item + .properties-snapshot-item {
+  border-left: 1px solid var(--border);
+}
+
+.properties-snapshot .stat-label {
+  margin: 0 0 4px;
+}
+
+.properties-snapshot-value {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.properties-snapshot-value[data-tone="alert"] {
+  color: var(--alert);
+}
+
+.properties-page .portfolio-filter-stack {
+  margin: 0 0 12px;
+}
+
+.data-table .property-group-head th {
+  padding: 10px 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 3%, var(--surface));
+}
+
+.data-table .property-group + .property-group .property-group-head th {
+  border-top: 1px solid var(--border);
+}
+
+.data-table .property-group-head.table-row-highlight th {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.property-group-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+
+.property-group-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.property-group-name {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+a.property-group-name:hover {
+  color: var(--accent);
+}
+
+a.property-group-name:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.property-group-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.property-group-actions {
+  font-size: 0.85rem;
+}
+
+.property-group-hint {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+}
+
+/* Contextual primary on a property: Add unit leads, Edit stays quiet. */
+.table-link.property-group-add,
+.btn-secondary.property-group-add {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.btn-secondary.property-group-add {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.table-link.table-link--quiet {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.table-link.table-link--quiet:hover {
+  color: var(--ink);
+}
+
+.unit-service-charge {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.85em;
+}
+
+/* Payment refines Occupancy — same control, lower emphasis. */
+.portfolio-occupancy-bar--secondary .form-label {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.theme-segment--quiet {
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  background: transparent;
+}
+
+.theme-segment--quiet .theme-segment-btn {
+  font-size: 0.8rem;
+  padding: 5px 12px;
+}
+
+.theme-segment--quiet .theme-segment-btn[data-active="true"] {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 .data-table-wrap {
   width: 100%;
   max-width: 100%;
@@ -3739,6 +3945,200 @@ html[data-sidebar-collapsed="true"] .shell-main {
   .btn-primary.btn-table-cta {
     padding: 10px 12px;
     min-height: 40px;
+  }
+}
+
+/* Properties on tablet/phone: groups become headed card stacks. */
+@media (max-width: 900px) {
+  .properties-page .data-table-wrap--stack .data-table {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group {
+    gap: 8px;
+  }
+
+  .data-table-wrap--stack tbody tr.property-group-head {
+    padding: 0 2px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .data-table-wrap--stack .property-group-head th,
+  .data-table .property-group + .property-group .property-group-head th,
+  .data-table .property-group-head.table-row-highlight th {
+    display: block;
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+
+  .data-table-wrap--stack .property-group-head.table-row-highlight {
+    outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    outline-offset: 4px;
+    border-radius: 6px;
+  }
+
+  .data-table-wrap--stack .property-group-actions {
+    width: auto;
+  }
+
+  .properties-page .portfolio-occupancy-bar {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .properties-page .portfolio-occupancy-bar .form-label {
+    min-width: 0;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+  }
+
+  /* One line per filter group; overflow scrolls instead of wrapping. */
+  .properties-page .portfolio-occupancy-bar .theme-segment {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .properties-page .portfolio-occupancy-bar .theme-segment::-webkit-scrollbar {
+    display: none;
+  }
+
+  .properties-page .theme-segment-btn {
+    flex: 1 0 auto;
+    padding: 7px 10px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  .properties-page .theme-segment--quiet .theme-segment-btn {
+    padding: 5px 9px;
+    font-size: 0.75rem;
+  }
+
+  /* Compact unit card: name + status, tenant, then rent · due on one row. */
+  .properties-page .data-table-wrap--stack tbody.property-group tr:not(.property-group-head) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "unit status"
+      "tenant tenant"
+      "rent due"
+      "actions actions";
+    column-gap: 12px;
+    row-gap: 2px;
+    align-items: center;
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td {
+    display: block;
+    width: auto;
+    padding: 0;
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td::before {
+    content: none;
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td[data-label="Unit"] {
+    grid-area: unit;
+    font-weight: 600;
+    min-width: 0;
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td[data-label="Status"] {
+    grid-area: status;
+    justify-self: end;
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td[data-label="Tenant"] {
+    grid-area: tenant;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td[data-label="Rent"] {
+    grid-area: rent;
+    margin-top: 6px;
+    font-size: 0.9rem;
+    min-width: 0;
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td[data-label="Rent"] .unit-service-charge {
+    display: inline;
+    margin: 0 0 0 4px;
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td[data-label="Due date"] {
+    grid-area: due;
+    justify-self: end;
+    align-self: start;
+    margin-top: 6px;
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td[data-label="Due date"]::before {
+    content: "Due ";
+    padding: 0;
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.8rem;
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--muted);
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td[data-label="Due date"][data-empty="true"]::before {
+    content: none;
+  }
+
+  .properties-page .data-table-wrap--stack tbody.property-group td[data-label="Actions"] {
+    grid-area: actions;
+    width: 100%;
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+}
+
+@media (max-width: 640px) {
+  .properties-head {
+    margin-bottom: 12px;
+  }
+
+  .properties-head .page-title {
+    font-size: 1.35rem;
+  }
+
+  .properties-count {
+    font-size: 0.85rem;
+  }
+
+  .properties-head .properties-add {
+    padding: 9px 14px;
+  }
+
+  .properties-snapshot {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+
+  .properties-snapshot-item {
+    padding: 8px 10px;
+  }
+
+  .properties-snapshot .stat-label {
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+  }
+
+  .properties-snapshot-value {
+    font-size: clamp(0.82rem, 3.6vw, 1rem);
   }
 }
 

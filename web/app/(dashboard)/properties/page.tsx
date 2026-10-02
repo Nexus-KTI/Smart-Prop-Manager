@@ -9,8 +9,10 @@ import { PropertiesDashboard } from "@/components/PropertiesDashboard";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { buildDashboardFromPortfolio } from "@/lib/dashboard";
 import {
+  fetchPortfolioSummary,
   fetchPortfolioUnitsPage,
   fetchPropertiesPage,
+  type PortfolioSummary,
 } from "@/lib/api";
 import type { PortfolioUnit, Property } from "@/lib/types";
 
@@ -51,41 +53,43 @@ function propertiesForChecklist(
 
 function PropertiesSkeleton() {
   return (
-    <section className="dashboard" aria-busy="true" aria-label="Loading properties">
-      <header className="dashboard-header dashboard-header-row">
-        <div>
+    <section
+      className="dashboard properties-page"
+      aria-busy="true"
+      aria-label="Loading properties"
+    >
+      <header className="properties-head">
+        <div className="properties-head-text">
           <h1 className="page-title">Properties</h1>
-          <p className="page-subtitle">
-            Units, rent, and payment status across your portfolio.
+          <p className="properties-count">
+            <span className="skeleton-bar" style={{ width: "9rem" }} />
           </p>
         </div>
-        <div className="dashboard-header-actions">
-          <Link href="/properties/new" className="btn-primary">
-            Add property
-          </Link>
-        </div>
+        <Link href="/properties/new" className="btn-primary properties-add">
+          Add property
+        </Link>
       </header>
 
-      <div className="stat-row">
-        <div className="stat-block">
-          <p className="stat-label">Total Collected</p>
-          <p className="stat-value mono-data">
-            <span className="skeleton-bar" style={{ width: "56%" }} />
-          </p>
+      <dl className="properties-snapshot">
+        <div className="properties-snapshot-item">
+          <dt className="stat-label">Collected</dt>
+          <dd className="properties-snapshot-value mono-data">
+            <span className="skeleton-bar" style={{ width: "72%" }} />
+          </dd>
         </div>
-        <div className="stat-block">
-          <p className="stat-label">Outstanding</p>
-          <p className="stat-value mono-data">
-            <span className="skeleton-bar" style={{ width: "48%" }} />
-          </p>
+        <div className="properties-snapshot-item">
+          <dt className="stat-label">Outstanding</dt>
+          <dd className="properties-snapshot-value mono-data">
+            <span className="skeleton-bar" style={{ width: "64%" }} />
+          </dd>
         </div>
-        <div className="stat-block">
-          <p className="stat-label">Units Overdue</p>
-          <p className="stat-value mono-data">
-            <span className="skeleton-bar" style={{ width: "28%" }} />
-          </p>
+        <div className="properties-snapshot-item">
+          <dt className="stat-label">Overdue</dt>
+          <dd className="properties-snapshot-value mono-data">
+            <span className="skeleton-bar" style={{ width: "2rem" }} />
+          </dd>
         </div>
-      </div>
+      </dl>
 
       <div className="data-table-wrap">
         <table className="data-table">
@@ -120,6 +124,7 @@ function PropertiesPageInner() {
 
   const [portfolioUnits, setPortfolioUnits] = useState<PortfolioUnit[]>([]);
   const [emptyProperties, setEmptyProperties] = useState<Property[]>([]);
+  const [summary, setSummary] = useState<PortfolioSummary | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -137,13 +142,16 @@ function PropertiesPageInner() {
   );
 
   const loadInitial = useCallback(async () => {
-    const [unitsPage, propertiesPage] = await Promise.all([
+    const [unitsPage, propertiesPage, counts] = await Promise.all([
       fetchPortfolioUnitsPage(null),
       fetchPropertiesPage(null),
+      // Counts are additive; the list still renders from loaded rows without them.
+      fetchPortfolioSummary().catch(() => null),
     ]);
     setPortfolioUnits(unitsPage.items);
     setNextCursor(unitsPage.next_cursor);
     setEmptyProperties(emptyPropertiesFromPage(propertiesPage.items));
+    setSummary(counts);
   }, []);
 
   const loadMoreUnits = useCallback(async (cursor: string) => {
@@ -216,6 +224,7 @@ function PropertiesPageInner() {
         rows={dashboard.rows}
         stats={dashboard.stats}
         properties={checklistProperties}
+        summary={summary}
         highlightUnitId={highlightUnitId}
         highlightPropertyId={highlightPropertyId}
         initialOccupancy={initialOccupancy}
