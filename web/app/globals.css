@@ -3913,6 +3913,18 @@ a.property-group-name:focus-visible {
     margin-left: 0;
   }
 
+  /* Bell sits right on phones: anchor the panel to the sticky top bar, inset-wide. */
+  .shell-notifications {
+    position: static;
+  }
+
+  .shell-notifications-panel {
+    top: calc(100% - 4px);
+    left: var(--shell-inset);
+    right: var(--shell-inset);
+    width: auto;
+  }
+
   .auth-page {
     padding: 24px 16px;
   }
