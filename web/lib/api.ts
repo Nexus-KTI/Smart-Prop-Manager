@@ -2914,6 +2914,12 @@ export type ChatMessage = {
   body: string;
   created_at: string;
   kind?: "user" | "payment" | string;
+  media_kind?: "image" | "video" | "audio" | "document" | null;
+  media_name?: string | null;
+  media_url?: string | null;
+  media_mime?: string | null;
+  media_bytes?: number | null;
+  media_duration_ms?: number | null;
   meta?: {
     transaction_id?: string;
     amount?: number | string;
@@ -3018,6 +3024,26 @@ export async function sendThreadMessage(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ body }),
+  });
+  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not send"));
+  const data = (await res.json()) as { item: ChatMessage };
+  return data.item;
+}
+
+export async function sendThreadMedia(
+  threadId: string,
+  file: File,
+  opts?: { caption?: string; durationMs?: number },
+): Promise<ChatMessage> {
+  const body = new FormData();
+  body.set("file", file);
+  body.set("caption", opts?.caption ?? "");
+  if (opts?.durationMs != null) {
+    body.set("duration_ms", String(Math.round(opts.durationMs)));
+  }
+  const res = await apiFetch(`/messages/threads/${threadId}/media`, {
+    method: "POST",
+    body,
   });
   if (!res.ok) throw new Error(await readErrorDetail(res, "Could not send"));
   const data = (await res.json()) as { item: ChatMessage };

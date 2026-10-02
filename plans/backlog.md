@@ -51,6 +51,7 @@ No artisan payout rail until ops demand is real.
 
 ## Closed recently
 
+- Messages: photos, short videos, voice notes, and PDF/Word documents on chat and maintenance threads (`sql/041_message_media.sql`, `sql/042_message_documents.sql`)
 - Tenancy docs router: multipart upload, audited open, receipt acknowledgment, hold-safe delete, requests/review via 029 RPCs (20 xfails now real tests; flags still off)
 - Nexora favicon, app icons, manifest, link preview; lowercase logo wordmark
 

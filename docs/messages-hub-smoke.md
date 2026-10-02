@@ -22,6 +22,7 @@ Restart FastAPI so `/messages/*` mounts.
 6. With Messages closed, send from the other account → **bell badge** and **Messages rail badge** (landlord + tenant) update without reload; open thread → badges clear. Unread scan pages past 200 threads; Chat/Maintenance lists show honesty when capped at 100.
 7. Tenant submits a repair → Maintenance tab shows a thread for both sides.
 8. Landlord Publications tab → New publication → tenant sees it under Publications (and Notices).
+9. In a chat, attach a photo, short video, or PDF/Word document (photo and document 8 MB, video 25 MB) and send. The other side sees it without a reload. Record a voice note (up to 3 minutes) and send; the other side can play it. Thread list shows Photo, Video, Document, or Voice note.
 
 ## Realtime
 

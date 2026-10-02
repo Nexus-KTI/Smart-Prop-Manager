@@ -9116,14 +9116,92 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 
 .messages-composer {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-top: auto;
   padding-top: 8px;
   border-top: 1px solid var(--border);
+  position: relative;
 }
 
 .messages-composer .form-input {
   flex: 1;
+  min-width: 8rem;
+}
+
+.messages-tool {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+}
+
+.messages-tool[data-recording="true"] {
+  color: var(--alert);
+  border-color: var(--alert);
+}
+
+.messages-tool-text {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
+.messages-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.messages-pending {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.messages-pending-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.messages-media {
+  display: block;
+  width: min(100%, 280px);
+  max-height: 280px;
+  border-radius: 8px;
+  background: var(--background);
+}
+
+.messages-media-image {
+  object-fit: cover;
+}
+
+.messages-voice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.messages-voice audio {
+  width: 100%;
+}
+
+.messages-doc {
+  display: inline-block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 800px) {
@@ -9351,14 +9429,92 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
 
 .messages-composer {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-top: auto;
   padding-top: 8px;
   border-top: 1px solid var(--border);
+  position: relative;
 }
 
 .messages-composer .form-input {
   flex: 1;
+  min-width: 8rem;
+}
+
+.messages-tool {
+  width: 42px;
+  min-width: 42px;
+  padding: 0;
+}
+
+.messages-tool[data-recording="true"] {
+  color: var(--alert);
+  border-color: var(--alert);
+}
+
+.messages-tool-text {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
+.messages-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.messages-pending {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.messages-pending-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.messages-media {
+  display: block;
+  width: min(100%, 280px);
+  max-height: 280px;
+  border-radius: 8px;
+  background: var(--background);
+}
+
+.messages-media-image {
+  object-fit: cover;
+}
+
+.messages-voice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.messages-voice audio {
+  width: 100%;
+}
+
+.messages-doc {
+  display: inline-block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 800px) {

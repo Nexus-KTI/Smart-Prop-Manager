@@ -27,6 +27,18 @@ Do not build billing, bank feeds, or NIN/BVN in this pass.
 
 ---
 
+# Spec — Message media
+
+**Updated:** 2026-10-02 · **Status:** built
+
+Photos, short videos, voice notes, and PDF or Word documents on existing chat
+and maintenance threads. Private `message-media` bucket. The API returns a
+one-hour signed URL and does not expose the storage path. Limits: photo 8 MB,
+document 8 MB, video 25 MB, voice note 8 MB and 3 minutes. Text messages stay
+as they are. Payment lines are unchanged.
+
+---
+
 # Spec — Tenancy docs router (backlog Next)
 
 **Updated:** 2026-10-01 · **Status:** built (flags off) · **Launch:** stays dark behind

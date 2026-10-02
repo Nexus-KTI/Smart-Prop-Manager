@@ -1,11 +1,11 @@
-"""TenantCloud-style messages hub: chat + maintenance threads."""
+"""Messages hub: chat, maintenance threads, photos, video, and voice notes."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
@@ -597,7 +597,47 @@ def list_messages(thread_id: str, user: AuthedUser = Depends(get_current_user)):
             or []
         )
     peer_last_read_at = _peer_last_read_at(svc, thread, user.id)
-    return {"items": rows, "peer_last_read_at": peer_last_read_at}
+    from lib.message_media import present_message
+
+    return {
+        "items": [present_message(dict(row)) for row in rows],
+        "peer_last_read_at": peer_last_read_at,
+    }
+
+
+def _store_user_message(
+    svc: Any,
+    thread: dict,
+    user_id: str,
+    body: str,
+    extra: dict | None = None,
+) -> dict:
+    from lib.message_media import present_message, preview_for
+
+    now = _now()
+    row = {
+        "thread_id": thread["id"],
+        "sender_id": user_id,
+        "body": body,
+        "kind": "user",
+        "created_at": now,
+    }
+    if extra:
+        row.update(extra)
+    inserted = svc.table("messages").insert(row).execute().data
+    msg = _first_row(inserted)
+    if not msg:
+        raise HTTPException(status_code=500, detail="Could not send message")
+    svc.table("message_threads").update(
+        {
+            "last_message_at": now,
+            "last_message_preview": preview_for(body, row.get("media_kind")),
+        }
+    ).eq("id", thread["id"]).execute()
+    svc.table("message_thread_reads").upsert(
+        {"thread_id": thread["id"], "user_id": user_id, "last_read_at": now}
+    ).execute()
+    return present_message(msg)
 
 
 @router.post("/threads/{thread_id}/messages", status_code=status.HTTP_201_CREATED)
@@ -611,36 +651,64 @@ def send_message(
     if len(body) > 4000:
         raise HTTPException(status_code=400, detail="Message too long")
 
-    now = _now()
     svc = _svc_or_user(user)
-    inserted = (
-        svc.table("messages")
-        .insert(
-            {
-                "thread_id": thread_id,
-                "sender_id": user.id,
-                "body": body,
-                "kind": "user",
-                "created_at": now,
-            }
-        )
-        .execute()
-        .data
+    msg = _store_user_message(svc, thread, user.id, body)
+    return {"item": msg, "thread_id": thread["id"]}
+
+
+@router.post("/threads/{thread_id}/media", status_code=status.HTTP_201_CREATED)
+async def send_media_message(
+    thread_id: str,
+    file: UploadFile = File(...),
+    caption: str = Form(""),
+    duration_ms: str = Form(""),
+    user: AuthedUser = Depends(get_current_user),
+):
+    """Photo, short video, voice note, or document. Optional caption rides in the body."""
+    from lib.message_media import (
+        MAX_VIDEO_BYTES,
+        clamp_duration_ms,
+        delete_message_media,
+        upload_message_media,
     )
-    msg = _first_row(inserted)
-    if not msg:
-        raise HTTPException(status_code=500, detail="Could not send message")
 
-    preview = body if len(body) <= 140 else body[:137] + "…"
-    svc.table("message_threads").update(
-        {"last_message_at": now, "last_message_preview": preview}
-    ).eq("id", thread_id).execute()
+    thread = _load_thread(user, thread_id)
+    text = (caption or "").strip()
+    if len(text) > 4000:
+        raise HTTPException(status_code=400, detail="Message too long")
 
-    # Mark sender as read
-    svc.table("message_thread_reads").upsert(
-        {"thread_id": thread_id, "user_id": user.id, "last_read_at": now}
-    ).execute()
+    raw = await file.read(MAX_VIDEO_BYTES + 1)
+    if len(raw) > MAX_VIDEO_BYTES:
+        raise HTTPException(status_code=400, detail="Videos must be 25 MB or smaller")
 
+    uploaded: dict | None = None
+    try:
+        uploaded = upload_message_media(
+            thread_id=thread_id,
+            content_type=file.content_type,
+            file_name=file.filename,
+            file_bytes=raw,
+        )
+        duration = clamp_duration_ms(duration_ms, kind=str(uploaded["media_kind"]))
+    except ValueError as exc:
+        if uploaded:
+            delete_message_media(str(uploaded.get("media_path") or ""))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Could not upload") from exc
+
+    extra = dict(uploaded)
+    if duration is not None:
+        extra["media_duration_ms"] = duration
+    svc = _svc_or_user(user)
+    try:
+        msg = _store_user_message(svc, thread, user.id, text, extra)
+    except HTTPException:
+        delete_message_media(str(uploaded.get("media_path") or ""))
+        raise
+    except Exception as exc:
+        delete_message_media(str(uploaded.get("media_path") or ""))
+        raise HTTPException(status_code=500, detail="Could not send message") from exc
     return {"item": msg, "thread_id": thread["id"]}
 
 

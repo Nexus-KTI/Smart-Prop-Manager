@@ -1,7 +1,8 @@
 "use client";
 
+import { FileText, Image as ImageIcon, Mic, Square } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { useToast } from "@/components/ToastProvider";
 import {
@@ -17,6 +18,7 @@ import {
   markThreadRead,
   openChatThread,
   openMaintenanceThread,
+  sendThreadMedia,
   sendThreadMessage,
   type ChatMessage,
   type MessageContact,
@@ -38,6 +40,64 @@ type Props = {
   audience: "landlord" | "tenant";
 };
 
+type PendingMedia = {
+  file: File;
+  kind: "image" | "video" | "audio" | "document";
+  previewUrl?: string;
+  durationMs?: number;
+};
+
+const PHOTO_LIMIT = 8 * 1024 * 1024;
+const DOCUMENT_LIMIT = 8 * 1024 * 1024;
+const VIDEO_LIMIT = 25 * 1024 * 1024;
+const MEDIA_ACCEPT =
+  "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.jpg,.jpeg,.png,.webp,.gif,.mp4,.webm,.mov";
+const DOCUMENT_ACCEPT =
+  "application/pdf,.pdf,application/msword,.doc,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const VOICE_LIMIT_MS = 3 * 60 * 1000;
+
+function mediaLabel(kind?: string | null): string {
+  if (kind === "image") return "Photo";
+  if (kind === "video") return "Video";
+  if (kind === "audio") return "Voice note";
+  if (kind === "document") return "Document";
+  return "";
+}
+
+function threadPreview(body: string, kind?: string | null): string {
+  const label = mediaLabel(kind);
+  const caption = body.trim();
+  const text = label ? (caption ? `${label}: ${caption}` : label) : caption;
+  return text.length <= 140 ? text : `${text.slice(0, 137)}…`;
+}
+
+function formatClock(ms?: number | null): string {
+  const total = Math.max(0, Math.round((ms || 0) / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function kindFromFile(file: File): "image" | "video" | "audio" | "document" | null {
+  const mime = (file.type || "").split(";")[0].toLowerCase();
+  if (
+    mime === "application/pdf" ||
+    mime === "application/msword" ||
+    mime.includes("wordprocessingml")
+  ) {
+    return "document";
+  }
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  const name = file.name.toLowerCase();
+  if (/\.(pdf|docx?)$/.test(name)) return "document";
+  if (/\.(jpe?g|png|webp|gif)$/.test(name)) return "image";
+  if (/\.(mp4|mov|webm)$/.test(name)) return "video";
+  if (/\.(mp3|wav|m4a|ogg)$/.test(name)) return "audio";
+  return null;
+}
+
 function asChatMessage(row: Record<string, unknown>): ChatMessage {
   return {
     id: String(row.id),
@@ -47,6 +107,13 @@ function asChatMessage(row: Record<string, unknown>): ChatMessage {
     created_at: String(row.created_at || new Date().toISOString()),
     kind: (row.kind as ChatMessage["kind"]) || "user",
     meta: (row.meta as ChatMessage["meta"]) ?? null,
+    media_kind: (row.media_kind as ChatMessage["media_kind"]) ?? null,
+    media_url: row.media_url ? String(row.media_url) : null,
+    media_mime: row.media_mime ? String(row.media_mime) : null,
+    media_name: row.media_name ? String(row.media_name) : null,
+    media_bytes: typeof row.media_bytes === "number" ? row.media_bytes : null,
+    media_duration_ms:
+      typeof row.media_duration_ms === "number" ? row.media_duration_ms : null,
   };
 }
 
@@ -67,8 +134,20 @@ export function MessagesHubClient({ audience }: Props) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pubOpen, setPubOpen] = useState(false);
+  const [pending, setPending] = useState<PendingMedia | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recordMs, setRecordMs] = useState(0);
   const activeIdRef = useRef<string | null>(null);
   const meIdRef = useRef<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pickKindRef = useRef<"media" | "document">("media");
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordStartedRef = useRef(0);
+  const previewUrlRef = useRef<string | null>(null);
+  const loadMessagesRef = useRef<
+    (threadId: string, opts?: { quiet?: boolean }) => Promise<void>
+  >(async () => undefined);
 
   useEffect(() => {
     activeIdRef.current = activeId;
@@ -149,6 +228,53 @@ export function MessagesHubClient({ audience }: Props) {
   );
 
   useEffect(() => {
+    loadMessagesRef.current = loadMessages;
+  }, [loadMessages]);
+
+  useEffect(() => {
+    if (!recording) return;
+    const id = window.setInterval(() => {
+      const elapsed = Date.now() - recordStartedRef.current;
+      setRecordMs(elapsed);
+      if (elapsed >= VOICE_LIMIT_MS) {
+        const rec = recorderRef.current;
+        if (rec && rec.state !== "inactive") rec.stop();
+      }
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [recording]);
+
+  useEffect(() => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPending(null);
+    if (fileRef.current) fileRef.current.value = "";
+    const rec = recorderRef.current;
+    if (!rec) return;
+    rec.onstop = () => {
+      rec.stream.getTracks().forEach((track) => track.stop());
+    };
+    if (rec.state !== "inactive") rec.stop();
+    recorderRef.current = null;
+    setRecording(false);
+    setRecordMs(0);
+  }, [activeId]);
+
+  useEffect(() => {
+    return () => {
+      const rec = recorderRef.current;
+      if (rec) {
+        rec.onstop = null;
+        if (rec.state !== "inactive") rec.stop();
+        rec.stream.getTracks().forEach((track) => track.stop());
+      }
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (activeId && (tab === "chat" || tab === "maintenance")) {
       void loadMessages(activeId);
     }
@@ -182,7 +308,7 @@ export function MessagesHubClient({ audience }: Props) {
             next[idx] = {
               ...current,
               last_message_at: msg.created_at,
-              last_message_preview: msg.body.slice(0, 140),
+              last_message_preview: threadPreview(msg.body, msg.media_kind),
               unread: isActive ? false : msg.sender_id !== selfId,
             };
             next.sort((a, b) =>
@@ -192,6 +318,13 @@ export function MessagesHubClient({ audience }: Props) {
             );
             return next;
           });
+
+          if (msg.media_kind && !msg.media_url) {
+            if (currentActive === threadId) {
+              void loadMessagesRef.current(threadId, { quiet: true });
+            }
+            return;
+          }
 
           if (currentActive === threadId) {
             setMessages((prev) => {
@@ -286,24 +419,148 @@ export function MessagesHubClient({ audience }: Props) {
     }
   }
 
+  function clearPending() {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPending(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function openPicker(kind: "media" | "document") {
+    const input = fileRef.current;
+    if (!input) return;
+    pickKindRef.current = kind;
+    input.accept = kind === "document" ? DOCUMENT_ACCEPT : MEDIA_ACCEPT;
+    input.click();
+  }
+
+  function onPickFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const wantDocument = pickKindRef.current === "document";
+    const kind = kindFromFile(file);
+    if (wantDocument) {
+      if (kind !== "document") {
+        showToast("Use a PDF or Word document", "error");
+        return;
+      }
+      if (file.size > DOCUMENT_LIMIT) {
+        showToast("Documents must be 8 MB or smaller", "error");
+        return;
+      }
+    } else if (!kind || kind === "audio" || kind === "document") {
+      showToast("Use a photo or video", "error");
+      return;
+    } else if (file.size > (kind === "image" ? PHOTO_LIMIT : VIDEO_LIMIT)) {
+      showToast(
+        kind === "image"
+          ? "Photos must be 8 MB or smaller"
+          : "Videos must be 25 MB or smaller",
+        "error",
+      );
+      return;
+    }
+    clearPending();
+    const previewUrl = kind === "image" ? URL.createObjectURL(file) : undefined;
+    previewUrlRef.current = previewUrl ?? null;
+    setPending({ file, kind: kind || "document", previewUrl });
+  }
+
+  async function startRecording() {
+    if (sending || recording) return;
+    clearPending();
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      showToast("Voice notes are not available in this browser", "error");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferred = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+      const mime = preferred.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      chunksRef.current = [];
+      rec.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const blobType = rec.mimeType || mime || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: blobType });
+        chunksRef.current = [];
+        const durationMs = Date.now() - recordStartedRef.current;
+        recorderRef.current = null;
+        setRecording(false);
+        if (blob.size < 1) {
+          showToast("Voice note was empty", "error");
+          return;
+        }
+        const ext = blobType.includes("mp4") ? "m4a" : blobType.includes("ogg") ? "ogg" : "webm";
+        const file = new File([blob], `voice-note.${ext}`, { type: blobType });
+        setPending({ file, kind: "audio", durationMs });
+      };
+      recorderRef.current = rec;
+      recordStartedRef.current = Date.now();
+      setRecordMs(0);
+      rec.start();
+      setRecording(true);
+    } catch {
+      showToast("Microphone is unavailable", "error");
+    }
+  }
+
+  function stopRecording() {
+    const rec = recorderRef.current;
+    if (!rec || rec.state === "inactive") {
+      setRecording(false);
+      return;
+    }
+    rec.stop();
+  }
+
+  function discardRecording() {
+    const rec = recorderRef.current;
+    chunksRef.current = [];
+    if (rec) {
+      rec.onstop = () => {
+        rec.stream.getTracks().forEach((track) => track.stop());
+      };
+      if (rec.state !== "inactive") rec.stop();
+      else rec.stream.getTracks().forEach((track) => track.stop());
+      recorderRef.current = null;
+    }
+    setRecording(false);
+    setRecordMs(0);
+  }
+
   async function onSend(event: FormEvent) {
     event.preventDefault();
-    if (!activeId || !composer.trim()) return;
+    if (!activeId || recording) return;
+    const text = composer.trim();
+    if (!text && !pending) return;
     setSending(true);
     try {
-      const msg = await sendThreadMessage(activeId, composer.trim());
+      const msg = pending
+        ? await sendThreadMedia(activeId, pending.file, {
+            caption: text,
+            durationMs: pending.durationMs,
+          })
+        : await sendThreadMessage(activeId, text);
       setMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev;
         return [...prev, msg];
       });
       setComposer("");
+      clearPending();
       setThreads((prev) =>
         prev.map((t) =>
           t.id === activeId
             ? {
                 ...t,
                 last_message_at: msg.created_at,
-                last_message_preview: msg.body.slice(0, 140),
+                last_message_preview: threadPreview(msg.body, msg.media_kind),
                 unread: false,
               }
             : t,
@@ -649,7 +906,52 @@ export function MessagesHubClient({ audience }: Props) {
                           className="messages-bubble"
                           data-mine={mine ? "true" : undefined}
                         >
-                          <p style={{ margin: 0 }}>{m.body}</p>
+                          {m.media_kind === "image" && m.media_url ? (
+                            <a href={m.media_url} target="_blank" rel="noreferrer">
+                              <img
+                                className="messages-media messages-media-image"
+                                src={m.media_url}
+                                alt={m.body || "Photo"}
+                              />
+                            </a>
+                          ) : null}
+                          {m.media_kind === "video" && m.media_url ? (
+                            <video
+                              className="messages-media"
+                              controls
+                              preload="metadata"
+                              src={m.media_url}
+                            />
+                          ) : null}
+                          {m.media_kind === "document" && m.media_url ? (
+                            <a
+                              className="table-link messages-doc"
+                              href={m.media_url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {m.media_name || "Document"}
+                            </a>
+                          ) : null}
+                          {m.media_kind === "audio" && m.media_url ? (
+                            <div className="messages-voice">
+                              <span>
+                                Voice note
+                                {m.media_duration_ms
+                                  ? ` ${formatClock(m.media_duration_ms)}`
+                                  : ""}
+                              </span>
+                              <audio controls preload="metadata" src={m.media_url} />
+                            </div>
+                          ) : null}
+                          {m.media_kind && !m.media_url ? (
+                            <p className="table-muted" style={{ margin: 0 }}>
+                              {mediaLabel(m.media_kind)} unavailable
+                            </p>
+                          ) : null}
+                          {m.body ? (
+                            <p style={{ margin: m.media_kind ? "8px 0 0" : 0 }}>{m.body}</p>
+                          ) : null}
                           <span className="messages-bubble-foot table-muted">
                             {new Date(m.created_at).toLocaleString()}
                             {mine && tab === "chat" ? (
@@ -665,20 +967,100 @@ export function MessagesHubClient({ audience }: Props) {
                   )}
                 </div>
                 <form className="messages-composer" onSubmit={onSend}>
+                  {recording ? (
+                    <div className="messages-pending">
+                      <span className="mono-data">Recording {formatClock(recordMs)}</span>
+                      <button
+                        type="button"
+                        className="btn-secondary messages-tool-text"
+                        onClick={discardRecording}
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  ) : pending ? (
+                    <div className="messages-pending">
+                      {pending.kind === "image" && pending.previewUrl ? (
+                        <img
+                          className="messages-pending-thumb"
+                          src={pending.previewUrl}
+                          alt=""
+                        />
+                      ) : null}
+                      <span>
+                        {pending.kind === "audio"
+                          ? `Voice note ${formatClock(pending.durationMs)}`
+                          : pending.kind === "video"
+                            ? "Video"
+                            : pending.kind === "document"
+                              ? pending.file.name
+                              : "Photo"}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-secondary messages-tool-text"
+                        onClick={clearPending}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : null}
+                  <input
+                    ref={fileRef}
+                    className="messages-file"
+                    type="file"
+                    accept={MEDIA_ACCEPT}
+                    onChange={onPickFile}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary messages-tool"
+                    aria-label="Add photo or video"
+                    disabled={sending || recording}
+                    onClick={() => openPicker("media")}
+                  >
+                    <ImageIcon size={18} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary messages-tool"
+                    aria-label="Add document"
+                    disabled={sending || recording}
+                    onClick={() => openPicker("document")}
+                  >
+                    <FileText size={18} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary messages-tool"
+                    aria-label={recording ? "Stop voice note" : "Record voice note"}
+                    aria-pressed={recording}
+                    data-recording={recording ? "true" : undefined}
+                    disabled={sending}
+                    onClick={recording ? stopRecording : () => void startRecording()}
+                  >
+                    {recording ? (
+                      <Square size={14} aria-hidden="true" />
+                    ) : (
+                      <Mic size={18} aria-hidden="true" />
+                    )}
+                  </button>
                   <input
                     className="form-input"
                     value={composer}
                     onChange={(e) => setComposer(e.target.value)}
-                    placeholder="Write a message…"
+                    placeholder={
+                      pending?.kind === "audio" ? "Add a note…" : "Write a message…"
+                    }
                     maxLength={4000}
-                    disabled={sending}
+                    disabled={sending || recording}
                   />
                   <button
                     type="submit"
                     className="btn-primary"
-                    disabled={sending || !composer.trim()}
+                    disabled={sending || recording || (!composer.trim() && !pending)}
                   >
-                    Send
+                    {sending ? "Sending…" : "Send"}
                   </button>
                 </form>
               </>
