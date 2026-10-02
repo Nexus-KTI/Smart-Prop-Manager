@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { createClient } from "@/lib/supabase/client";
+
 type Props = {
   label: string;
   href: string;
@@ -11,10 +13,26 @@ type Props = {
 /**
  * Mobile-only conversion bar. Stays hidden over the hero, then shows after
  * scroll. Hides again when the final CTA or footer is on screen so it doesn’t
- * cover forms or legal copy.
+ * cover forms or legal copy. Never shown to signed-in users (header has Dashboard).
  */
 export function MarketingStickyCta({ label, href }: Props) {
   const [visible, setVisible] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data } = await createClient().auth.getSession();
+        if (!cancelled && data.session) setSignedIn(true);
+      } catch {
+        /* keep the signed-out bar */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined") return;
@@ -67,6 +85,8 @@ export function MarketingStickyCta({ label, href }: Props) {
     sync();
     return () => observers.forEach((o) => o.disconnect());
   }, []);
+
+  if (signedIn) return null;
 
   const className = [
     "marketing-sticky-cta",
