@@ -4,13 +4,12 @@ import { Moon, Sun } from "lucide-react";
 import { useSyncExternalStore } from "react";
 
 import {
+  THEME_CHANGE_EVENT,
   THEME_STORAGE_KEY,
   getPreferredTheme,
   persistTheme,
   type Theme,
 } from "@/lib/theme";
-
-const THEME_CHANGE_EVENT = "spm-theme-change";
 
 function subscribeTheme(onStoreChange: () => void) {
   if (typeof window === "undefined") return () => {};

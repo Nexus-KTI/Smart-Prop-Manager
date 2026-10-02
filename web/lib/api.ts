@@ -2851,6 +2851,9 @@ export type PortfolioTenancy = {
   tenant_contact?: string | null;
   tenant_user_id?: string | null;
   term_end?: string | null;
+  start_date?: string | null;
+  activated_at?: string | null;
+  created_at?: string | null;
   unit_label?: string | null;
   property_name?: string | null;
   property_id?: string | null;

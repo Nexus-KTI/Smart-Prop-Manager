@@ -70,27 +70,6 @@ function PropertiesSkeleton() {
         </Link>
       </header>
 
-      <dl className="properties-snapshot">
-        <div className="properties-snapshot-item">
-          <dt className="stat-label">Collected</dt>
-          <dd className="properties-snapshot-value mono-data">
-            <span className="skeleton-bar" style={{ width: "72%" }} />
-          </dd>
-        </div>
-        <div className="properties-snapshot-item">
-          <dt className="stat-label">Outstanding</dt>
-          <dd className="properties-snapshot-value mono-data">
-            <span className="skeleton-bar" style={{ width: "64%" }} />
-          </dd>
-        </div>
-        <div className="properties-snapshot-item">
-          <dt className="stat-label">Overdue</dt>
-          <dd className="properties-snapshot-value mono-data">
-            <span className="skeleton-bar" style={{ width: "2rem" }} />
-          </dd>
-        </div>
-      </dl>
-
       <div className="data-table-wrap">
         <table className="data-table">
           <thead>

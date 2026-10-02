@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   applySidebarCollapsed,
@@ -9,6 +9,8 @@ import {
 } from "@/lib/sidebar";
 
 const MOBILE_RAIL_MQ = "(max-width: 640px)";
+const FOCUSABLE =
+  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function isMobileRail(): boolean {
   return window.matchMedia(MOBILE_RAIL_MQ).matches;
@@ -20,6 +22,8 @@ export function useSidebarRail(pathname: string) {
   const [peekLocked, setPeekLocked] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [ready, setReady] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const drawerOpen = mobile && !collapsed;
 
   useEffect(() => {
     const mq = window.matchMedia(MOBILE_RAIL_MQ);
@@ -50,16 +54,42 @@ export function useSidebarRail(pathname: string) {
   }, [pathname]);
 
   useEffect(() => {
-    if (collapsed || !mobile) return;
+    if (!drawerOpen) return;
+    const root = document.documentElement;
+    const opener =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    root.setAttribute("data-drawer-open", "true");
+    sidebarRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
-      setCollapsed(true);
-      persistSidebarCollapsed(true);
-      setPeekLocked(true);
+      if (e.key === "Escape") {
+        setCollapsed(true);
+        persistSidebarCollapsed(true);
+        setPeekLocked(true);
+        return;
+      }
+      if (e.key !== "Tab" || !sidebarRef.current) return;
+      const items = Array.from(
+        sidebarRef.current.querySelectorAll<HTMLElement>(FOCUSABLE),
+      ).filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [collapsed, mobile]);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      root.removeAttribute("data-drawer-open");
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [drawerOpen]);
 
   function toggleCollapsed() {
     const next = !collapsed;
@@ -84,6 +114,9 @@ export function useSidebarRail(pathname: string) {
     toggleCollapsed,
     closeDrawer,
     unlockPeek,
-    drawerOpen: mobile && !collapsed,
+    drawerOpen,
+    /** Off-canvas on phones: keep it out of the tab order and screen readers. */
+    drawerHidden: mobile && collapsed,
+    sidebarRef,
   };
 }

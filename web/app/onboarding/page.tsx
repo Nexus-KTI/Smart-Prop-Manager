@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { BrandMark, BrandStamp } from "@/components/BrandMark";
+import { BrandMark, BrandStamp, BrandWordmark } from "@/components/BrandMark";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
-import { BRAND_NAME } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function OnboardingPage() {
@@ -15,7 +14,7 @@ export default async function OnboardingPage() {
     const { count, error } = await supabase
       .from("properties")
       .select("id", { count: "exact", head: true });
-    if (!error && (count ?? 0) > 0) redirect("/properties");
+    if (!error && (count ?? 0) > 0) redirect("/dashboard");
   }
 
   const meta = user?.user_metadata ?? {};
@@ -28,7 +27,7 @@ export default async function OnboardingPage() {
           <BrandMark size={22} />
         </span>
         <span className="auth-brand-text">
-          {BRAND_NAME}{" "}
+          <BrandWordmark />
           <BrandStamp className="marketing-brand-stamp" />
         </span>
       </p>

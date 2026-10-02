@@ -7,8 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AuthLoadingGate } from "@/components/auth/AuthLoadingGate";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { claimTenancyInvite } from "@/lib/api";
-import { BrandMark, BrandStamp } from "@/components/BrandMark";
-import { BRAND_NAME } from "@/lib/brand";
+import { BrandMark, BrandStamp, BrandWordmark } from "@/components/BrandMark";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeTenancyClaimToken } from "@/lib/tenancy-invite";
 
@@ -88,7 +87,7 @@ function ClaimInner() {
           <BrandMark size={22} />
         </span>
         <span className="auth-brand-text">
-          {BRAND_NAME}{" "}
+          <BrandWordmark />
           <BrandStamp className="marketing-brand-stamp" />
         </span>
       </p>

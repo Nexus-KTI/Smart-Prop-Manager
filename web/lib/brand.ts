@@ -3,7 +3,10 @@ export const BRAND_NAME = "Nexora";
 export const BRAND_COMPANY = "KTI";
 export const BRAND_STAMP = "by KTI";
 export const BRAND_FULL = "Nexora by KTI";
-export const BRAND_TAGLINE = "Who paid. Who owes. What’s next.";
+export const BRAND_TAGLINE = "Property management made simple.";
+/** Landlord sidebar footer lockup. */
+export const BRAND_SIDEBAR_TITLE = "Smarter property management";
+export const BRAND_SIDEBAR_LINE = "Made simple.";
 export const BRAND_ONE_LINER =
   "Nexora is an Estate OS for Nigerian landlords: unit money truth first, then tenancies, messages, repairs, access, staff, and books - without US proptech pitch speak in the logged-in product.";
 

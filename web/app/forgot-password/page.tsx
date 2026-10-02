@@ -1,10 +1,9 @@
 import { Suspense } from "react";
 import Link from "next/link";
 
-import { BrandMark, BrandStamp } from "@/components/BrandMark";
+import { BrandMark, BrandStamp, BrandWordmark } from "@/components/BrandMark";
 import { AuthLoadingGate } from "@/components/auth/AuthLoadingGate";
 import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
-import { BRAND_NAME } from "@/lib/brand";
 import { inviteOnlySignup } from "@/lib/invite";
 
 export default function ForgotPasswordPage() {
@@ -19,7 +18,7 @@ export default function ForgotPasswordPage() {
               <BrandMark size={22} />
             </span>
             <span className="auth-brand-text">
-              {BRAND_NAME}{" "}
+              <BrandWordmark />
               <BrandStamp className="marketing-brand-stamp" />
             </span>
           </p>

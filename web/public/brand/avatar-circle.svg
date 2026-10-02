@@ -1,8 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-  <circle cx="16" cy="16" r="16" fill="#0F6E4F"/>
+  <circle cx="16" cy="16" r="16" fill="#123B32"/>
   <path
-    fill="#FFFFFF"
+    fill="#20B486"
     fill-rule="evenodd"
-    d="M5 4H11L21.667 20H27V28H21L10.333 12H5ZM21 4H27V12H21ZM5 14H11V18H5ZM21 14H27V18H21ZM5 20H11V28H5Z"
+    d="M4 12H10V29H4ZM22 4H28V29H22Z"
+  />
+  <path
+    fill="#0F6E4F"
+    fill-rule="evenodd"
+    d="M10 12L16 12L28 29L22 29Z"
+  />
+  <path
+    fill="#FF793F"
+    fill-rule="evenodd"
+    d="M23 3H28V9H23Z"
   />
 </svg>

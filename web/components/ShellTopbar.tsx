@@ -3,18 +3,20 @@
 import Link from "next/link";
 import { Menu, PanelLeftClose } from "lucide-react";
 
-import { BrandMark } from "@/components/BrandMark";
+import { BrandMark, BrandWordmark } from "@/components/BrandMark";
 import { BRAND_NAME } from "@/lib/brand";
 
-/** Shared shell header, menu toggle left, utilities + account right. */
+/** Shared shell header: menu toggle + search left, utilities + account right. */
 export function ShellTopbar({
   collapsed,
   onToggleMenu,
+  search,
   utilities,
   account,
 }: {
   collapsed: boolean;
   onToggleMenu: () => void;
+  search?: React.ReactNode;
   utilities?: React.ReactNode;
   account?: React.ReactNode;
 }) {
@@ -42,13 +44,16 @@ export function ShellTopbar({
           <span className="sidebar-brand-mark" aria-hidden="true">
             <BrandMark size={20} />
           </span>
-          <span className="shell-topbar-brand-name">{BRAND_NAME}</span>
+          <BrandWordmark className="shell-topbar-brand-name" />
         </Link>
+        {search}
+      </div>
+      <div className="shell-topbar-end">
         {utilities ? (
           <div className="shell-topbar-utilities">{utilities}</div>
         ) : null}
+        {account}
       </div>
-      <div className="shell-topbar-end">{account}</div>
     </header>
   );
 }

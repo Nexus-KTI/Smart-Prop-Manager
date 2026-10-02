@@ -27,10 +27,10 @@ async function landingFromSupabase(): Promise<string> {
     const { count, error } = await supabase
       .from("properties")
       .select("id", { count: "exact", head: true });
-    if (error) return "/properties";
-    return (count ?? 0) > 0 ? "/properties" : "/onboarding";
+    if (error) return "/dashboard";
+    return (count ?? 0) > 0 ? "/dashboard" : "/onboarding";
   } catch {
-    return "/properties";
+    return "/dashboard";
   }
 }
 
@@ -54,7 +54,7 @@ export async function redirectAfterAuth(router: AuthRouter) {
         nextPath = "/admin/leads";
       } else {
         const page = await fetchPropertiesPage();
-        nextPath = page.items.length > 0 ? "/properties" : "/onboarding";
+        nextPath = page.items.length > 0 ? "/dashboard" : "/onboarding";
       }
     }
   } catch {

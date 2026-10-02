@@ -8,11 +8,11 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const token_hash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const nextRaw = searchParams.get("next") || "/properties";
+  const nextRaw = searchParams.get("next") || "/dashboard";
   const next =
     nextRaw.startsWith("/") && !nextRaw.startsWith("//")
       ? nextRaw
-      : "/properties";
+      : "/dashboard";
 
   const supabase = await createClient();
 

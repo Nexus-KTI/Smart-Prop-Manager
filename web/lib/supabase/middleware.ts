@@ -234,7 +234,7 @@ export async function updateSession(request: NextRequest) {
       .select("id", { count: "exact", head: true });
 
     url.pathname =
-      !error && (count ?? 0) > 0 ? "/properties" : "/onboarding";
+      !error && (count ?? 0) > 0 ? "/dashboard" : "/onboarding";
     return NextResponse.redirect(url);
   }
 
@@ -275,20 +275,20 @@ export async function updateSession(request: NextRequest) {
       // Claim is allowed before role flips to artisan; other artisan routes are not.
       const url = request.nextUrl.clone();
       url.pathname =
-        role === "tenant" ? "/tenant" : "/properties";
+        role === "tenant" ? "/tenant" : "/dashboard";
       return NextResponse.redirect(url);
     }
   }
 
   if (user && (pathname === "/leads" || pathname.startsWith("/leads/"))) {
     const url = request.nextUrl.clone();
-    url.pathname = (await userIsAdmin()) ? "/admin/leads" : "/properties";
+    url.pathname = (await userIsAdmin()) ? "/admin/leads" : "/dashboard";
     return NextResponse.redirect(url);
   }
 
   if (user && isAdminRoute && !(await userIsAdmin())) {
     const url = request.nextUrl.clone();
-    url.pathname = "/properties";
+    url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 

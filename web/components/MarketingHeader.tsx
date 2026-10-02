@@ -10,7 +10,7 @@ import {
   type CSSProperties,
 } from "react";
 
-import { BrandMark, BrandStamp } from "@/components/BrandMark";
+import { BrandMark, BrandStamp, BrandWordmark } from "@/components/BrandMark";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { fetchMe } from "@/lib/api";
 import { BRAND_NAME } from "@/lib/brand";
@@ -78,7 +78,7 @@ export function MarketingHeader({ inviteOnly }: Props) {
         const supabase = createClient();
         const { data } = await supabase.auth.getSession();
         if (!data.session || cancelled) return;
-        setDashboardHref("/properties");
+        setDashboardHref("/dashboard");
         const me = await fetchMe();
         if (cancelled) return;
         if (me.role === "tenant") setDashboardHref("/tenant");
@@ -148,7 +148,7 @@ export function MarketingHeader({ inviteOnly }: Props) {
               <BrandMark size={26} />
             </span>
             <span className="marketing-logo-text">
-              <span className="marketing-logo-name">{BRAND_NAME}</span>
+              <BrandWordmark className="marketing-logo-name" />
               <BrandStamp className="marketing-logo-stamp" />
             </span>
           </Link>

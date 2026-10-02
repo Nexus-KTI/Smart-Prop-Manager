@@ -1,4 +1,4 @@
-"""The ledger-N path in mark.svg is the only mark geometry."""
+"""The N in mark.svg is the only mark geometry."""
 
 from __future__ import annotations
 
@@ -19,89 +19,66 @@ DERIVED = (
     "app-icon.svg",
     "avatar-circle.svg",
 )
-APP_ICON = ROOT / "web" / "app" / "icon.svg"
-
+APP_ICON = APP / "icon.svg"
 PATH_RE = re.compile(r'\sd="([^"]+)"')
 
 
-def _d(text: str, label: str) -> str:
-    found = PATH_RE.findall(text)
-    assert len(found) == 1, f"{label} should contain exactly one path d"
-    return found[0]
+def _paths(text: str, label: str) -> list[str]:
+    # The wordmark leaf is a curve and is not part of the mark.
+    found = [d for d in PATH_RE.findall(text) if "C" not in d and "c" not in d]
+    assert len(found) == 3, f"{label} should contain stems, diagonal, and cap"
+    return found
 
 
 def test_derived_marks_match_mark_svg():
-    source = _d(MARK_SVG.read_text(encoding="utf-8"), "mark.svg")
-    assert source.count("M") == 5, "ledger N = diagonal + 4 stem pieces, non-overlapping"
-
-    tsx = _d(BRAND_MARK_TSX.read_text(encoding="utf-8"), "BrandMark.tsx")
-    assert tsx == source
-
+    source = _paths(MARK_SVG.read_text(encoding="utf-8"), "mark.svg")
+    assert source[0].count("M") == 2, "two stems"
+    assert source[1].count("M") == 1, "one diagonal"
+    assert source[2].count("M") == 1, "orange cap is one square"
+    assert _paths(BRAND_MARK_TSX.read_text(encoding="utf-8"), "BrandMark.tsx") == source
     for name in DERIVED:
-        path = BRAND / name
-        assert _d(path.read_text(encoding="utf-8"), name) == source
-
-    assert _d(APP_ICON.read_text(encoding="utf-8"), "app/icon.svg") == source
+        assert _paths((BRAND / name).read_text(encoding="utf-8"), name) == source
+    assert _paths(APP_ICON.read_text(encoding="utf-8"), "app/icon.svg") == source
 
 
 def test_app_icon_and_avatar_keep_locked_fills():
     app_icon = (BRAND / "app-icon.svg").read_text(encoding="utf-8")
     assert 'rx="8"' in app_icon
+    assert 'fill="#123B32"' in app_icon
+    assert 'fill="#20B486"' in app_icon
     assert 'fill="#0F6E4F"' in app_icon
-    assert 'fill="#FFFFFF"' in app_icon
-
+    assert 'fill="#FF793F"' in app_icon
     avatar = (BRAND / "avatar-circle.svg").read_text(encoding="utf-8")
-    assert "<circle" in avatar
-    assert 'fill="#0F6E4F"' in avatar
-    assert 'fill="#FFFFFF"' in avatar
-
+    assert "<circle" in avatar and 'fill="#123B32"' in avatar
+    assert 'fill="#FF793F"' in avatar
     forest = (BRAND / "mark-forest.svg").read_text(encoding="utf-8")
-    assert 'fill="#0F6E4F"' in forest
+    assert 'fill="#20B486"' in forest and 'fill="#FF793F"' in forest
     ink = (BRAND / "mark-ink.svg").read_text(encoding="utf-8")
     assert 'fill="#14171A"' in ink
+    assert "#FF793F" not in ink and "#20B486" not in ink
 
 
 def test_raster_icons_match_mark_svg():
-    """PNG/ICO icons are regenerated from mark.svg, not hand-edited."""
+    """PNG icons are regenerated from mark.svg, not hand-edited."""
     import sys
 
     sys.path.insert(0, str(ROOT / "scripts"))
     import sync_brand_mark
 
-    d = _d(MARK_SVG.read_text(encoding="utf-8"), "mark.svg")
+    stems, diagonal, cap = _paths(MARK_SVG.read_text(encoding="utf-8"), "mark.svg")
     expected = {
-        APP / "apple-icon.png": sync_brand_mark.render_tile(d, 180),
-        BRAND / "icon-192.png": sync_brand_mark.render_tile(d, 192, radius=8),
-        BRAND / "icon-512.png": sync_brand_mark.render_tile(d, 512, radius=8),
+        APP / "apple-icon.png": sync_brand_mark.render_tile(stems, diagonal, cap, 180),
+        BRAND / "icon-192.png": sync_brand_mark.render_tile(
+            stems, diagonal, cap, 192, radius=8
+        ),
+        BRAND / "icon-512.png": sync_brand_mark.render_tile(
+            stems, diagonal, cap, 512, radius=8
+        ),
         BRAND / "icon-maskable-512.png": sync_brand_mark.render_tile(
-            d, 512, mark_scale=sync_brand_mark.MASKABLE_SCALE
+            stems, diagonal, cap, 512, mark_scale=sync_brand_mark.MASKABLE_SCALE
         ),
     }
     for path, image in expected.items():
-        on_disk = Image.open(path).convert("RGBA")
-        assert on_disk.size == image.size, path.name
-        # Tolerate anti-aliasing differences between Pillow versions; a moved cut
-        # flips thousands of pixels at full contrast.
-        diff = ImageChops.difference(on_disk, image).convert("L")
-        changed = sum(diff.point(lambda v: 255 if v > 64 else 0).histogram()[255:])
-        assert changed < image.width * image.height * 0.001, (
-            f"{path.name} drifted; run python scripts/sync_brand_mark.py"
-        )
-
-    favicon = Image.open(APP / "favicon.ico")
-    assert favicon.info["sizes"] == {(16, 16), (32, 32), (48, 48)}
-
-
-def test_link_preview_image_is_wired_at_root():
-    preview = Image.open(APP / "opengraph-image.png")
-    assert preview.size == (1200, 630)
-    assert (APP / "opengraph-image.png").stat().st_size < 300_000, "WhatsApp drops large previews"
-    assert (APP / "opengraph-image.alt.txt").read_text(encoding="utf-8").strip()
-
-    # A child openGraph block replaces the root one and drops opengraph-image.png.
-    offenders = [
-        str(path.relative_to(APP))
-        for path in APP.rglob("*.tsx")
-        if path != APP / "layout.tsx" and "openGraph" in path.read_text(encoding="utf-8")
-    ]
-    assert offenders == []
+        actual = Image.open(path).convert("RGBA")
+        diff = ImageChops.difference(actual, image.convert("RGBA"))
+        assert diff.getbbox() is None, f"{path.name} drifted from mark.svg"

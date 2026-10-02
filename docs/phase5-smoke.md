@@ -66,4 +66,6 @@ Record: unit id, invite token, request id, pass id, API error detail.
 - [x] Paystack / cards / Autopay confirmed by you
 - [ ] Tick Prep + Ada headed + phase5 sections 2–3 signed in
 
+**2026-10-02:** access notify, admit, maintenance notify, cron jobs, and the Ada money subset → **36 passed**. Headed gate admit and tenant repair still need your landlord, tenant, and artisan sessions.
+
 **Unblock headed:** sign in as Ada, walk Action needed chase; then gate admit + repair notify. Or Chrome `--remote-debugging-port=9222` and tell the agent.

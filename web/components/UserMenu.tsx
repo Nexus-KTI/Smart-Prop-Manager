@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Camera, LogOut, Settings } from "lucide-react";
+import { Camera, ChevronDown, LogOut, Settings } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -17,6 +17,10 @@ import { fetchMe, uploadMyAvatar } from "@/lib/api";
 
 type UserMenuProfile = {
   displayName: string;
+  /** Person's first name (never the business name); "" when unknown. */
+  firstName: string;
+  /** Person's full name (never the business name); "" when unknown. */
+  personName: string;
   initials: string;
   email: string | null;
   roleLabel: string;
@@ -51,6 +55,8 @@ function roleLabelFrom(role: string | undefined): string {
 export function UserMenuProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Omit<UserMenuProfile, "refresh" | "setFromUpload">>({
     displayName: "",
+    firstName: "",
+    personName: "",
     initials: "",
     email: null,
     roleLabel: "Landlord",
@@ -68,6 +74,8 @@ export function UserMenuProvider({ children }: { children: ReactNode }) {
       const label = (me.business_name || me.name || "").trim();
       setProfile({
         displayName: label || "Account",
+        firstName: (me.name || "").trim().split(/\s+/)[0] ?? "",
+        personName: (me.name || "").trim(),
         initials: initialsFrom(label || me.name || "N"),
         email: me.email,
         roleLabel: roleLabelFrom(me.role),
@@ -78,6 +86,8 @@ export function UserMenuProvider({ children }: { children: ReactNode }) {
       if (seq !== loadSeq.current) return;
       setProfile({
         displayName: "Account",
+        firstName: "",
+        personName: "",
         initials: "N",
         email: null,
         roleLabel: "Account",
@@ -240,6 +250,12 @@ export function UserMenu({
             displayName
           )}
         </span>
+        <ChevronDown
+          className="user-menu-chevron"
+          size={16}
+          strokeWidth={1.75}
+          aria-hidden
+        />
       </button>
 
       {open ? (

@@ -12,9 +12,10 @@ import {
 
 import { HelpFab, HelpIconButton, HelpProvider } from "@/components/HelpSheet";
 import { ShellTopbar } from "@/components/ShellTopbar";
+import { SidebarBackdrop, SidebarCloseButton } from "@/components/SidebarDrawer";
 import { ToastProvider } from "@/components/ToastProvider";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
-import { BrandMark } from "@/components/BrandMark";
+import { BrandMark, BrandWordmark } from "@/components/BrandMark";
 import { BRAND_NAME } from "@/lib/brand";
 import { useSidebarRail } from "@/lib/use-sidebar-rail";
 
@@ -34,6 +35,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     closeDrawer,
     unlockPeek,
     drawerOpen,
+    drawerHidden,
+    sidebarRef,
   } = useSidebarRail(pathname);
 
   return (
@@ -41,31 +44,27 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <UserMenuProvider>
         <HelpProvider audience="admin">
           <div className="app-shell">
-            {drawerOpen ? (
-              <button
-                type="button"
-                className="sidebar-backdrop"
-                aria-label="Close menu"
-                onClick={closeDrawer}
-              />
-            ) : null}
+            <SidebarBackdrop open={drawerOpen} onClose={closeDrawer} />
             <aside
+              ref={sidebarRef}
               className="sidebar"
               data-collapsed={collapsed}
               data-peek-locked={peekLocked ? "true" : undefined}
               aria-label="Admin"
+              inert={drawerHidden}
               onMouseLeave={unlockPeek}
             >
               <div className="sidebar-brand">
                 <Link href="/" className="sidebar-brand-lockup" aria-label={`${BRAND_NAME} home`}>
                   <span className="sidebar-brand-mark" aria-hidden="true">
-                    <BrandMark size={22} />
+                    <BrandMark size={32} />
                   </span>
                   <span className="sidebar-brand-text">
-                    <span className="sidebar-brand-name">{BRAND_NAME}</span>
+                    <BrandWordmark className="sidebar-brand-name" />
                     <span className="sidebar-brand-role">Admin</span>
                   </span>
                 </Link>
+                <SidebarCloseButton onClose={closeDrawer} />
               </div>
 
               <nav className="sidebar-nav" aria-label="Admin">
@@ -96,7 +95,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
               <div className="sidebar-footer">
                 <Link
-                  href="/properties"
+                  href="/dashboard"
                   className="nav-item"
                   data-tooltip="Landlord app"
                   aria-label="Landlord app"

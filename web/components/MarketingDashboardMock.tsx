@@ -1,3 +1,4 @@
+import { BrandWordmark } from "@/components/BrandMark";
 import { BRAND_NAME } from "@/lib/brand";
 import { formatDueDate, formatNaira } from "@/lib/dashboard";
 
@@ -154,7 +155,9 @@ export function MarketingDashboardMock({
       aria-label={`${BRAND_NAME} properties dashboard preview`}
     >
       <aside className="marketing-dash-mock-sidebar" aria-hidden="true">
-        <p className="marketing-dash-mock-brand">{BRAND_NAME}</p>
+        <p className="marketing-dash-mock-brand">
+          <BrandWordmark />
+        </p>
         <nav className="marketing-dash-mock-nav">
           <span className="is-active">Properties</span>
           <span>Payments</span>

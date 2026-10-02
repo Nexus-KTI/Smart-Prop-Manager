@@ -11,6 +11,7 @@ import {
   CircleAlert,
   Ellipsis,
   FileText,
+  LayoutDashboard,
   ListChecks,
   Megaphone,
   MessageSquare,
@@ -23,12 +24,18 @@ import { useEffect, useMemo, useState } from "react";
 
 import { HelpFab, HelpIconButton, HelpProvider } from "@/components/HelpSheet";
 import { ShellTopbar } from "@/components/ShellTopbar";
+import { SidebarBackdrop, SidebarCloseButton } from "@/components/SidebarDrawer";
 import { NotificationsBell } from "@/components/NotificationsBell";
 import { ToastProvider } from "@/components/ToastProvider";
+import { TopbarSearch } from "@/components/TopbarSearch";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
 import { fetchAdminMe } from "@/lib/api";
-import { BrandMark, BrandStamp } from "@/components/BrandMark";
-import { BRAND_NAME } from "@/lib/brand";
+import { BrandMark, BrandWordmark } from "@/components/BrandMark";
+import {
+  BRAND_NAME,
+  BRAND_SIDEBAR_LINE,
+  BRAND_SIDEBAR_TITLE,
+} from "@/lib/brand";
 import {
   formatUnreadBadge,
   useMessageUnreadCount,
@@ -45,11 +52,12 @@ type NavItem = {
 };
 
 /** Intentional landlord rail (layout 3.2): daily path, always visible.
- *  Primary: Properties, Tenancies, Payments, Action needed, Messages,
- *  Applications, Work orders (+ Admin when allowed).
+ *  Primary: Dashboard, Properties, Tenancies, Payments, Action needed,
+ *  Messages, Applications, Work orders (+ Admin when allowed).
  *  Header bell = interrupt summary only; rail uses CircleAlert (not Bell).
  *  Settings lives in the account menu — not on this rail. */
 const NAV_PRIMARY: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/properties", label: "Properties", icon: Building2 },
   { href: "/tenancies", label: "Tenancies", icon: Users },
   { href: "/payments", label: "Payments", icon: Wallet },
@@ -86,6 +94,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     closeDrawer,
     unlockPeek,
     drawerOpen,
+    drawerHidden,
+    sidebarRef,
   } = useSidebarRail(pathname);
   const morePathActive = useMemo(
     () => NAV_MORE.some((item) => pathActive(pathname, item.href)),
@@ -170,31 +180,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <UserMenuProvider>
       <HelpProvider audience="landlord">
       <div className="app-shell">
-        {drawerOpen ? (
-          <button
-            type="button"
-            className="sidebar-backdrop"
-            aria-label="Close menu"
-            onClick={closeDrawer}
-          />
-        ) : null}
+        <SidebarBackdrop open={drawerOpen} onClose={closeDrawer} />
         <aside
+          ref={sidebarRef}
           className="sidebar"
           data-collapsed={collapsed}
           data-peek-locked={peekLocked ? "true" : undefined}
           aria-label="Primary"
+          inert={drawerHidden}
           onMouseLeave={unlockPeek}
         >
           <div className="sidebar-brand">
             <Link href="/" className="sidebar-brand-lockup" aria-label={`${BRAND_NAME} home`}>
               <span className="sidebar-brand-mark" aria-hidden="true">
-                <BrandMark size={22} />
+                <BrandMark size={32} />
               </span>
               <span className="sidebar-brand-text">
-                <span className="sidebar-brand-name">{BRAND_NAME}</span>
-                <BrandStamp className="sidebar-brand-stamp" />
+                <BrandWordmark className="sidebar-brand-name" />
               </span>
             </Link>
+            <SidebarCloseButton onClose={closeDrawer} />
           </div>
 
           <nav className="sidebar-nav" aria-label="Primary">
@@ -255,6 +260,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="sidebar-footer">
+            <div className="sidebar-tagline">
+              <p className="sidebar-tagline-title">{BRAND_SIDEBAR_TITLE}</p>
+              <p className="sidebar-tagline-line">{BRAND_SIDEBAR_LINE}</p>
+            </div>
             <button
               type="button"
               className="sidebar-collapse-btn"
@@ -277,6 +286,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <ShellTopbar
             collapsed={collapsed}
             onToggleMenu={toggleCollapsed}
+            search={<TopbarSearch />}
             utilities={
               <>
                 <NotificationsBell audience="landlord" />

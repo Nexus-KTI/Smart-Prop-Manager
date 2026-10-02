@@ -1,6 +1,5 @@
 import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
-import { BrandMark, BrandStamp } from "@/components/BrandMark";
-import { BRAND_NAME } from "@/lib/brand";
+import { BrandMark, BrandStamp, BrandWordmark } from "@/components/BrandMark";
 
 export default function ResetPasswordPage() {
   return (
@@ -12,7 +11,7 @@ export default function ResetPasswordPage() {
               <BrandMark size={22} />
             </span>
             <span className="auth-brand-text">
-              {BRAND_NAME}{" "}
+              <BrandWordmark />
               <BrandStamp className="marketing-brand-stamp" />
             </span>
           </p>

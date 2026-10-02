@@ -127,7 +127,7 @@ def test_render_transactional_email_params():
     assert 'bgcolor="#f7f8f7"' in html
     assert 'bgcolor="#ffffff"' in html
     assert 'name="color-scheme" content="light only"' in html
-    assert "#0f6e4f" in html
+    assert "letter-spacing:-0.03em" in html
     assert "560" in html
 
 
@@ -155,7 +155,7 @@ def test_details_and_alert_primitives():
     assert "From" in rows and "Ada" in rows
     alert = alert_strip_html("Term already ended.")
     assert "Term already ended." in alert
-    assert "#b4402a" in alert
+    assert "#c2410c" in alert
 
     html = render_transactional_email(
         heading="Staff invite",

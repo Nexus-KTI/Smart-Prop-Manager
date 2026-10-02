@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 
+import { BrandWordmark } from "@/components/BrandMark";
 import { BRAND_NAME } from "@/lib/brand";
 import { formatDueDate, formatNaira } from "@/lib/dashboard";
 
@@ -275,7 +276,9 @@ export function MarketingHeroFrame() {
     >
       <div className="marketing-hero-frame marketing-hero-frame--compact marketing-hero-frame--elevated">
         <div className="marketing-hero-frame-chrome">
-          <span className="marketing-hero-frame-chrome-title">{BRAND_NAME}</span>
+          <span className="marketing-hero-frame-chrome-title">
+            <BrandWordmark />
+          </span>
           <span className="marketing-hero-frame-chrome-meta" aria-hidden>
             Estate OS · {lensMeta}
           </span>

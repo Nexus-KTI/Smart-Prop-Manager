@@ -2,6 +2,16 @@
   <path
     fill="#14171A"
     fill-rule="evenodd"
-    d="M5 4H11L21.667 20H27V28H21L10.333 12H5ZM21 4H27V12H21ZM5 14H11V18H5ZM21 14H27V18H21ZM5 20H11V28H5Z"
+    d="M4 12H10V29H4ZM22 4H28V29H22Z"
+  />
+  <path
+    fill="#14171A"
+    fill-rule="evenodd"
+    d="M10 12L16 12L28 29L22 29Z"
+  />
+  <path
+    fill="#14171A"
+    fill-rule="evenodd"
+    d="M23 3H28V9H23Z"
   />
 </svg>

@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Caveat, Geist, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 
+import { ThemeRouteSync } from "@/components/ThemeRouteSync";
 import { BRAND_FULL, BRAND_NAME, BRAND_TAGLINE } from "@/lib/brand";
+import { APP_ROUTE_PREFIXES } from "@/lib/theme";
 
 import "./globals.css";
 
@@ -37,7 +39,7 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image" },
 };
 
-const themeInitScript = `(function(){try{var s=localStorage.getItem("spm-theme");document.documentElement.setAttribute("data-theme",s==="dark"||s==="light"?s:"light");var c=localStorage.getItem("spm-sidebar-collapsed");var m=window.matchMedia("(max-width: 640px)").matches;document.documentElement.setAttribute("data-sidebar-collapsed",m||c==="1"?"true":"false");}catch(e){document.documentElement.setAttribute("data-theme","light");document.documentElement.setAttribute("data-sidebar-collapsed","false");}})();`;
+const themeInitScript = `(function(){try{var p=location.pathname;var d=${JSON.stringify(APP_ROUTE_PREFIXES)}.some(function(x){return p===x||p.indexOf(x+"/")===0})?"dark":"light";var s=localStorage.getItem("spm-theme");document.documentElement.setAttribute("data-theme",s==="dark"||s==="light"?s:d);var c=localStorage.getItem("spm-sidebar-collapsed");var m=window.matchMedia("(max-width: 640px)").matches;document.documentElement.setAttribute("data-sidebar-collapsed",m||c==="1"?"true":"false");}catch(e){document.documentElement.setAttribute("data-theme","light");document.documentElement.setAttribute("data-sidebar-collapsed","false");}})();`;
 
 export default function RootLayout({
   children,
@@ -58,7 +60,10 @@ export default function RootLayout({
           {themeInitScript}
         </Script>
       </head>
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        <ThemeRouteSync />
+        {children}
+      </body>
     </html>
   );
 }

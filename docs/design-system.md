@@ -27,28 +27,51 @@ All product and marketing brand color must resolve to these CSS variables.
 | `--border` | `#e2e4e1` | Hairlines, inputs, table wraps |
 | `--ink` | `#14171a` | Titles, primary text |
 | `--accent` | `#0f6e4f` | Primary buttons, links, active nav, money/ops trust |
-| `--brand` | `#e65100` | KTI parent mark - `by KTI` stamp box, marketing process line |
-| `--alert` | `#b4402a` | Destructive / overdue emphasis |
-| `--muted` | `#6b7280` | Subtitles, secondary labels, placeholders |
+| `--accent-soft` | `#e3f0ea` | Selected/active wash behind `--accent` (nav, segments, KPI icon tiles, paid badge) |
+| `--mark` | `#20b486` | Nexora green on the mark stems and the wordmark leaf |
+| `--mark-deep` | `#0f6e4f` | Darker face of the N so the diagonal stays visible |
+| `--brand` | `#ff793f` | Accent orange — cap on the N, `by KTI` stamp, marketing process line |
+| `--alert` | `#c2410c` | Destructive / overdue emphasis (darker than the cap so small text stays readable) |
+| `--muted` | `#6b7280` | Slate — subtitles, secondary labels, placeholders |
 
 ### Dark (`html[data-theme="dark"]`)
 
+Charcoal + Nexora green (2026-10-02 refresh). Default inside the logged-in app.
+
 | Token | Hex |
 |-------|-----|
-| `--background` | `#0F1113` |
-| `--background-alt` | `#14171a` |
-| `--surface` | `#16181B` |
-| `--border` | `#26292D` |
-| `--ink` | `#E8EAED` |
-| `--accent` | `#2FA679` |
-| `--brand` | `#ff7a33` |
-| `--alert` | `#D96650` |
-| `--muted` | `#9BA1A6` |
+| `--background` | `#101416` |
+| `--background-alt` | `#13191b` |
+| `--surface` | `#151c1f` |
+| `--border` | `#243033` |
+| `--ink` | `#f1f5f4` |
+| `--accent` | `#20b486` |
+| `--accent-soft` | `#123b32` |
+| `--mark` | `#20b486` |
+| `--mark-deep` | `#0f6e4f` |
+| `--brand` | `#ff793f` |
+| `--alert` | `#ff793f` |
+| `--muted` | `#6b7280` |
+
+Light keeps forest `#0f6e4f`: `#20b486` on white is ~2.6:1 and fails text contrast.
+
+### Theme default
+
+`web/lib/theme.ts` → `APP_ROUTE_PREFIXES`. With no stored `spm-theme`, app routes (`/dashboard`, `/properties`, `/tenant`, `/artisan`, `/admin`, …) render dark; marketing/auth render light. A stored choice always wins. The boot script in `app/layout.tsx` covers first paint; `ThemeRouteSync` re-applies on client navigation.
+
+### Shape scale
+
+| Token | Value | Use |
+|-------|-------|-----|
+| `--radius-control` | `8px` | Buttons, inputs, nav items, icon buttons, segment track |
+| `--radius-card` | `12px` | KPI cards, table wraps, form cards, panels |
+| pill | `999px` | Status badges, avatar, account trigger |
+| `--sidebar-width` / `--sidebar-rail` | `236px` / `64px` | Desktop rail; phone drawer is `min(280px, 86vw)` |
 
 **Rules**
 
 - No Rentora `#3183c8`, no Tailwind palette classes as brand color.
-- `--accent` (forest) is the product action color. `--brand` (KTI orange from the Kings Technologies Innovations logo) is the parent identity accent only - stamps (`by KTI`), marketing process line. The Nexora mark itself is always forest (`--accent`), including the collapsed sidebar. Do not replace primary buttons or active nav with orange.
+- `--accent` is the product action color. The mark uses `--mark` (Nexora green `#20b486`) and `--mark-deep` for the diagonal; `--brand` (`#ff793f`) is the cap, the `by KTI` stamp, and the marketing process line. Do not replace primary buttons or active nav with orange. In the dark app, `--alert` matches that orange.
 - Primary button label uses `color: var(--surface)` on `background: var(--accent)`.
 - Mixes allowed: `color-mix(in srgb, var(--accent) …, var(--surface|ink))` for hover/active washes; `--brand` mixes are fine for soft marketing atmosphere only.
 - Marketing alt sections: `.section-bg-alt` → `--background-alt` (must win over `.marketing-section`).
@@ -93,7 +116,7 @@ All product and marketing brand color must resolve to these CSS variables.
 
 ## Materials (radius, elevation, atmosphere)
 
-- Default interactive radius: **6px** (buttons, inputs, cards, table wraps).
+- Radius: `--radius-control` (8px) for controls, `--radius-card` (12px) for cards/panels/table wraps, pills for badges.
 - Flat product and marketing: **no decorative `box-shadow`**. `.app-shell` and `.marketing` force `box-shadow: none !important`.
 - Overlays (menus, panels, FABs): **border + `--surface` only** — not shadow elevation.
 - Atmosphere: soft `--accent` / `--brand` radial washes on `.marketing` only. Sections stay transparent so atmosphere shows; only `.section-bg-alt` paints a fill.
@@ -117,13 +140,25 @@ All product and marketing brand color must resolve to these CSS variables.
 |-------|-----|
 | `.form-card` | Settings, property/unit forms, auth card |
 | `.data-table-wrap` | Every product data table |
-| `.stat-row` > `.stat-block` | Portfolio metrics |
+| `.stat-row` > `.stat-block` | Portfolio metrics (legacy screens) |
+| `KpiGrid` > `KpiCard` (`.kpi-grid`, `.kpi-card`) | Headline numbers on `/dashboard` only: `--accent-soft` icon tile, muted label, mono value, muted foot; `tone="alert"` for overdue. 4-up desktop, 2-up ≤1100px. Properties is the unit ledger (filters + table), not a second KPI row |
+| `KpiTrend` (`.kpi-trend`) | Foot line with arrow: `up` = `--accent`, `alert` = `--alert`, `muted` = → arrow. Only for real counts (new this month, overdue, in progress) |
+| `.property-group-avatar` | Initials tile standing in for property photos (no image field) |
+| `/dashboard` (`DashboardHome`, `.dash-*`) | Landlord landing: hero (greeting + first name, subtitle, `DashboardHeroArt`, Add property) → 4 KPIs → Properties panel (unit `photo_url` thumb or initials, address, occupancy, status pill, amount, chevron) + Recent activity (open Action needed first, then payments / applications / work orders) + security card to `/settings?tab=security`. Panels 2-up, 1-up ≤1100px |
+| `DashboardHeroArt` (`.dash-hero-art`) | Only product illustration: flat line art in `--accent` / `--accent-soft`, no glow or gradient, hidden ≤900px |
 | `.dashboard-empty` | Full empty UI |
 | `.dashboard-checklist` / `.onboarding-card` | Getting started |
 
 ### Navigation
 
-- `.nav-item` + active state washes with `--accent` only (nav chrome stays forest; KTI `--brand` is for stamps/marks, not nav active).
+- `.nav-item` (40px, 12px icon gap): active = `--accent-soft` wash, `--ink` label, `--accent` icon and a 3px `--accent` left marker. KTI `--brand` is for stamps/marks, not nav active.
+- Phone drawer (`useSidebarRail` + `SidebarBackdrop` / `SidebarCloseButton`): fading backdrop, close button in the brand row, page scroll locked, focus moved in and trapped, Escape / tap-outside / navigation close and return focus to the menu button; closed drawer is `inert`.
+- Topbar: 64px (56px phones) with a hairline that meets the sidebar brand divider; menu toggle + search left, bell / help / account right; icon buttons gain surface + border on hover/open; account trigger is a bordered pill with chevron.
+- Landlord search (`TopbarSearch`, `.topbar-search`): properties, units, tenant names, and the first page of payments (name, place, reference, amount); Ctrl/⌘K focuses, arrows + Enter pick, Escape clears/closes. Phones show an icon that expands over the bar.
+- Dashboard hero uses the landlord’s first name (`profiles.name`). “↑ N new this month” on tenants counts tenancies whose `start_date` (else `activated_at`, else `created_at`) falls this month. The Properties panel subtitle is the loaded property and unit counts.
+- Landlord rail starts with Dashboard; expanded rail shows `.sidebar-tagline` (`BRAND_SIDEBAR_TITLE` / `BRAND_SIDEBAR_LINE`) above Collapse, flat card, hidden when collapsed or short (≤760px tall).
+- Segmented controls (`.theme-segment`): inset pills on one track, active = `--accent-soft` + `--accent`.
+- Status badges are pills; `due-soon` is outlined so it never reads as `paid`.
 - One Account entry point; one theme control (avoid duplicate moon + Appearance).
 
 ### Auth
@@ -183,20 +218,21 @@ Errors: `role="alert"` + `aria-live="assertive"`. Success/neutral: `status` / `p
 
 ## Logo & lockups
 
-Decision record: [`nexora-logo-revision-note.md`](nexora-logo-revision-note.md). Geometry: `web/public/brand/mark.svg` only.
+Decision record: [`nexora-logo-revision-note.md`](nexora-logo-revision-note.md). Geometry: three paths in `web/public/brand/mark.svg` (stems, diagonal, orange cap).
 
 | Surface | Lockup | Classes |
 |---------|--------|---------|
-| Marketing header + footer | Mark · **nexora** · divider · by KTI | `.marketing-logo`, `.marketing-logo-name`, `.marketing-logo-stamp` |
-| Auth, signup, onboarding | Mark · **nexora** · compact stamp | `.auth-brand` / `.signup-brand` / `.onboarding-brand`, `.auth-brand-text`, `.marketing-brand-stamp` |
-| Landlord / tenant / artisan sidebar | Mark · **nexora** · compact stamp | `.sidebar-brand-lockup`, `.sidebar-brand-name`, `.sidebar-brand-stamp` |
-| Admin sidebar | Mark · **nexora** · ADMIN (no stamp) | `.sidebar-brand-role` |
-| Product top bar, ≤640px only | Mark · **nexora** (no stamp; drawer keeps the full lockup) | `.shell-topbar-brand`, `.shell-topbar-brand-name` |
+| Marketing header + footer | Mark · **nexora** (leaf in the o) · divider · by KTI | `.marketing-logo`, `.brand-wordmark`, `.marketing-logo-stamp` |
+| Auth, signup, onboarding, claim | Mark · **nexora** · compact stamp | `.auth-brand` / `.signup-brand` / `.onboarding-brand`, `.auth-brand-text`, `.marketing-brand-stamp` |
+| Landlord / tenant / artisan / admin sidebar | Mark (32px) · **nexora** in `--ink`. No stamp. Hairline below | `.sidebar-brand-lockup`, `.sidebar-brand-name` |
+| Admin sidebar role | ADMIN beside the wordmark | `.sidebar-brand-role` |
+| Product top bar, ≤640px only | Mark · **nexora** in `--ink` | `.shell-topbar-brand`, `.shell-topbar-brand-name` |
 | Collapsed sidebar, favicon, app icons | Mark only | `BrandMark` |
 
-- **Wordmark:** `{BRAND_NAME}` in the DOM, rendered lowercase via `text-transform` at 1.15× the mark size, `--accent`, weight 600–650. Copy, titles, emails, and receipts keep **Nexora**.
-- **Gap:** 4px between mark and wordmark. Do not add tracking or a second color inside the wordmark.
-- **Stamp:** `BrandStamp` only — muted "by" + `--brand` box with `--surface` text. Never orange on the mark or wordmark.
+- **Wordmark:** `BrandWordmark` renders lowercase **nexora** with a `--mark` leaf in the o. The word itself is `--ink` on every lockup. Copy, titles, emails, and receipts keep **Nexora**.
+- **Mark fills:** stems `--mark`, diagonal `--mark-deep`, cap `--brand`. Flat only.
+- **Gap:** 5px between mark and wordmark in product chrome (sidebar, topbar); 4px elsewhere.
+- **Stamp:** `BrandStamp` on marketing and auth only — muted "by" + `--brand` box with `--surface` text. Product rails omit it.
 - **Rasters:** `python scripts/sync_brand_mark.py` regenerates SVG copies, `favicon.ico`, `apple-icon.png`, and manifest PNGs. Link preview: `node scripts/render-og-image.mjs` (from `web/`) writes `app/opengraph-image.png`. Only the root layout may define `openGraph`.
 
 ---

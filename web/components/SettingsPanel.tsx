@@ -106,9 +106,13 @@ function SettingsFormSkeleton({ label }: { label: string }) {
   );
 }
 
-export function SettingsPanel() {
+export function SettingsPanel({
+  initialTab = "profile",
+}: {
+  initialTab?: SettingsTabId;
+} = {}) {
   const { showToast } = useToast();
-  const [tab, setTab] = useState<SettingsTabId>("profile");
+  const [tab, setTab] = useState<SettingsTabId>(initialTab);
 
   const [fullName, setFullName] = useState("");
   const [businessName, setBusinessName] = useState("");
@@ -351,8 +355,8 @@ export function SettingsPanel() {
 
   return (
     <AccountSettingsChrome
-      homeHref="/properties"
-      homeLabel="Properties"
+      homeHref="/dashboard"
+      homeLabel="Dashboard"
       settingsHref="/settings"
       tab={tab}
       onTabChange={onTabChange}

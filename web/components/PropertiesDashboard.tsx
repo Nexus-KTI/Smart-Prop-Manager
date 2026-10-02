@@ -17,7 +17,6 @@ import type {
 
 import { LoadMoreButton } from "@/components/LoadMoreButton";
 import { ListPagination } from "@/components/ListPagination";
-
 type OccupancyFilter = "all" | "occupied" | "vacant";
 type PaymentFilter = "all" | UnitStatus;
 
@@ -32,6 +31,13 @@ type PropertyGroup = {
 
 function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
+}
+
+function initialsFor(name: string): string {
+  const [first = "", second = ""] = name.match(/[A-Za-z0-9]+/g) ?? [];
+  if (!first) return "P";
+  if (!second) return first.slice(0, 2).toUpperCase();
+  return `${first[0]}${second[0]}`.toUpperCase();
 }
 
 const LIST_PAGE_SIZE = 10;
@@ -402,8 +408,8 @@ export function PropertiesDashboard({
 
   const failedSends = actionsFailed ?? 0;
 
-  // Property-first rhythm: title + counts → Add property → alert →
-  // compact money snapshot → filters → properties with their units.
+  // Ledger: title + counts → Add property → chase alert → filters → units.
+  // Headline numbers live on /dashboard, not here.
   return (
     <section className="dashboard properties-page">
       <header className="properties-head">
@@ -447,30 +453,6 @@ export function PropertiesDashboard({
           ) : null}
         </div>
       ) : null}
-
-      <dl className="properties-snapshot">
-        <div className="properties-snapshot-item">
-          <dt className="stat-label">Collected</dt>
-          <dd className="properties-snapshot-value mono-data">
-            {formatNaira(stats.totalCollected)}
-          </dd>
-        </div>
-        <div className="properties-snapshot-item">
-          <dt className="stat-label">Outstanding</dt>
-          <dd className="properties-snapshot-value mono-data">
-            {formatNaira(stats.outstanding)}
-          </dd>
-        </div>
-        <div className="properties-snapshot-item">
-          <dt className="stat-label">Overdue</dt>
-          <dd
-            className="properties-snapshot-value mono-data"
-            data-tone={chaseOverdue > 0 ? "alert" : undefined}
-          >
-            {chaseOverdue}
-          </dd>
-        </div>
-      </dl>
 
       {showChecklist && !showTable ? (
         <GettingStartedChecklist items={checklistItems} />
@@ -602,6 +584,9 @@ export function PropertiesDashboard({
                     >
                       <th colSpan={6} scope="rowgroup">
                         <div className="property-group-bar">
+                          <span className="property-group-avatar" aria-hidden="true">
+                            {initialsFor(group.name)}
+                          </span>
                           <div className="property-group-title">
                             {group.propertyId ? (
                               <Link

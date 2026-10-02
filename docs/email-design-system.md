@@ -27,7 +27,7 @@ Calm landlord-ops trust. Forest accent for money actions. Quiet canvas; amount/c
 | Accent | `#0f6e4f` | `--accent` |
 | Accent text | `#ffffff` | On CTA |
 | Code panel | `#eef1ef` / border `#d5dad6` | `--background-alt` family |
-| Alert | `#b4402a` | `--alert` (reserved) |
+| Alert | `#c2410c` | `--alert` on light (darker than the logo cap so small text stays readable) |
 
 **Type stacks (web-safe):**
 

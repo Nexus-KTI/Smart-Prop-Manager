@@ -172,7 +172,7 @@ const MESSAGES_HREF: Record<HelpAudience, string> = {
 
 const HOME_HREF: Record<HelpAudience, string> = {
   tenant: "/tenant",
-  landlord: "/properties",
+  landlord: "/dashboard",
   artisan: "/artisan",
   admin: "/admin/leads",
 };

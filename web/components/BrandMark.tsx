@@ -7,7 +7,7 @@ type BrandMarkProps = {
   title?: string;
 };
 
-/** Ledger N. Path `d` is copied from web/public/brand/mark.svg by scripts/sync_brand_mark.py. Uses currentColor. */
+/** N mark. Paths are copied from web/public/brand/mark.svg by scripts/sync_brand_mark.py. */
 export function BrandMark({
   className,
   size = 20,
@@ -25,12 +25,29 @@ export function BrandMark({
       role={title ? "img" : undefined}
     >
       {title ? <title>{title}</title> : null}
-      <path
-        fill="currentColor"
-        fillRule="evenodd"
-        d="M5 4H11L21.667 20H27V28H21L10.333 12H5ZM21 4H27V12H21ZM5 14H11V18H5ZM21 14H27V18H21ZM5 20H11V28H5Z"
-      />
+      <path fill="var(--mark)" fillRule="evenodd" d="M4 12H10V29H4ZM22 4H28V29H22Z" />
+      <path fill="var(--mark-deep)" fillRule="evenodd" d="M10 12L16 12L28 29L22 29Z" />
+      <path fill="var(--brand)" d="M23 3H28V9H23Z" />
     </svg>
+  );
+}
+
+/** Lowercase wordmark. The leaf sits in the counter of the o. */
+export function BrandWordmark({ className }: { className?: string }) {
+  return (
+    <span className={className ? `brand-wordmark ${className}` : "brand-wordmark"}>
+      nex
+      <span className="brand-wordmark-o">
+        o
+        <svg className="brand-wordmark-leaf" viewBox="0 0 10 12" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M5.2 11C5.2 11 1.4 7.6 1.4 4.6 1.4 2.4 3.2 1 5 1c1.6 0 3.2 1.1 3.4 3.1C8.6 6.6 6.4 9.2 5.2 11Z"
+          />
+        </svg>
+      </span>
+      ra
+    </span>
   );
 }
 

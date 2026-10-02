@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { BrandMark, BrandStamp } from "@/components/BrandMark";
+import { BrandMark, BrandStamp, BrandWordmark } from "@/components/BrandMark";
 import { MarketingFooterSocial } from "@/components/MarketingFooterSocial";
 import { MarketingHeader } from "@/components/MarketingHeader";
 import {
@@ -14,8 +14,7 @@ import { inviteOnlySignup } from "@/lib/invite";
 /** Public marketing chrome - Estate OS homepage may use full OS language. */
 export const metadata: Metadata = {
   title: `${BRAND_FULL} · Estate OS for Nigerian landlords`,
-  description:
-    "Nexora by KTI: Estate OS for Nigerian landlords - money, tenancies, messages, repairs, access, staff, and books. Who paid. Who owes. What’s next.",
+  description: `${BRAND_FULL}: Estate OS for Nigerian landlords - money, tenancies, messages, repairs, access, staff, and books. ${BRAND_TAGLINE}`,
 };
 
 export default function MarketingLayout({
@@ -44,7 +43,7 @@ export default function MarketingLayout({
                 <BrandMark size={24} />
               </span>
               <span className="marketing-logo-text">
-                <span className="marketing-logo-name">{BRAND_NAME}</span>
+                <BrandWordmark className="marketing-logo-name" />
                 <BrandStamp className="marketing-logo-stamp" />
               </span>
             </Link>

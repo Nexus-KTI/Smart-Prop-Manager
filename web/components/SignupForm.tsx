@@ -12,7 +12,7 @@ import {
 import { PasswordFields } from "@/components/auth/PasswordFields";
 import { PhoneOtpFlow } from "@/components/auth/PhoneOtpFlow";
 import { claimTenancyInvite, updateMe } from "@/lib/api";
-import { BrandMark, BrandStamp } from "@/components/BrandMark";
+import { BrandMark, BrandStamp, BrandWordmark } from "@/components/BrandMark";
 import { LetsTalkSupport } from "@/components/LetsTalkSupport";
 import { authOtpChannelLabel } from "@/lib/auth-otp-channel";
 import { BRAND_NAME } from "@/lib/brand";
@@ -465,7 +465,7 @@ export function SignupForm() {
             <BrandMark size={22} />
           </span>
           <span className="auth-brand-text">
-            {BRAND_NAME}{" "}
+            <BrandWordmark />
             <BrandStamp className="marketing-brand-stamp" />
           </span>
         </Link>

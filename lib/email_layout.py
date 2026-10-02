@@ -17,7 +17,7 @@ EMAIL_TOKENS: dict[str, str] = {
     "muted": "#6b7280",
     "accent": "#0f6e4f",
     "accent_text": "#ffffff",
-    "alert": "#b4402a",
+    "alert": "#c2410c",
     # Dark-mode-safe solid fills (also set as bgcolor= so clients don't go transparent).
     "code_bg": "#eef1ef",
     "code_border": "#d5dad6",
@@ -79,7 +79,7 @@ def _brand_block(brand_text: str) -> str:
           </tr>"""
     return f"""
           <tr>
-            <td style="padding:0 0 20px 0;font-family:{FONT_UI};font-size:16px;font-weight:600;color:{t["accent"]};">
+            <td style="padding:0 0 20px 0;font-family:{FONT_UI};font-size:16px;font-weight:600;letter-spacing:-0.03em;color:{t["ink"]};">
               {brand_text}
             </td>
           </tr>"""

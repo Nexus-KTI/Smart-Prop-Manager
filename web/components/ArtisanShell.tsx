@@ -10,9 +10,10 @@ import {
 
 import { HelpFab, HelpIconButton, HelpProvider } from "@/components/HelpSheet";
 import { ShellTopbar } from "@/components/ShellTopbar";
+import { SidebarBackdrop, SidebarCloseButton } from "@/components/SidebarDrawer";
 import { UserMenu, UserMenuProvider } from "@/components/UserMenu";
 import { ToastProvider } from "@/components/ToastProvider";
-import { BrandMark, BrandStamp } from "@/components/BrandMark";
+import { BrandMark, BrandWordmark } from "@/components/BrandMark";
 import { BRAND_NAME } from "@/lib/brand";
 import { useSidebarRail } from "@/lib/use-sidebar-rail";
 
@@ -25,6 +26,8 @@ export function ArtisanShell({ children }: { children: React.ReactNode }) {
     closeDrawer,
     unlockPeek,
     drawerOpen,
+    drawerHidden,
+    sidebarRef,
   } = useSidebarRail(pathname);
   const jobsActive = pathname === "/artisan" || pathname.startsWith("/artisan/");
 
@@ -33,31 +36,26 @@ export function ArtisanShell({ children }: { children: React.ReactNode }) {
       <UserMenuProvider>
         <HelpProvider audience="artisan">
           <div className="app-shell">
-            {drawerOpen ? (
-              <button
-                type="button"
-                className="sidebar-backdrop"
-                aria-label="Close menu"
-                onClick={closeDrawer}
-              />
-            ) : null}
+            <SidebarBackdrop open={drawerOpen} onClose={closeDrawer} />
             <aside
+              ref={sidebarRef}
               className="sidebar"
               data-collapsed={collapsed}
               data-peek-locked={peekLocked ? "true" : undefined}
               aria-label="Artisan"
+              inert={drawerHidden}
               onMouseLeave={unlockPeek}
             >
               <div className="sidebar-brand">
                 <Link href="/" className="sidebar-brand-lockup" aria-label={`${BRAND_NAME} home`}>
                   <span className="sidebar-brand-mark" aria-hidden="true">
-                    <BrandMark size={22} />
+                    <BrandMark size={32} />
                   </span>
                   <span className="sidebar-brand-text">
-                    <span className="sidebar-brand-name">{BRAND_NAME}</span>
-                    <BrandStamp className="sidebar-brand-stamp" />
+                    <BrandWordmark className="sidebar-brand-name" />
                   </span>
                 </Link>
+                <SidebarCloseButton onClose={closeDrawer} />
               </div>
               <nav className="sidebar-nav" aria-label="Artisan">
                 <Link
