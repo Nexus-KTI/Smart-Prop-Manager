@@ -66,6 +66,6 @@ Record: unit id, invite token, request id, pass id, API error detail.
 - [x] Paystack / cards / Autopay confirmed by you
 - [ ] Tick Prep + Ada headed + phase5 sections 2–3 signed in
 
-**2026-10-02:** access notify, admit, maintenance notify, cron jobs, and the Ada money subset → **36 passed**. Smoke landlord `/access` shows Admit at gate and Issue access code. `/work-orders` Invite artisan opens the phone/email form; open jobs are 0. Admit and the invite were not submitted, because both notify. Tenant repair and artisan claim still need those sessions.
+**2026-10-02:** access notify, admit, maintenance notify, cron jobs, and the Ada money subset → **36 passed**. Smoke landlord issued a guest code, admitted it (Allowed, issued by and admitted by the same landlord, so no notify), then revoked it. `/work-orders` Invite artisan opens the phone/email form; open jobs are 0. The invite was not submitted, because it notifies. Tenant repair and artisan claim still need those sessions.
 
 **Unblock headed:** sign in as Ada, walk Action needed chase; then gate admit + repair notify. Or Chrome `--remote-debugging-port=9222` and tell the agent.
