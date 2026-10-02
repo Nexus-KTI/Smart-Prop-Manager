@@ -3173,6 +3173,8 @@ a.property-group-name:focus-visible {
 }
 
 .data-table-wrap {
+  /* Contain absolutely positioned cells (e.g. .sr-only) inside the scroller. */
+  position: relative;
   width: 100%;
   max-width: 100%;
   min-width: 0;

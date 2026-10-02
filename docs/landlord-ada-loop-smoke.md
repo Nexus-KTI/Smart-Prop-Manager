@@ -22,10 +22,10 @@ Covers Nexora slices shipped while waiting on TenantCloud landlord login
 _Agent Playwright 2026-09-15 → redirected to `/login` (no landlord cookie). Live ticks below stay for your browser session._
 
 ### Properties
-1. `/properties` — Occupancy All/Occupied/Vacant + Payment All/Overdue/Due soon/Paid/Pending stack  
+1. `/properties` — header `{n} properties · {m} units` + one **Add property**; Occupancy All/Occupied/Vacant (unit counts) above a quieter Payment All/Overdue/Due soon/Paid/Pending; units grouped under each property with **Add unit** (primary) and Edit property (quiet)  
 2. Vacant unit row → **Start tenancy** → dossier  
 3. Overdue occupied → Record payment / Remind  
-4. Header `{n} overdue → Chase` → `/reminders?filter=overdue` (count from Action needed summary, not first units page); if failed sends → Retry link → `/reminders?filter=failed`  
+4. Alert strip `{n} units overdue` → **Chase on Action needed** → `/reminders?filter=overdue` (count from Action needed summary, not first units page); if failed sends → **Retry on Action needed** → `/reminders?filter=failed`  
 5. `/properties?occupancy=vacant` opens with Vacant pressed  
 
 ### Payments
@@ -79,6 +79,8 @@ python -m pytest tests/test_unit_status_aggregate.py tests/test_portfolio_money_
 **2026-09-15 proceed retry:** pytest **10 passed**; `:8000` up; gstack browse + `cookie-import-browser chrome --domain localhost` → **DPAPI decryption failed** (Windows cannot decrypt Chrome cookies for the agent). Still `/properties` → `/login`. Unblock: your headed walk, or Chrome launched with `--remote-debugging-port=9222` while signed in.
 
 **2026-09-26 agent gate:** Ada + Phase 5 related pytest → **22 passed**. Paystack / cards confirmed. **Headed Friday chase still yours** (no landlord cookie for the agent).
+
+**2026-10-02 agent dry run (local, smoke landlord, admin-minted session):** `scripts/qa-release-proof.mjs` at 1440 → **13/13**. Extra 393px walk of the property-first Properties page → **18/18**: filters, Record payment → unit "Amount due this cycle", Remind, group Add unit / Edit property forms, `?occupancy=vacant`, alert → Action needed overdue/failed, bell → `/reminders?filter=…` (panel on screen), Start tenancy → dossier, Payments + Tenancies ending soon, no console errors. Vacant and overdue states were response-stubbed in the browser (fixture has neither) — routing only. Found + fixed: table loading skeletons pushed phones 217px sideways (`.sr-only` escaping `.data-table-wrap`; wrapper now `position: relative`). **Headed live tick still yours.**
 
 **Unblock headed (copy-paste):**  
 1. Sign in as landlord on local or https://smart-prop-web.vercel.app  
