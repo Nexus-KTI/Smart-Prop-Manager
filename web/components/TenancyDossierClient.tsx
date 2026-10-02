@@ -11,7 +11,7 @@ import {
   fetchTenancyDocuments,
   fetchUnitTenancy,
   inviteTenant,
-  openTenancyDocument,
+  openTenancyDocumentInNewTab,
   updateTenancyChecklist,
   uploadTenancyDocument,
   type Tenancy,
@@ -196,8 +196,7 @@ export function TenancyDossierClient({
     if (!tenancy) return;
     setError(null);
     try {
-      const result = await openTenancyDocument(tenancy.id, documentId);
-      window.open(result.url, "_blank", "noopener,noreferrer");
+      await openTenancyDocumentInNewTab(tenancy.id, documentId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not open document");
     }

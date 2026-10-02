@@ -2136,6 +2136,7 @@ export async function fetchTenancyDocuments(tenancyId: string): Promise<{
     file_name: string;
     url?: string | null;
     can_open?: boolean;
+    can_delete?: boolean;
     expires_on?: string | null;
     requires_ack?: boolean;
     acknowledged_at?: string | null;
@@ -2207,6 +2208,26 @@ export async function openTenancyDocument(
     throw new Error(await readErrorDetail(res, "Could not open document"));
   }
   return (await res.json()) as { url: string; expires_in?: number };
+}
+
+/** Call straight from a click: the tab must open before any await or mobile blocks it. */
+export async function openTenancyDocumentInNewTab(
+  tenancyId: string,
+  documentId: string,
+): Promise<void> {
+  const tab = window.open("", "_blank");
+  try {
+    const { url } = await openTenancyDocument(tenancyId, documentId);
+    if (tab) {
+      tab.opener = null;
+      tab.location.replace(url);
+    } else {
+      window.location.assign(url);
+    }
+  } catch (err) {
+    tab?.close();
+    throw err;
+  }
 }
 
 export async function submitRequestedTenancyDocument(_payload: {

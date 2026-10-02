@@ -14,7 +14,7 @@ import {
   fetchTenancyDocuments,
   fetchTenancyPrivacyCasePolicies,
   fetchTenancyPrivacyRequests,
-  openTenancyDocument,
+  openTenancyDocumentInNewTab,
   submitRequestedTenancyDocument,
   type DocumentCollectionCapabilities,
   type Tenancy,
@@ -202,8 +202,7 @@ export default function TenantDocumentsPage() {
   async function openDocument(documentId: string) {
     if (!tenancyId) return;
     try {
-      const result = await openTenancyDocument(tenancyId, documentId);
-      window.open(result.url, "_blank", "noopener,noreferrer");
+      await openTenancyDocumentInNewTab(tenancyId, documentId);
     } catch (err) {
       showToast(
         err instanceof Error ? err.message : "Could not open document",

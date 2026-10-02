@@ -878,15 +878,13 @@ def test_upload_cleans_object_when_evidence_write_fails(monkeypatch):
         headers=Headers({"content-type": "application/pdf"}),
     )
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(
-            tenancies.upload_document(
-                "t1",
-                upload,
-                "agreement",
-                None,
-                True,
-                _user("owner"),
-            )
+        tenancies.upload_document(
+            "t1",
+            upload,
+            "agreement",
+            None,
+            True,
+            _user("owner"),
         )
     assert exc.value.status_code == 503
     assert cleaned == ["t1/d1/checksum.pdf"]
@@ -999,15 +997,13 @@ def test_no_pii_document_lifecycle_with_test_storage(monkeypatch):
         filename="synthetic-agreement.pdf",
         headers=Headers({"content-type": "application/pdf"}),
     )
-    created = asyncio.run(
-        tenancies.upload_document(
-            "t1",
-            upload,
-            "agreement",
-            (date.today() + timedelta(days=30)).isoformat(),
-            True,
-            owner,
-        )
+    created = tenancies.upload_document(
+        "t1",
+        upload,
+        "agreement",
+        (date.today() + timedelta(days=30)).isoformat(),
+        True,
+        owner,
     )
     document_id = created["document"]["id"]
 
@@ -1190,15 +1186,13 @@ def test_general_document_upload_rejects_id_scope(monkeypatch):
         headers=Headers({"content-type": "application/pdf"}),
     )
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(
-            tenancies.upload_document(
-                "t1",
-                upload,
-                "id",
-                None,
-                False,
-                _user("owner", client),
-            )
+        tenancies.upload_document(
+            "t1",
+            upload,
+            "id",
+            None,
+            False,
+            _user("owner", client),
         )
     assert exc.value.status_code == 400
 
@@ -1381,16 +1375,14 @@ def test_concurrent_submission_loser_cleans_its_uploaded_object(monkeypatch):
         filename="agreement.pdf",
         headers=Headers({"content-type": "application/pdf"}),
     )
-    result = asyncio.run(
-        tenancies.submit_requested_document(
-            "t1",
-            "r1",
-            SimpleNamespace(headers={"idempotency-key": "same-upload-key"}),
-            upload,
-            "notice-v1",
-            None,
-            _user("tenant", client),
-        )
+    result = tenancies.submit_requested_document(
+        "t1",
+        "r1",
+        SimpleNamespace(headers={"idempotency-key": "same-upload-key"}),
+        upload,
+        "notice-v1",
+        None,
+        _user("tenant", client),
     )
     assert result["already"] is True
     assert result["submission"]["document_id"] == "winner-document"
@@ -1505,3 +1497,241 @@ def test_030_removes_direct_browser_document_privileges():
     assert "revoke all privileges" in sql
     assert "from public, anon, authenticated" in sql
     assert "tenancy_workflow_notification_deliveries" in sql
+
+
+def _enable_submissions(monkeypatch):
+    for name in (
+        "DOCS_READ_ENABLED",
+        "DOCS_UPLOAD_ENABLED",
+        "DOC_REQUESTS_ENABLED",
+        "TENANT_DOC_SUBMISSIONS_ENABLED",
+    ):
+        monkeypatch.setenv(name, "true")
+
+
+def _never(*_args, **_kwargs):
+    raise AssertionError("must not run")
+
+
+def _submission_client(prior_request_id):
+    return FakeRpcClient(
+        {
+            "tenancies": [
+                {
+                    "id": "t1",
+                    "landlord_id": "owner",
+                    "tenant_user_id": "tenant",
+                    "status": "pending_verification",
+                }
+            ],
+            "tenancy_document_requests": [
+                {
+                    "id": "r1",
+                    "tenancy_id": "t1",
+                    "landlord_id": "owner",
+                    "doc_type": "agreement",
+                    "status": "submitted",
+                    "processing_policy_version": "agreement-v1",
+                }
+            ],
+            "tenancy_document_submissions": [
+                {
+                    "id": "s1",
+                    "request_id": prior_request_id,
+                    "document_id": "d1",
+                    "submitted_by": "tenant",
+                    "idempotency_key": "retry-key-123",
+                }
+            ],
+        }
+    )
+
+
+def _pdf_upload():
+    return UploadFile(
+        file=BytesIO(PDF_BYTES),
+        filename="agreement.pdf",
+        headers=Headers({"content-type": "application/pdf"}),
+    )
+
+
+def test_submission_retry_replays_after_request_moved_to_submitted(monkeypatch):
+    client = _submission_client("r1")
+    _enable_submissions(monkeypatch)
+    monkeypatch.setattr(tenancies, "create_service_client", lambda: client)
+    monkeypatch.setattr(tenancies, "scan_document", _never)
+    monkeypatch.setattr(tenancies, "upload_tenancy_document", _never)
+    result = tenancies.submit_requested_document(
+        "t1",
+        "r1",
+        SimpleNamespace(headers={"idempotency-key": "retry-key-123"}),
+        _pdf_upload(),
+        "notice-v1",
+        None,
+        _user("tenant", client),
+    )
+    assert result == {"already": True, "submission": client.rows["tenancy_document_submissions"][0]}
+    assert client.rpc_calls == []
+    assert client.rows.get("tenancy_documents", []) == []
+
+
+def test_submission_key_reused_on_another_request_conflicts(monkeypatch):
+    client = _submission_client("r2")
+    _enable_submissions(monkeypatch)
+    monkeypatch.setattr(tenancies, "create_service_client", lambda: client)
+    monkeypatch.setattr(tenancies, "scan_document", _never)
+    with pytest.raises(HTTPException) as exc:
+        tenancies.submit_requested_document(
+            "t1",
+            "r1",
+            SimpleNamespace(headers={"idempotency-key": "retry-key-123"}),
+            _pdf_upload(),
+            "notice-v1",
+            None,
+            _user("tenant", client),
+        )
+    assert exc.value.status_code == 409
+    assert client.rpc_calls == []
+
+
+def _documents_client(documents, *, tenancy_status="active"):
+    return FakeClient(
+        {
+            "tenancies": [
+                {
+                    "id": "t1",
+                    "landlord_id": "owner",
+                    "tenant_user_id": "tenant",
+                    "status": tenancy_status,
+                },
+                {"id": "t2", "landlord_id": "other", "status": "active"},
+            ],
+            "tenancy_documents": documents,
+        }
+    )
+
+
+def _doc(doc_id, **overrides):
+    return {
+        "id": doc_id,
+        "tenancy_id": "t1",
+        "landlord_id": "owner",
+        "doc_type": "agreement",
+        "file_name": f"{doc_id}.pdf",
+        "storage_path": f"t1/{doc_id}/x.pdf",
+        "scan_status": "clean",
+        "legal_hold": False,
+        "deleted_at": None,
+        **overrides,
+    }
+
+
+def _read_enabled(monkeypatch, client):
+    monkeypatch.setenv("DOCS_READ_ENABLED", "true")
+    monkeypatch.setattr(tenancies, "create_service_client", lambda: client)
+    monkeypatch.setattr(
+        tenancies, "signed_document_url", lambda path: f"https://signed.example/{path}"
+    )
+
+
+def test_orphan_cleanup_rows_are_hidden_from_list_and_open(monkeypatch):
+    client = _documents_client(
+        [_doc("kept"), _doc("orphan", orphan_cleanup_pending=True)]
+    )
+    _read_enabled(monkeypatch, client)
+    for user_id in ("owner", "tenant"):
+        listed = tenancies.list_documents("t1", _user(user_id))
+        assert [item["id"] for item in listed["items"]] == ["kept"]
+        with pytest.raises(HTTPException) as exc:
+            tenancies.open_document("t1", "orphan", _user(user_id))
+        assert exc.value.status_code == 404
+    assert client.rows.get("tenancy_document_events", []) == []
+
+
+def test_open_refuses_documents_from_another_tenancy(monkeypatch):
+    client = _documents_client([_doc("theirs", tenancy_id="t2")])
+    _read_enabled(monkeypatch, client)
+    with pytest.raises(HTTPException) as own_scope:
+        tenancies.open_document("t1", "theirs", _user("owner"))
+    assert own_scope.value.status_code == 404
+    with pytest.raises(HTTPException) as foreign_scope:
+        tenancies.open_document("t2", "theirs", _user("owner"))
+    assert foreign_scope.value.status_code == 403
+    assert client.rows.get("tenancy_document_events", []) == []
+
+
+def test_open_refuses_documents_that_are_not_clean(monkeypatch):
+    client = _documents_client(
+        [_doc("pending", scan_status="pending"), _doc("bad", scan_status="rejected")]
+    )
+    _read_enabled(monkeypatch, client)
+    for doc_id in ("pending", "bad"):
+        with pytest.raises(HTTPException) as exc:
+            tenancies.open_document("t1", doc_id, _user("owner"))
+        assert exc.value.status_code == 404
+
+
+def test_open_with_read_flag_off_still_authorizes_first(monkeypatch):
+    client = _documents_client([_doc("kept")])
+    monkeypatch.delenv("DOCS_READ_ENABLED", raising=False)
+    monkeypatch.setattr(tenancies, "create_service_client", lambda: client)
+    with pytest.raises(HTTPException) as stranger:
+        tenancies.open_document("t1", "kept", _user("stranger"))
+    assert stranger.value.detail == "Forbidden"
+    with pytest.raises(HTTPException) as owner:
+        tenancies.open_document("t1", "kept", _user("owner"))
+    assert owner.value.status_code == 403
+    assert "awaiting" in owner.value.detail
+
+
+def test_upload_and_delete_authorize_before_flags_and_input(monkeypatch):
+    for name in ("DOCS_READ_ENABLED", "DOCS_UPLOAD_ENABLED"):
+        monkeypatch.delenv(name, raising=False)
+    db = FakeClient({"tenancies": [{"id": "t1", "landlord_id": "owner"}]})
+    monkeypatch.setattr(tenancies, "create_service_client", _never)
+    stranger = _user("stranger", db)
+    with pytest.raises(HTTPException) as upload:
+        tenancies.upload_document("t1", _pdf_upload(), "id", "not-a-date", False, stranger)
+    assert upload.value.status_code == 404
+    with pytest.raises(HTTPException) as delete:
+        tenancies.delete_document("t1", "d1", stranger)
+    assert delete.value.status_code == 404
+
+    owner = _user("owner", db)
+    with pytest.raises(HTTPException) as owner_upload:
+        tenancies.upload_document("t1", _pdf_upload(), "agreement", None, False, owner)
+    assert owner_upload.value.status_code == 403
+    with pytest.raises(HTTPException) as owner_delete:
+        tenancies.delete_document("t1", "d1", owner)
+    assert owner_delete.value.status_code == 403
+
+
+def test_can_delete_matches_retention_hold_and_occupancy(monkeypatch):
+    past = (date.today() - timedelta(days=1)).isoformat()
+    future = (date.today() + timedelta(days=30)).isoformat()
+    caps = {"delete": True}
+    ended = {"status": "ended"}
+    assert tenancies._can_delete_document({"retain_until": past}, ended, caps) is True
+    assert tenancies._can_delete_document({"retain_until": future}, ended, caps) is False
+    assert tenancies._can_delete_document({"retain_until": None}, ended, caps) is False
+    assert (
+        tenancies._can_delete_document({"retain_until": past, "legal_hold": True}, ended, caps)
+        is False
+    )
+    assert (
+        tenancies._can_delete_document({"retain_until": past}, {"status": "active"}, caps)
+        is False
+    )
+    assert tenancies._can_delete_document({"retain_until": past}, ended, {"delete": False}) is False
+
+    client = _documents_client(
+        [_doc("young", retain_until=future), _doc("expired", retain_until=past)],
+        tenancy_status="ended",
+    )
+    _read_enabled(monkeypatch, client)
+    monkeypatch.setenv("DOCS_UPLOAD_ENABLED", "true")
+    owner_items = {
+        item["id"]: item["can_delete"]
+        for item in tenancies.list_documents("t1", _user("owner"))["items"]
+    }
+    assert owner_items == {"young": False, "expired": True}

@@ -772,12 +772,39 @@ def _load_document(svc: Any, tenancy_id: str, document_id: str, *, clean_only: b
         or []
     )
     document = dict(rows[0]) if rows else None
-    if not document or (clean_only and document.get("scan_status") != "clean"):
+    if (
+        not document
+        or document.get("orphan_cleanup_pending")
+        or (clean_only and document.get("scan_status") != "clean")
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
     return document
 
 
-def _document_item(document: dict, acknowledgment: dict | None) -> dict:
+def _retention_elapsed(document: dict) -> bool:
+    raw = document.get("retain_until")
+    if not raw:
+        return False
+    try:
+        retain_until = date.fromisoformat(str(raw)[:10])
+    except ValueError:
+        return False
+    return retain_until <= datetime.now(timezone.utc).date()
+
+
+def _can_delete_document(document: dict, tenancy: dict, capabilities: dict[str, bool]) -> bool:
+    """Row-level subset of claim_tenancy_document_deletion; the RPC stays authoritative."""
+    return (
+        capabilities.get("delete", False)
+        and tenancy.get("status") != "active"
+        and not document.get("legal_hold")
+        and _retention_elapsed(document)
+    )
+
+
+def _document_item(
+    document: dict, acknowledgment: dict | None, *, can_delete: bool = False
+) -> dict:
     ack = acknowledgment or {}
     return {
         "id": document.get("id"),
@@ -795,6 +822,7 @@ def _document_item(document: dict, acknowledgment: dict | None) -> dict:
         # Links are minted per open so every view leaves an audit event.
         "url": None,
         "can_open": document.get("scan_status") == "clean",
+        "can_delete": can_delete,
     }
 
 
@@ -832,11 +860,11 @@ def _find_acknowledgment(svc: Any, document_id: str, actor_id: str) -> dict | No
     return dict(rows[0]) if rows else None
 
 
-async def _read_validated_upload(file: UploadFile) -> tuple[str, str, str, bytes]:
+def _read_validated_upload(file: UploadFile) -> tuple[str, str, str, bytes]:
     try:
-        body = await file.read(MAX_DOCUMENT_BYTES + 1)
+        body = file.file.read(MAX_DOCUMENT_BYTES + 1)
     finally:
-        await file.close()
+        file.file.close()
     try:
         safe_name, content_type, checksum = validate_document(
             file_name=file.filename or "",
@@ -953,14 +981,19 @@ def list_documents(tenancy_id: str, user: AuthedUser = Depends(get_current_user)
         svc.table("tenancy_documents")
         .select(
             "id, doc_type, file_name, content_type, expires_on, retain_until, "
-            "created_at, requires_ack, acknowledged_at, scan_status, legal_hold"
+            "created_at, requires_ack, acknowledged_at, scan_status, legal_hold, "
+            "orphan_cleanup_pending"
         )
         .eq("tenancy_id", tenancy_id)
         .is_("deleted_at", "null")
     )
     if role == "tenant":
         query = query.eq("scan_status", "clean")
-    documents = query.order("created_at", desc=True).execute().data or []
+    documents = [
+        doc
+        for doc in query.order("created_at", desc=True).execute().data or []
+        if not doc.get("orphan_cleanup_pending")
+    ]
 
     acknowledgments: dict[str, dict] = {}
     document_ids = [str(doc.get("id")) for doc in documents]
@@ -980,7 +1013,11 @@ def list_documents(tenancy_id: str, user: AuthedUser = Depends(get_current_user)
         "docs_upload_enabled": capabilities["upload"],
         "capabilities": capabilities,
         "items": [
-            _document_item(dict(doc), acknowledgments.get(str(doc.get("id"))))
+            _document_item(
+                dict(doc),
+                acknowledgments.get(str(doc.get("id"))),
+                can_delete=_can_delete_document(doc, tenancy, capabilities),
+            )
             for doc in documents
         ],
         "message": DOCS_ON_MESSAGE,
@@ -988,7 +1025,7 @@ def list_documents(tenancy_id: str, user: AuthedUser = Depends(get_current_user)
 
 
 @router.post("/{tenancy_id}/documents")
-async def upload_document(
+def upload_document(
     tenancy_id: str,
     file: UploadFile = File(...),
     doc_type: str = Form(...),
@@ -996,6 +1033,7 @@ async def upload_document(
     requires_ack: bool = Form(False),
     user: AuthedUser = Depends(get_current_user),
 ):
+    tenancy = _load_tenancy_for_landlord(user, tenancy_id)
     if not docs_upload_enabled():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1008,14 +1046,13 @@ async def upload_document(
             detail="doc_type must be agreement, reference, or other",
         )
     expiry = _parse_expiry(expires_on)
-    tenancy = _load_tenancy_for_landlord(user, tenancy_id)
     enforce_rate_limit(
         f"tenancy-doc-upload:{user.id}",
         limit=30,
         window_seconds=3600,
         detail="Too many document uploads. Try again later.",
     )
-    file_name, content_type, checksum, body = await _read_validated_upload(file)
+    file_name, content_type, checksum, body = _read_validated_upload(file)
     document_id = str(uuid.uuid4())
     storage_path = _scan_and_store(
         tenancy_id=tenancy_id,
@@ -1166,12 +1203,12 @@ def delete_document(
     document_id: str,
     user: AuthedUser = Depends(get_current_user),
 ):
+    _load_tenancy_for_landlord(user, tenancy_id)
     if not document_capabilities()["delete"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Document deletion is awaiting legal and privacy approval",
         )
-    _load_tenancy_for_landlord(user, tenancy_id)
     svc = create_service_client()
     document = _load_document(svc, tenancy_id, document_id, clean_only=False)
     if document.get("legal_hold"):
@@ -1339,7 +1376,7 @@ def create_document_request(
 
 
 @router.post("/{tenancy_id}/document-requests/{request_id}/submissions")
-async def submit_requested_document(
+def submit_requested_document(
     tenancy_id: str,
     request_id: str,
     request: Request,
@@ -1364,6 +1401,24 @@ async def submit_requested_document(
     replaces = (replaces_submission_id or "").strip() or None
 
     svc = create_service_client()
+    # A retry lands after the request moved to "submitted", so replay before the status check.
+    prior = (
+        svc.table("tenancy_document_submissions")
+        .select("*")
+        .eq("submitted_by", user.id)
+        .eq("idempotency_key", key)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if prior:
+        if str(prior[0].get("request_id")) != request_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This Idempotency-Key was already used for another request",
+            )
+        return {"already": True, "submission": dict(prior[0])}
     requests = (
         svc.table("tenancy_document_requests")
         .select("*")
@@ -1402,7 +1457,7 @@ async def submit_requested_document(
         window_seconds=3600,
         detail="Too many document uploads. Try again later.",
     )
-    file_name, content_type, checksum, body = await _read_validated_upload(file)
+    file_name, content_type, checksum, body = _read_validated_upload(file)
     document_id = str(uuid.uuid4())
     storage_path = _scan_and_store(
         tenancy_id=tenancy_id,

@@ -23,19 +23,15 @@ No artisan payout rail until ops demand is real.
   `tenancy-docs` bucket on a Supabase branch before upload/open/acknowledge can
   be clicked. Launch stays behind
   [`docs/tenancy-docs-launch-gate.md`](../docs/tenancy-docs-launch-gate.md).
-  **Fix before any flag goes on** (review 2026-10-02, merged dark):
-  1. Submission retry with the same `Idempotency-Key` returns 409 — router
-     status check runs before the RPC replay (`routers/tenancies.py` ~1380).
-  2. Rows flagged `orphan_cleanup_pending` still list/open as clean — filter
-     them out of list and open.
-  3. Upload/delete check flags and input before authorization — authorize first.
-  4. Dossier/tenant "Open" calls `window.open` after an await — mobile popup
-     blockers eat it; open during the click or navigate the tab.
-  5. Upload handlers are `async def` with blocking DB/ClamAV/storage calls —
-     make them sync `def` (threadpool).
-  Also: real DB refuses delete inside retention, so landlord delete is always
-  409 while `capabilities.delete` says true; add tests for cross-tenancy open,
-  open when not clean / flag off, and submission retry.
+  Review fixes from 2026-10-02 are in, flags still off: retry with the same
+  `Idempotency-Key` replays the stored submission (a key reused on another
+  request returns 409); `orphan_cleanup_pending` rows are hidden from list and
+  open; upload/delete authorize before flag and input checks; "Open" opens the
+  tab during the click via `openTenancyDocumentInNewTab`; upload handlers are
+  sync `def`. Each list item now carries `can_delete` (retention elapsed, no
+  legal hold, tenancy not active) — any future Delete button must use it, not
+  `capabilities.delete`. The DB RPC still also refuses on open holds and open
+  requests, which `can_delete` does not check.
 
 ## Product gate
 
