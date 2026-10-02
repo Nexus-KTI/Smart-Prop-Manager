@@ -40,7 +40,7 @@ export function ShellTopbar({
           aria-label={`${BRAND_NAME} home`}
         >
           <span className="sidebar-brand-mark" aria-hidden="true">
-            <BrandMark size={18} />
+            <BrandMark size={20} />
           </span>
           <span className="shell-topbar-brand-name">{BRAND_NAME}</span>
         </Link>

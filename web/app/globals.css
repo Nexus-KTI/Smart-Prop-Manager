@@ -753,9 +753,9 @@ html[data-sidebar-collapsed="true"] .shell-main {
 .shell-topbar-brand {
   display: none;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
-  margin-left: 2px;
+  margin-left: 6px;
   color: var(--ink);
   text-decoration: none;
 }
@@ -767,7 +767,7 @@ html[data-sidebar-collapsed="true"] .shell-main {
 }
 
 .shell-topbar-brand-name {
-  font-size: 1.3rem;
+  font-size: 1.45rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   text-transform: lowercase;
