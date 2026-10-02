@@ -82,7 +82,7 @@ python -m pytest tests/test_unit_status_aggregate.py tests/test_portfolio_money_
 
 **2026-10-02 agent dry run (local, smoke landlord, admin-minted session):** `scripts/qa-release-proof.mjs` at 1440 → **13/13**. Extra 393px walk of the property-first Properties page → **18/18**: filters, Record payment → unit "Amount due this cycle", Remind, group Add unit / Edit property forms, `?occupancy=vacant`, alert → Action needed overdue/failed, bell → `/reminders?filter=…` (panel on screen), Start tenancy → dossier, Payments + Tenancies ending soon, no console errors. Vacant and overdue states were response-stubbed in the browser (fixture has neither) — routing only. Found + fixed: table loading skeletons pushed phones 217px sideways (`.sr-only` escaping `.data-table-wrap`; wrapper now `position: relative`). **Headed live tick still yours.**
 
-**2026-10-02 brand + dashboard:** Friday dry run on `:4010` → **13/13**. Phone `/dashboard` at 393px: no overflow, N lockup without the KTI stamp, 4 KPIs, property cards, recent activity. Smoke profile has no first name. **Headed live tick still yours** (named landlord, and a real overdue chase).
+**2026-10-02 brand + dashboard:** Friday dry run on `:4010` → **13/13**. Phone `/dashboard` at 393px: no overflow, N lockup without the KTI stamp, 4 KPIs, property cards, recent activity. With a temporary profile name the hero read “Good evening, Ada”; the name was cleared afterward. The fixture still has no overdue unit, so Remind was not sent. **Headed live tick still yours** for a real overdue chase on your own account.
 
 **Unblock headed (copy-paste):**  
 1. Sign in as landlord on local or https://smart-prop-web.vercel.app  

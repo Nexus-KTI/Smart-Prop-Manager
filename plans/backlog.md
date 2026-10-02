@@ -13,8 +13,8 @@
    ([`docs/auth-dashboard-ops.md`](../docs/auth-dashboard-ops.md)).
 4. **Landlord `/dashboard` headed look** — phone dry run 2026-10-02
    (smoke landlord, 393px): N lockup, 4 KPIs, property cards, recent activity,
-   no sideways scroll. That account has no first name, so the hero is the
-   greeting only. Confirm the name on your own phone
+   no sideways scroll. A temporary name rendered “Good evening, Ada”, then
+   was cleared. Confirm it on your own phone
    ([`docs/design-system.md`](../docs/design-system.md) → `/dashboard`).
 
 ## Next
