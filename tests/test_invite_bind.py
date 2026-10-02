@@ -5,13 +5,23 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from lib.invite_bind import contacts_match, normalize_invite_contact, require_invite_contact_match
+from lib.invite_bind import (
+    contacts_match,
+    normalize_invite_contact,
+    notify_channel_for_invite,
+    require_invite_contact_match,
+)
 
 
 def test_normalize_phone_and_email():
     assert normalize_invite_contact("Ada@Example.com") == "ada@example.com"
     assert normalize_invite_contact("08012345678") == "+2348012345678"
     assert normalize_invite_contact("+234 801 234 5678") == "+2348012345678"
+
+
+def test_email_invites_use_the_email_channel():
+    assert notify_channel_for_invite("Ada@Example.com") == "email"
+    assert notify_channel_for_invite("08012345678") is None
 
 
 def test_contacts_match_phone_variants():

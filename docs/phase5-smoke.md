@@ -68,6 +68,8 @@ Record: unit id, invite token, request id, pass id, API error detail.
 
 **2026-10-02:** access notify, admit, maintenance notify, cron jobs, and the Ada money subset → **36 passed**. Smoke landlord issued a guest code, admitted it (Allowed, issued by and admitted by the same landlord, so no notify), then revoked it.
 
-**2026-10-02 repair loop:** a temporary smoke tenant on Flat 1 submitted “Smoke leak check”. The landlord board showed origin Tenant. A temporary artisan with no invite contact was assigned (no notify), saw the job, and marked it resolved. The tenancy, job, and both temporary accounts were removed. The invite form was not submitted, so no claim email was sent.
+**2026-10-02 repair loop:** a temporary smoke tenant on Flat 1 submitted “Smoke leak check”. The landlord board showed origin Tenant. A temporary artisan with no invite contact was assigned (no notify), saw the job, and marked it resolved. The tenancy, job, and both temporary accounts were removed.
+
+**2026-10-02 invite:** the work-orders form accepted the smoke landlord email and showed a claim link. Email contacts now use the email channel (a phone still uses SMS). The queued delivery was removed before it could send, and the invite row was deleted so that link cannot be claimed.
 
 **Unblock headed:** sign in as Ada, walk Action needed chase; then gate admit + repair notify. Or Chrome `--remote-debugging-port=9222` and tell the agent.

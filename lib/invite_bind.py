@@ -22,6 +22,15 @@ def normalize_invite_contact(raw: str | None) -> str:
         return digits[-10:] if len(digits) >= 10 else digits
 
 
+def notify_channel_for_invite(contact: str) -> str | None:
+    """Email contacts are emailed. Phone contacts keep the SMS default."""
+    from lib.notify import looks_like_email
+
+    if looks_like_email(contact or ""):
+        return "email"
+    return None
+
+
 def contacts_match(invite_contact: str, candidate: str) -> bool:
     left = normalize_invite_contact(invite_contact)
     right = normalize_invite_contact(candidate)

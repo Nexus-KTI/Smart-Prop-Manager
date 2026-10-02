@@ -76,10 +76,12 @@ def invite_artisan(payload: dict, user: AuthedUser = Depends(get_current_user)):
 
         claim_url = f"{frontend_base_url()}/artisan/claim?token={token}"
         mail = artisan_invite(claim_url=claim_url)
+        from lib.invite_bind import notify_channel_for_invite
+
         queued = enqueue_notification(
             user.db,
             idempotency_key=f"artisan-invite:{created.get('id') or token}",
-            channel=None,
+            channel=notify_channel_for_invite(contact),
             contact=contact,
             message=mail.text,
             email_subject=mail.subject,
