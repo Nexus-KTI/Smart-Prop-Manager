@@ -127,6 +127,19 @@ def test_resilience_migration_has_concurrency_and_uniqueness_guards():
     assert "status in ('pending', 'processing', 'retry', 'sent', 'dead')" in sql
 
 
+def test_flush_uses_service_client_when_the_user_cannot_claim(monkeypatch):
+    service = _RpcDb([])
+    monkeypatch.setattr("lib.db.create_service_client", lambda: service)
+
+    class Denied:
+        def rpc(self, name, params):
+            raise RuntimeError("permission denied for function claim_delivery_outbox")
+
+    result = delivery_outbox.flush_delivery_outbox(db=Denied(), batch_size=5)
+    assert result == {"claimed": 0, "sent": 0, "retried": 0, "dead": 0}
+    assert service.calls[0][0] == "claim_delivery_outbox"
+
+
 def test_outbox_worker_acknowledges_one_claim(monkeypatch):
     delivery = {
         "id": "d1",

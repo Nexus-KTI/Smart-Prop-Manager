@@ -126,7 +126,11 @@ def flush_delivery_outbox(
     batch_size: int = 10,
     lease_seconds: int = 90,
 ) -> dict[str, int]:
-    """Best-effort immediate claim for interactive enqueue paths."""
+    """Best-effort immediate claim for interactive enqueue paths.
+
+    Signed-in clients cannot execute claim_delivery_outbox. Retry through the
+    service client, the same way enqueue_delivery does.
+    """
     try:
         return process_delivery_outbox(
             db=db,
@@ -134,8 +138,21 @@ def flush_delivery_outbox(
             lease_seconds=lease_seconds,
         )
     except Exception:
-        logger.exception("Interactive delivery outbox flush failed")
-        return {"claimed": 0, "sent": 0, "retried": 0, "dead": 0}
+        from lib.db import create_service_client
+
+        service_db = create_service_client()
+        if service_db is db:
+            logger.exception("Interactive delivery outbox flush failed")
+            return {"claimed": 0, "sent": 0, "retried": 0, "dead": 0}
+        try:
+            return process_delivery_outbox(
+                db=service_db,
+                batch_size=batch_size,
+                lease_seconds=lease_seconds,
+            )
+        except Exception:
+            logger.exception("Interactive delivery outbox flush failed")
+            return {"claimed": 0, "sent": 0, "retried": 0, "dead": 0}
 
 
 def _retry_delay(attempt_count: int) -> timedelta:
