@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { FetchErrorState } from "@/components/FetchErrorState";
 import { useToast } from "@/components/ToastProvider";
 import { fetchOpsOverdue, sendReminder } from "@/lib/api";
+import { AttemptKey } from "@/lib/attemptKey";
 import { formatNaira, resolveUnitStatus } from "@/lib/dashboard";
 import type { Transaction, Unit } from "@/lib/types";
 
@@ -25,6 +26,7 @@ export function OpsOverdueClient() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [remindKey] = useState(() => new AttemptKey());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,14 +72,16 @@ export function OpsOverdueClient() {
     }
     setBusyId(row.unit.id);
     setError(null);
+    const message = `Rent reminder for ${row.property_name} · ${row.unit.label}`;
     try {
-      await sendReminder({
-        unit_id: row.unit.id,
-        contact,
-        message: `Rent reminder for ${row.property_name} · ${row.unit.label}`,
-      });
+      await sendReminder(
+        { unit_id: row.unit.id, contact, message },
+        remindKey.for(`${row.unit.id}|${contact}|${message}`),
+      );
+      remindKey.settle();
       showToast(`Reminder queued for ${row.unit.label}`, "success");
     } catch (err) {
+      remindKey.settle(err);
       setError(err instanceof Error ? err.message : "Reminder failed");
       showToast(
         err instanceof Error ? err.message : "Reminder failed",

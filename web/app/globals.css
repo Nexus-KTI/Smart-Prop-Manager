@@ -3445,13 +3445,18 @@ html[data-sidebar-collapsed="true"] .shell-main {
 
 .kpi-trend {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   font-weight: 550;
   color: var(--muted);
 }
 
 .kpi-trend[data-tone="up"] {
+.kpi-trend svg {
+  flex-shrink: 0;
+  margin-top: 0.15em;
+}
+
   color: var(--accent);
 }
 
@@ -4413,12 +4418,14 @@ a.property-group-name:focus-visible {
 }
 
 .app-toast {
+/* Top-centre so it never sits on the bottom-right Let’s talk button. */
   position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 40;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
   min-width: 200px;
-  max-width: min(420px, calc(100vw - 40px));
+  max-width: min(420px, calc(100vw - 32px));
   padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -4446,6 +4453,12 @@ a.property-group-name:focus-visible {
 }
 
 @media (max-width: 900px) {
+@media (max-width: 640px) {
+  .app-toast {
+    top: 64px;
+  }
+}
+
   .app-shell {
     --shell-inset: 24px;
     /* Wide tables scroll inside .data-table-wrap — never the page. */

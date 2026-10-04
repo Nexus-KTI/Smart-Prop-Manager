@@ -25,41 +25,32 @@ import { useOptionalUserMenuProfile } from "@/components/UserMenu";
 import {
   fetchApplications,
   fetchMaintenanceBoard,
+  fetchPortfolioOverview,
   fetchPortfolioPaymentsPage,
-  fetchPortfolioSummary,
   fetchPortfolioTenancies,
-  fetchProperties,
   fetchUrgentActions,
   type MaintenanceBoardPayload,
-  type PortfolioSummary,
+  type PortfolioOverview,
   type RentalApplication,
   type UrgentActionsPayload,
 } from "@/lib/api";
-import {
-  buildDashboardFromPortfolio,
-  formatDueDate,
-  formatNaira,
-} from "@/lib/dashboard";
+import { formatDueDate, formatNaira } from "@/lib/dashboard";
 import {
   buildActivity,
-  buildPropertyCards,
+  cardsFromOverview,
   countNewTenantsThisMonth,
-  countNewThisMonth,
-  fetchPortfolioUnitsCapped,
   formatRelativeTime,
   type ActivityKind,
   type PropertyCardStatus,
 } from "@/lib/dashboard-home";
-import type { PortfolioPayment, PortfolioUnit, Property } from "@/lib/types";
+import type { PortfolioPayment } from "@/lib/types";
 import { useGreeting } from "@/lib/use-greeting";
 
 const PROPERTY_LIMIT = 5;
 
 type HomeData = {
   loadedAt: Date;
-  units: PortfolioUnit[];
-  properties: Property[];
-  summary: PortfolioSummary | null;
+  overview: PortfolioOverview;
   payments: PortfolioPayment[] | null;
   actions: UrgentActionsPayload | null;
   applications: RentalApplication[] | null;
@@ -140,7 +131,7 @@ function DashboardSkeleton() {
           [
             [Building2, "Total properties"],
             [Users, "Total tenants"],
-            [Wallet, "Total outstanding"],
+            [Wallet, "Overdue rent"],
             [ListChecks, "Active work orders"],
           ] as const
         ).map(([icon, label]) => (
@@ -175,23 +166,18 @@ export function DashboardHome() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const load = useCallback(async (): Promise<HomeData> => {
-    const [units, properties, summary, payments, actions, applications, board, tenancies] =
-      await Promise.all([
-        fetchPortfolioUnitsCapped(),
-        fetchProperties(),
-        settle(fetchPortfolioSummary()),
-        settle(fetchPortfolioPaymentsPage(null)),
-        settle(fetchUrgentActions()),
-        settle(fetchApplications()),
-        settle(fetchMaintenanceBoard()),
-        settle(fetchPortfolioTenancies()),
-      ]);
+    const [overview, payments, actions, applications, board, tenancies] = await Promise.all([
+      fetchPortfolioOverview(),
+      settle(fetchPortfolioPaymentsPage(null)),
+      settle(fetchUrgentActions()),
+      settle(fetchApplications()),
+      settle(fetchMaintenanceBoard()),
+      settle(fetchPortfolioTenancies()),
+    ]);
     const loadedAt = new Date();
     return {
       loadedAt,
-      units: units.items,
-      properties,
-      summary,
+      overview,
       payments: payments?.items ?? null,
       actions,
       applications: applications?.items ?? null,
@@ -224,34 +210,27 @@ export function DashboardHome() {
 
   const view = useMemo(() => {
     if (!data) return null;
-    const emptyProperties = data.properties.filter(
-      (property) => !(property.units?.length ?? 0),
-    );
-    const { rows, stats } = buildDashboardFromPortfolio(data.units, emptyProperties);
-    const cards = buildPropertyCards(rows, data.properties, data.units, formatDueDate);
+    const { overview } = data;
     const activity = buildActivity({
       payments: data.payments ?? [],
       actions: data.actions?.items ?? [],
       applications: data.applications ?? [],
       workOrders: data.board?.items ?? [],
     });
-    const occupied =
-      data.summary?.occupied ??
-      rows.filter((row) => !row.needsUnit && (row.tenant || "").trim() && row.tenant !== "-").length;
-    const unitTotal = data.summary?.unit_count ?? data.units.length;
     const inProgress = (data.board?.items ?? []).filter(
       (item) => item.status === "in_progress",
     ).length;
     return {
-      stats,
-      cards,
+      cards: cardsFromOverview(overview.properties, formatDueDate),
       activity,
-      propertyTotal: data.summary?.property_count ?? data.properties.length,
-      unitTotal,
-      occupied,
-      vacant: data.summary?.vacant ?? Math.max(0, unitTotal - occupied),
-      overdue: data.actions?.summary.overdue ?? stats.unitsOverdue,
-      newThisMonth: countNewThisMonth(data.properties, data.loadedAt),
+      propertyTotal: overview.property_count,
+      unitTotal: overview.unit_count,
+      occupied: overview.occupied,
+      vacant: overview.vacant,
+      overdueAmount: overview.overdue_amount,
+      overdue: overview.overdue_units,
+      dueWeekAmount: overview.due_week_amount,
+      newThisMonth: overview.new_this_month,
       newTenants: data.newTenants,
       openWorkOrders: data.board?.open_count ?? null,
       inProgress,
@@ -312,11 +291,16 @@ export function DashboardHome() {
         />
         <KpiCard
           icon={Wallet}
-          label="Total outstanding"
-          value={formatNaira(view.stats.outstanding)}
+          label="Overdue rent"
+          value={formatNaira(view.overdueAmount)}
           foot={
             view.overdue > 0 ? (
-              <KpiTrend tone="alert">{view.overdue} overdue</KpiTrend>
+              <KpiTrend tone="alert">
+                {view.overdue} overdue
+                {view.dueWeekAmount > 0 ? ` · ${formatNaira(view.dueWeekAmount)} due this week` : ""}
+              </KpiTrend>
+            ) : view.dueWeekAmount > 0 ? (
+              `${formatNaira(view.dueWeekAmount)} due this week`
             ) : (
               "Nothing overdue"
             )

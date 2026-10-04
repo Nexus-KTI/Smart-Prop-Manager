@@ -1,5 +1,6 @@
 import type { Session } from "@supabase/supabase-js";
 
+import { cachedResponse, clearApiCache } from "@/lib/api-cache";
 import {
   emitDataInvalidation,
   type DataInvalidationScope,
@@ -45,17 +46,32 @@ export async function checkSmsDelivery(phone: string): Promise<{
 /** Single-flight refresh, concurrent refreshSession() races cause "Already Used". */
 let refreshInFlight: Promise<Session | null> | null = null;
 export const API_REQUEST_TIMEOUT_MS = 25_000;
+/** Must outlast the API's 40s Paystack read so a slow charge is not abandoned mid-flight. */
+export const PAYMENT_REQUEST_TIMEOUT_MS = 60_000;
+
+export type ApiFetchInit = RequestInit & { timeoutMs?: number };
+
+/** HTTP error that keeps the status so callers can tell a decline from a retryable failure. */
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
 
 async function fetchWithTimeout(
   input: RequestInfo | URL,
-  init: RequestInit = {},
+  { timeoutMs = API_REQUEST_TIMEOUT_MS, ...init }: ApiFetchInit = {},
 ): Promise<Response> {
   const controller = new AbortController();
   let timedOut = false;
   const timeout = globalThis.setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, API_REQUEST_TIMEOUT_MS);
+  }, timeoutMs);
   const onAbort = () => controller.abort(init.signal?.reason);
   if (init.signal?.aborted) onAbort();
   else init.signal?.addEventListener("abort", onAbort, { once: true });
@@ -179,7 +195,7 @@ function buildHeaders(
 /** Client-side fetch wrapper: attaches Supabase session JWT to FastAPI calls. */
 export async function apiFetch(
   path: string,
-  init: RequestInit = {},
+  init: ApiFetchInit = {},
   retried = false,
 ): Promise<Response> {
   const url = `${apiBaseUrl()}${path}`;
@@ -207,10 +223,34 @@ export async function apiFetch(
   }
 
   if (response.ok && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    clearApiCache();
     emitDataInvalidation(mutationInvalidations(path, method), path);
   }
 
   return response;
+}
+
+function tokenSubject(token: string | null): string {
+  if (!token) return "anon";
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return (JSON.parse(atob(payload)) as { sub?: string }).sub || "anon";
+  } catch {
+    return "anon";
+  }
+}
+
+/**
+ * GET through the shared shell cache (see api-cache.ts). Keyed per signed-in user and
+ * active portfolio. Pass `fresh` when a live event says the server value just changed.
+ */
+async function apiFetchCached(
+  path: string,
+  { fresh = false }: { fresh?: boolean } = {},
+): Promise<Response> {
+  const user = tokenSubject(await resolveAccessToken());
+  const key = `${user}|${readPortfolioOwnerId() ?? ""}|${path}`;
+  return cachedResponse(key, () => apiFetch(path), fresh);
 }
 
 export type CursorPage<T> = {
@@ -276,6 +316,44 @@ export async function fetchPortfolioSummary(): Promise<PortfolioSummary> {
     throw new Error(await readErrorDetail(res, "Failed to load portfolio counts"));
   }
   return (await res.json()) as PortfolioSummary;
+}
+
+export type PortfolioOverviewProperty = {
+  id: string;
+  name: string;
+  address: string | null;
+  photo_url: string | null;
+  units: number;
+  occupied: number;
+  status: "overdue" | "due-soon" | "occupied" | "vacant" | "empty";
+  amount: number | null;
+  /** ISO date of the next rent due on an occupied property with nothing due soon. */
+  next_due: string | null;
+};
+
+export type PortfolioOverview = {
+  property_count: number;
+  unit_count: number;
+  occupied: number;
+  vacant: number;
+  /** Unpaid rent + service charge past due this period, let units only. */
+  overdue_amount: number;
+  overdue_units: number;
+  /** Unpaid rent + service charge due in the next 7 days, let units only. */
+  due_week_amount: number;
+  due_week_units: number;
+  new_this_month: number;
+  properties: PortfolioOverviewProperty[];
+  capped: boolean;
+};
+
+/** Dashboard KPIs and property cards, computed on the server from one snapshot. */
+export async function fetchPortfolioOverview(): Promise<PortfolioOverview> {
+  const res = await apiFetch("/properties/portfolio/overview");
+  if (!res.ok) {
+    throw new Error(await readErrorDetail(res, "Failed to load your portfolio"));
+  }
+  return (await res.json()) as PortfolioOverview;
 }
 
 export async function fetchPropertyUnitsPage(
@@ -408,7 +486,7 @@ const EMPTY_URGENT_SUMMARY: UrgentActionsSummary = {
 
 /** Full Action Needed queue (items + summary). */
 export async function fetchUrgentActions(): Promise<UrgentActionsPayload> {
-  const res = await apiFetch("/reminders/actions");
+  const res = await apiFetchCached("/reminders/actions");
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load action needed"));
   }
@@ -661,20 +739,27 @@ export async function inviteLead(leadId: string): Promise<{
   };
 }
 
-export async function recordManualPayment(payload: {
-  unit_id: string;
-  amount: number;
-  payment_reference?: string | null;
-  charge_type?: "rent" | "service_charge" | "other";
-  charge_label?: string | null;
-}): Promise<Transaction> {
+/** Pass the same `idempotencyKey` on retry so a slow save is not recorded twice. */
+export async function recordManualPayment(
+  payload: {
+    unit_id: string;
+    amount: number;
+    payment_reference?: string | null;
+    charge_type?: "rent" | "service_charge" | "other";
+    charge_label?: string | null;
+  },
+  idempotencyKey: string = crypto.randomUUID(),
+): Promise<Transaction> {
   const res = await apiFetch("/payments/manual", {
     method: "POST",
-    headers: { "Idempotency-Key": crypto.randomUUID() },
+    headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    throw new Error((await res.text()) || `Failed to record payment (${res.status})`);
+    throw new ApiRequestError(
+      await readErrorDetail(res, `Failed to record payment (${res.status})`),
+      res.status,
+    );
   }
   const data = (await res.json()) as Transaction | Transaction[];
   const txn = Array.isArray(data) ? data[0] : data;
@@ -700,17 +785,25 @@ export async function confirmPaystackPayment(payload: {
   return txn;
 }
 
-export async function sendReminder(payload: {
-  unit_id: string;
-  contact: string;
-  message: string;
-}): Promise<Reminder> {
+/** Reuse `idempotencyKey` when retrying a send whose outcome is unknown (see attemptKey.ts). */
+export async function sendReminder(
+  payload: {
+    unit_id: string;
+    contact: string;
+    message: string;
+  },
+  idempotencyKey: string = crypto.randomUUID(),
+): Promise<Reminder> {
   const res = await apiFetch("/reminders/send", {
     method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    throw new Error(await readErrorDetail(res, "Failed to send reminder"));
+    throw new ApiRequestError(
+      await readErrorDetail(res, "Failed to send reminder"),
+      res.status,
+    );
   }
   const data = (await res.json()) as Reminder | Reminder[];
   const reminder = Array.isArray(data) ? data[0] : data;
@@ -718,12 +811,19 @@ export async function sendReminder(payload: {
   return reminder;
 }
 
-export async function retryReminder(reminderId: string): Promise<Reminder> {
+export async function retryReminder(
+  reminderId: string,
+  idempotencyKey: string = crypto.randomUUID(),
+): Promise<Reminder> {
   const res = await apiFetch(`/reminders/retry/${reminderId}`, {
     method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
   });
   if (!res.ok) {
-    throw new Error(await readErrorDetail(res, "Could not retry notice"));
+    throw new ApiRequestError(
+      await readErrorDetail(res, "Could not retry notice"),
+      res.status,
+    );
   }
   const data = (await res.json()) as Reminder | Reminder[];
   const reminder = Array.isArray(data) ? data[0] : data;
@@ -815,7 +915,7 @@ function parseUserProfile(data: Partial<UserProfile> & { role?: string }): UserP
 }
 
 export async function fetchMe(): Promise<UserProfile> {
-  const res = await apiFetch("/users/me");
+  const res = await apiFetchCached("/users/me");
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load profile"));
   }
@@ -943,7 +1043,7 @@ export async function fetchAdminMe(): Promise<{
   email: string | null;
   is_admin: boolean;
 }> {
-  const res = await apiFetch("/admin/me");
+  const res = await apiFetchCached("/admin/me");
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to check admin access"));
   }
@@ -1372,22 +1472,33 @@ export async function updateMyAutopay(payload: {
   return data.tenancy;
 }
 
-export async function chargeSavedCard(payload: {
-  unit_id: string;
-  payment_method_id: string;
-  amount: number;
-  charge_type?: string;
-}): Promise<{ item: unknown; receipt_url?: string | null }> {
+/**
+ * Pass the same `idempotencyKey` when retrying after a timeout, network error, 5xx, or
+ * "already processing" 409 so the API returns the first charge instead of making a second.
+ */
+export async function chargeSavedCard(
+  payload: {
+    unit_id: string;
+    payment_method_id: string;
+    amount: number;
+    charge_type?: string;
+  },
+  idempotencyKey: string = crypto.randomUUID(),
+): Promise<{ item: unknown; receipt_url?: string | null }> {
   const res = await apiFetch("/payments/cards/charge", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Idempotency-Key": crypto.randomUUID(),
+      "Idempotency-Key": idempotencyKey,
     },
     body: JSON.stringify(payload),
+    timeoutMs: PAYMENT_REQUEST_TIMEOUT_MS,
   });
   if (!res.ok) {
-    throw new Error(await readErrorDetail(res, "Could not charge card"));
+    throw new ApiRequestError(
+      await readErrorDetail(res, "Could not charge card"),
+      res.status,
+    );
   }
   return (await res.json()) as { item: unknown; receipt_url?: string | null };
 }
@@ -1735,17 +1846,23 @@ export type AdmitAccessResult = {
   created_by_label?: string;
 };
 
-export async function admitAccessPass(payload: {
-  property_id: string;
-  raw: string;
-}): Promise<AdmitAccessResult> {
+export async function admitAccessPass(
+  payload: {
+    property_id: string;
+    raw: string;
+  },
+  idempotencyKey: string = crypto.randomUUID(),
+): Promise<AdmitAccessResult> {
   const res = await apiFetch("/access/admit", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    throw new Error(await readErrorDetail(res, "Could not admit"));
+    throw new ApiRequestError(await readErrorDetail(res, "Could not admit"), res.status);
   }
   const data = (await res.json()) as AdmitAccessResult;
   return data;
@@ -2042,7 +2159,7 @@ export async function fetchMaintenanceBoard(): Promise<MaintenanceBoardPayload> 
 }
 
 export async function fetchWorkOrdersOpenCount(): Promise<number> {
-  const res = await apiFetch("/maintenance/open-count");
+  const res = await apiFetchCached("/maintenance/open-count");
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load open count"));
   }
@@ -2349,7 +2466,7 @@ export async function fetchApplications(): Promise<ApplicationsListPayload> {
 }
 
 export async function fetchApplicationsPendingCount(): Promise<number> {
-  const res = await apiFetch("/applications/pending-count");
+  const res = await apiFetchCached("/applications/pending-count");
   if (!res.ok) {
     throw new Error(await readErrorDetail(res, "Failed to load pending count"));
   }
@@ -2942,8 +3059,10 @@ export type MessageContact = {
   tenancy_status?: string | null;
 };
 
-export async function fetchMessageUnreadCount(): Promise<number> {
-  const res = await apiFetch("/messages/unread-count");
+export async function fetchMessageUnreadCount(
+  options: { fresh?: boolean } = {},
+): Promise<number> {
+  const res = await apiFetchCached("/messages/unread-count", options);
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load unread"));
   const data = (await res.json()) as { unread_threads?: number };
   return data.unread_threads ?? 0;
@@ -3001,31 +3120,46 @@ export async function openMaintenanceThread(
   return data.item;
 }
 
+/** Newest page, oldest-to-newest. Pass `next_before` back as `before` for the page above. */
 export async function fetchThreadMessages(
   threadId: string,
-): Promise<{ items: ChatMessage[]; peer_last_read_at: string | null }> {
-  const res = await apiFetch(`/messages/threads/${threadId}/messages`);
+  before?: string | null,
+): Promise<{
+  items: ChatMessage[];
+  peer_last_read_at: string | null;
+  next_before: string | null;
+}> {
+  const query = before ? `?before=${encodeURIComponent(before)}` : "";
+  const res = await apiFetch(`/messages/threads/${threadId}/messages${query}`);
   if (!res.ok) throw new Error(await readErrorDetail(res, "Failed to load messages"));
   const data = (await res.json()) as {
     items?: ChatMessage[];
     peer_last_read_at?: string | null;
+    next_before?: string | null;
   };
   return {
     items: data.items ?? [],
     peer_last_read_at: data.peer_last_read_at ?? null,
+    next_before: data.next_before ?? null,
   };
 }
 
 export async function sendThreadMessage(
   threadId: string,
   body: string,
+  idempotencyKey: string = crypto.randomUUID(),
 ): Promise<ChatMessage> {
   const res = await apiFetch(`/messages/threads/${threadId}/messages`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
     body: JSON.stringify({ body }),
   });
-  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not send"));
+  if (!res.ok) {
+    throw new ApiRequestError(await readErrorDetail(res, "Could not send"), res.status);
+  }
   const data = (await res.json()) as { item: ChatMessage };
   return data.item;
 }
@@ -3033,7 +3167,7 @@ export async function sendThreadMessage(
 export async function sendThreadMedia(
   threadId: string,
   file: File,
-  opts?: { caption?: string; durationMs?: number },
+  opts?: { caption?: string; durationMs?: number; idempotencyKey?: string },
 ): Promise<ChatMessage> {
   const body = new FormData();
   body.set("file", file);
@@ -3043,9 +3177,12 @@ export async function sendThreadMedia(
   }
   const res = await apiFetch(`/messages/threads/${threadId}/media`, {
     method: "POST",
+    headers: { "Idempotency-Key": opts?.idempotencyKey ?? crypto.randomUUID() },
     body,
   });
-  if (!res.ok) throw new Error(await readErrorDetail(res, "Could not send"));
+  if (!res.ok) {
+    throw new ApiRequestError(await readErrorDetail(res, "Could not send"), res.status);
+  }
   const data = (await res.json()) as { item: ChatMessage };
   return data.item;
 }

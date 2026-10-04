@@ -16,6 +16,7 @@ import {
   type AccessPassEvent,
   type AdmitAccessResult,
 } from "@/lib/api";
+import { AttemptKey } from "@/lib/attemptKey";
 import { useToast } from "@/components/ToastProvider";
 import {
   ACCESS_STATUS_LABELS,
@@ -40,6 +41,7 @@ export function AccessPassesClient() {
   const [occupantKey, setOccupantKey] = useState("");
   const [admitRaw, setAdmitRaw] = useState("");
   const [admitting, setAdmitting] = useState(false);
+  const [admitKey] = useState(() => new AttemptKey());
   const [lastAdmit, setLastAdmit] = useState<AdmitAccessResult | null>(null);
   const [lastAdmitDenied, setLastAdmitDenied] = useState<string | null>(null);
   const [events, setEvents] = useState<AccessPassEvent[]>([]);
@@ -113,7 +115,11 @@ export function AccessPassesClient() {
     setAdmitting(true);
     setLastAdmitDenied(null);
     try {
-      const result = await admitAccessPass({ property_id: propertyId, raw });
+      const result = await admitAccessPass(
+        { property_id: propertyId, raw },
+        admitKey.for(`${propertyId}|${raw}`),
+      );
+      admitKey.settle();
       setLastAdmit(result);
       setAdmitRaw("");
       showToast(
@@ -122,6 +128,7 @@ export function AccessPassesClient() {
       );
       await load();
     } catch (err) {
+      admitKey.settle(err);
       const msg = err instanceof Error ? err.message : "Admit failed";
       setLastAdmit(null);
       setLastAdmitDenied(msg);

@@ -1,4 +1,4 @@
-import { ArrowRight, ArrowUp, type LucideIcon } from "lucide-react";
+import { ArrowRight, ArrowUp, CircleAlert, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 /** Portfolio headline numbers. Children must be `KpiCard`s (dl > div > dt/dd). */
@@ -43,7 +43,7 @@ export function KpiCard({
   );
 }
 
-/** Small direction + count line for `KpiCard` foot ("↑ 2 new", "→ 0 in progress"). */
+/** Small icon + count line for `KpiCard` foot ("↑ 2 new", "→ 0 in progress", "! 2 overdue"). */
 export function KpiTrend({
   tone = "muted",
   children,
@@ -51,11 +51,11 @@ export function KpiTrend({
   tone?: "up" | "alert" | "muted";
   children: ReactNode;
 }) {
-  const Icon = tone === "muted" ? ArrowRight : ArrowUp;
+  const Icon = tone === "alert" ? CircleAlert : tone === "muted" ? ArrowRight : ArrowUp;
   return (
     <span className="kpi-trend" data-tone={tone}>
       <Icon size={14} strokeWidth={2} aria-hidden />
-      {children}
+      <span>{children}</span>
     </span>
   );
 }

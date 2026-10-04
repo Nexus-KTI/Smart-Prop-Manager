@@ -210,9 +210,14 @@ export function TenantSettingsClient() {
           ? me.date_format
           : "dd/mm/yyyy",
       );
-      showToast("Profile updated.");
+      showToast("Profile updated.", "success");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save");
+      const message =
+        err instanceof Error && err.message && err.message !== "Failed to fetch"
+          ? err.message
+          : "Could not update profile. Try again.";
+      setError(message);
+      showToast(message, "error");
     } finally {
       setProfilePending(false);
     }

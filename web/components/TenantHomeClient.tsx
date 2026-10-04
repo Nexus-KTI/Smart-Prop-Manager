@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { FetchErrorState } from "@/components/FetchErrorState";
 import { TenantAutopayCard } from "@/components/TenantAutopayCard";
 import { TenantNoLeaseEmpty } from "@/components/TenantNoLeaseEmpty";
 import {
+  ApiRequestError,
   chargeSavedCard,
   createPendingPaystackPayment,
   confirmPaystackPayment,
@@ -57,6 +58,7 @@ export function TenantHomeClient() {
   const [savedCards, setSavedCards] = useState<SavedPaymentMethod[]>([]);
   const [payCardId, setPayCardId] = useState("");
   const [openTodos, setOpenTodos] = useState<OpsTask[]>([]);
+  const cardAttempt = useRef<{ signature: string; key: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -155,12 +157,29 @@ export function TenantHomeClient() {
     try {
       // Prefer saved card one-shot when selected.
       if (payCardId) {
-        await chargeSavedCard({
-          unit_id: tenancy.unit_id,
-          payment_method_id: payCardId,
-          amount: due,
-          charge_type: "rent",
-        });
+        const signature = `${tenancy.unit_id}|${payCardId}|${due}`;
+        if (cardAttempt.current?.signature !== signature) {
+          cardAttempt.current = { signature, key: crypto.randomUUID() };
+        }
+        try {
+          await chargeSavedCard(
+            {
+              unit_id: tenancy.unit_id,
+              payment_method_id: payCardId,
+              amount: due,
+              charge_type: "rent",
+            },
+            cardAttempt.current.key,
+          );
+        } catch (err) {
+          const stillOpen =
+            !(err instanceof ApiRequestError) ||
+            err.status >= 500 ||
+            (err.status === 409 && /already processing/i.test(err.message));
+          if (!stillOpen) cardAttempt.current = null;
+          throw err;
+        }
+        cardAttempt.current = null;
         showToast("Rent paid with saved card");
         await load();
         setPaying(false);

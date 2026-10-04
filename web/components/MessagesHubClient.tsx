@@ -25,6 +25,7 @@ import {
   type MessageThread,
   type Publication,
 } from "@/lib/api";
+import { AttemptKey } from "@/lib/attemptKey";
 import {
   PAYMENT_STATUS_LABELS,
   labelOrTitle,
@@ -128,10 +129,13 @@ export function MessagesHubClient({ audience }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [peerLastReadAt, setPeerLastReadAt] = useState<string | null>(null);
+  const [olderCursor, setOlderCursor] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [pubs, setPubs] = useState<Publication[]>([]);
   const [loading, setLoading] = useState(true);
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendKey] = useState(() => new AttemptKey());
   const [error, setError] = useState<string | null>(null);
   const [pubOpen, setPubOpen] = useState(false);
   const [pending, setPending] = useState<PendingMedia | null>(null);
@@ -211,7 +215,16 @@ export function MessagesHubClient({ audience }: Props) {
     async (threadId: string, opts?: { quiet?: boolean }) => {
       try {
         const data = await fetchThreadMessages(threadId);
-        setMessages(data.items);
+        const newestPageStart = data.items[0]?.created_at;
+        setMessages((prev) => {
+          if (!opts?.quiet || !newestPageStart) return data.items;
+          // A live refresh keeps any earlier pages the user already opened.
+          const earlier = prev.filter(
+            (m) => m.thread_id === threadId && m.created_at < newestPageStart,
+          );
+          return [...earlier, ...data.items];
+        });
+        if (!opts?.quiet) setOlderCursor(data.next_before);
         setPeerLastReadAt(data.peer_last_read_at);
         await markThreadRead(threadId);
         setThreads((prev) =>
@@ -230,6 +243,25 @@ export function MessagesHubClient({ audience }: Props) {
   useEffect(() => {
     loadMessagesRef.current = loadMessages;
   }, [loadMessages]);
+
+  async function loadEarlier() {
+    if (!activeId || !olderCursor || loadingOlder) return;
+    const threadId = activeId;
+    setLoadingOlder(true);
+    try {
+      const data = await fetchThreadMessages(threadId, olderCursor);
+      if (activeIdRef.current !== threadId) return;
+      setMessages((prev) => {
+        const seen = new Set(prev.map((m) => m.id));
+        return [...data.items.filter((m) => !seen.has(m.id)), ...prev];
+      });
+      setOlderCursor(data.next_before);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not load earlier messages", "error");
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   useEffect(() => {
     if (!recording) return;
@@ -250,6 +282,7 @@ export function MessagesHubClient({ audience }: Props) {
       previewUrlRef.current = null;
     }
     setPending(null);
+    setOlderCursor(null);
     if (fileRef.current) fileRef.current.value = "";
     const rec = recorderRef.current;
     if (!rec) return;
@@ -280,17 +313,93 @@ export function MessagesHubClient({ audience }: Props) {
     }
   }, [activeId, tab, loadMessages]);
 
-  // Live updates via Supabase Realtime (new messages, thread previews, read receipts).
+  // Live thread previews: only this user's threads (every send updates its thread).
   useEffect(() => {
     if (tab !== "chat" && tab !== "maintenance") return;
     if (!meId) return;
+
+    const onThreadUpdate = (payload: { new: unknown }) => {
+      const row = payload.new as Partial<MessageThread> & { id?: string };
+      if (!row.id) return;
+      const currentActive = activeIdRef.current;
+      setThreads((prev) => {
+        const idx = prev.findIndex((t) => t.id === row.id);
+        if (idx < 0) return prev;
+        const next = [...prev];
+        const prior = next[idx];
+        next[idx] = {
+          ...prior,
+          ...row,
+          unread:
+            currentActive === row.id
+              ? false
+              : prior.unread ||
+                (row.last_message_at != null &&
+                  row.last_message_at !== prior.last_message_at),
+        };
+        return next;
+      });
+    };
 
     const supabase = createClient();
     const channel = supabase
       .channel(`messages-hub:${meId}:${tab}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "message_threads",
+          filter: `landlord_id=eq.${meId}`,
+        },
+        onThreadUpdate,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "message_threads",
+          filter: `tenant_user_id=eq.${meId}`,
+        },
+        onThreadUpdate,
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [tab, meId]);
+
+  // Live messages and read receipts for the open thread only.
+  useEffect(() => {
+    if (tab !== "chat" && tab !== "maintenance") return;
+    if (!meId || !activeId) return;
+
+    const onPeerRead = (payload: { new: unknown }) => {
+      const row = payload.new as {
+        thread_id?: string;
+        user_id?: string;
+        last_read_at?: string;
+      };
+      if (!row.thread_id || !row.last_read_at) return;
+      if (row.thread_id !== activeIdRef.current) return;
+      const selfId = meIdRef.current;
+      if (!selfId || row.user_id === selfId) return;
+      setPeerLastReadAt(row.last_read_at);
+    };
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`messages-thread:${meId}:${activeId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `thread_id=eq.${activeId}`,
+        },
         (payload) => {
           const row = payload.new as Record<string, unknown>;
           const threadId = String(row.thread_id || "");
@@ -341,56 +450,30 @@ export function MessagesHubClient({ audience }: Props) {
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "message_threads" },
-        (payload) => {
-          const row = payload.new as Partial<MessageThread> & { id?: string };
-          if (!row.id) return;
-          const currentActive = activeIdRef.current;
-          setThreads((prev) => {
-            const idx = prev.findIndex((t) => t.id === row.id);
-            if (idx < 0) return prev;
-            const next = [...prev];
-            const prior = next[idx];
-            next[idx] = {
-              ...prior,
-              ...row,
-              unread:
-                currentActive === row.id
-                  ? false
-                  : prior.unread ||
-                    (row.last_message_at != null &&
-                      row.last_message_at !== prior.last_message_at),
-            };
-            return next;
-          });
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "message_thread_reads",
+          filter: `thread_id=eq.${activeId}`,
         },
+        onPeerRead,
       )
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "UPDATE",
           schema: "public",
           table: "message_thread_reads",
+          filter: `thread_id=eq.${activeId}`,
         },
-        (payload) => {
-          const row = payload.new as {
-            thread_id?: string;
-            user_id?: string;
-            last_read_at?: string;
-          };
-          if (!row.thread_id || !row.last_read_at) return;
-          if (row.thread_id !== activeIdRef.current) return;
-          const selfId = meIdRef.current;
-          if (!selfId || row.user_id === selfId) return;
-          setPeerLastReadAt(row.last_read_at);
-        },
+        onPeerRead,
       )
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [tab, meId]);
+  }, [tab, meId, activeId]);
 
   // Slow fallback if Realtime drops (peer read / missed events).
   useEffect(() => {
@@ -541,13 +624,19 @@ export function MessagesHubClient({ audience }: Props) {
     const text = composer.trim();
     if (!text && !pending) return;
     setSending(true);
+    const file = pending?.file;
+    const idempotencyKey = sendKey.for(
+      `${activeId}|${text}|${file ? `${file.name}:${file.size}:${file.lastModified}` : ""}`,
+    );
     try {
       const msg = pending
         ? await sendThreadMedia(activeId, pending.file, {
             caption: text,
             durationMs: pending.durationMs,
+            idempotencyKey,
           })
-        : await sendThreadMessage(activeId, text);
+        : await sendThreadMessage(activeId, text, idempotencyKey);
+      sendKey.settle();
       setMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev;
         return [...prev, msg];
@@ -567,6 +656,7 @@ export function MessagesHubClient({ audience }: Props) {
         ),
       );
     } catch (err) {
+      sendKey.settle(err);
       showToast(err instanceof Error ? err.message : "Send failed", "error");
     } finally {
       setSending(false);
@@ -859,6 +949,16 @@ export function MessagesHubClient({ audience }: Props) {
                   ) : null}
                 </header>
                 <div className="messages-stream">
+                  {olderCursor ? (
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => void loadEarlier()}
+                      disabled={loadingOlder}
+                    >
+                      {loadingOlder ? "Loading…" : "Load earlier messages"}
+                    </button>
+                  ) : null}
                   {messages.length === 0 ? (
                     <p className="table-muted">No messages yet, say hello.</p>
                   ) : (

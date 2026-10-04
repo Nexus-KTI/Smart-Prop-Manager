@@ -6,6 +6,7 @@ import { FormEvent, useState } from "react";
 import { LoadMoreButton } from "@/components/LoadMoreButton";
 import { useToast } from "@/components/ToastProvider";
 import { fetchReminderLogPage, retryReminder, sendReminder } from "@/lib/api";
+import { AttemptKey } from "@/lib/attemptKey";
 import { formatNaira } from "@/lib/dashboard";
 import {
   CHANNEL_LABELS,
@@ -92,6 +93,7 @@ export function UnitRemindersClient({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [sendKey] = useState(() => new AttemptKey());
 
   async function refreshLog() {
     const page = await fetchReminderLogPage(unitId);
@@ -120,10 +122,12 @@ export function UnitRemindersClient({
     if (retryingId || !canRetry(reminder)) return;
     setRetryingId(reminder.id);
     try {
-      await retryReminder(reminder.id);
+      await retryReminder(reminder.id, sendKey.for(`retry|${reminder.id}`));
+      sendKey.settle();
       await refreshLog();
       showToast("Notice retry queued", "success");
     } catch (err) {
+      sendKey.settle(err);
       try {
         await refreshLog();
       } catch {
@@ -151,11 +155,16 @@ export function UnitRemindersClient({
     try {
       if (!contact) throw new Error("Contact is required.");
       if (!message) throw new Error("Message is required.");
-      await sendReminder({ unit_id: unitId, contact, message });
+      await sendReminder(
+        { unit_id: unitId, contact, message },
+        sendKey.for(`send|${unitId}|${contact}|${message}`),
+      );
+      sendKey.settle();
       await refreshLog();
       setFormOpen(false);
       showToast("Reminder queued", "success");
     } catch (err) {
+      sendKey.settle(err);
       try {
         await refreshLog();
       } catch {

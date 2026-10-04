@@ -210,6 +210,7 @@ export function SettingsPanel({
     if (!name) {
       setProfilePending(false);
       setProfileError("Name is required.");
+      showToast("Name is required.", "error");
       return;
     }
 
@@ -232,11 +233,14 @@ export function SettingsPanel({
           ? me.date_format
           : "dd/mm/yyyy",
       );
-      showToast("Profile updated.");
+      showToast("Profile updated.", "success");
     } catch (err) {
-      setProfileError(
-        err instanceof Error ? err.message : "Could not update profile.",
-      );
+      const message =
+        err instanceof Error && err.message && err.message !== "Failed to fetch"
+          ? err.message
+          : "Could not update profile. Try again.";
+      setProfileError(message);
+      showToast(message, "error");
     } finally {
       setProfilePending(false);
     }

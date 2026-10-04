@@ -10,6 +10,7 @@ import { UnitMaintenanceRequestsCard } from "@/components/UnitMaintenanceRequest
 import { UnitUtilityProvidersCard } from "@/components/UnitUtilityProvidersCard";
 import { UnitFeesAndApplyCard } from "@/components/UnitFeesAndApplyCard";
 import {
+  ApiRequestError,
   confirmPaystackPayment,
   createPendingPaystackPayment,
   fetchPaymentHistoryPage,
@@ -116,6 +117,7 @@ export function UnitPaymentsClient({
   const [paystackError, setPaystackError] = useState<string | null>(null);
   const [pendingPaystack, startPaystackTransition] = useTransition();
   const manualSubmitLock = useRef(false);
+  const manualAttempt = useRef<{ signature: string; key: string } | null>(null);
   const openedFromQuery = useRef(false);
 
   useEffect(() => {
@@ -256,14 +258,31 @@ export function UnitPaymentsClient({
     setManualError(null);
     setManualPending(true);
 
+    const signature = [unitId, amount, paymentReference, selectedType, chargeLabel].join("|");
+    if (manualAttempt.current?.signature !== signature) {
+      manualAttempt.current = { signature, key: crypto.randomUUID() };
+    }
+
     try {
-      const saved = await recordManualPayment({
-        unit_id: unitId,
-        amount,
-        payment_reference: paymentReference || null,
-        charge_type: selectedType,
-        charge_label: selectedType === "other" ? chargeLabel : null,
-      });
+      let saved: Transaction;
+      try {
+        saved = await recordManualPayment(
+          {
+            unit_id: unitId,
+            amount,
+            payment_reference: paymentReference || null,
+            charge_type: selectedType,
+            charge_label: selectedType === "other" ? chargeLabel : null,
+          },
+          manualAttempt.current.key,
+        );
+      } catch (err) {
+        if (err instanceof ApiRequestError && err.status < 500) {
+          manualAttempt.current = null;
+        }
+        throw err;
+      }
+      manualAttempt.current = null;
 
       formEl.reset();
       resetManualForm();

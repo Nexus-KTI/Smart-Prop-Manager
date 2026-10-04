@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 
+const DIAG_TIMEOUT_MS = 15_000;
+
 /**
  * SMS delivery diagnostics — admin session required.
  * Do not expose NOTIFY_DIAG_SECRET to anonymous browsers (OTP recon).
@@ -42,14 +44,20 @@ export async function GET(request: NextRequest) {
         method: "GET",
         cache: "no-store",
         headers: { "X-Notify-Diag-Secret": secret },
+        signal: AbortSignal.timeout(DIAG_TIMEOUT_MS),
       },
     );
     const body = await res.json().catch(() => ({}));
     return NextResponse.json(body, { status: res.status });
-  } catch {
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
     return NextResponse.json(
-      { detail: "Could not check SMS delivery status" },
-      { status: 502 },
+      {
+        detail: timedOut
+          ? "SMS delivery check timed out. Retry in a moment."
+          : "Could not check SMS delivery status",
+      },
+      { status: timedOut ? 504 : 502 },
     );
   }
 }

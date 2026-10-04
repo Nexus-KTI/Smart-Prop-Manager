@@ -1,5 +1,6 @@
 "use client";
 
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useCallback, useEffect, useState } from "react";
 
 import { fetchMessageUnreadCount } from "@/lib/api";
@@ -27,8 +28,8 @@ export function formatUnreadBadge(n: number): string {
 export function useMessageUnreadCount(): number {
   const [count, setCount] = useState(0);
 
-  const refresh = useCallback(async () => {
-    const n = await fetchMessageUnreadCount().catch(() => 0);
+  const refresh = useCallback(async (fresh = false) => {
+    const n = await fetchMessageUnreadCount({ fresh }).catch(() => 0);
     setCount(n);
   }, []);
 
@@ -39,7 +40,7 @@ export function useMessageUnreadCount(): number {
     const schedule = () => {
       if (debounceTimer != null) window.clearTimeout(debounceTimer);
       debounceTimer = window.setTimeout(() => {
-        void refresh();
+        void refresh(true);
       }, 350);
     };
 
@@ -48,30 +49,63 @@ export function useMessageUnreadCount(): number {
     // A timestamp can then reuse a still-subscribed channel and Supabase rejects
     // the second set of postgres_changes callbacks.
     const channelName = `shell-message-unread:${crypto.randomUUID()}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
-        schedule,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "message_thread_reads" },
-        schedule,
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "message_threads" },
-        schedule,
-      )
-      .subscribe();
+    let channel: RealtimeChannel | null = null;
+    let cancelled = false;
+    // Every message send also updates its thread row, so the user's own threads
+    // and read markers are enough; no subscription to every message.
+    void supabase.auth.getSession().then(({ data }) => {
+      const userId = data.session?.user.id;
+      if (cancelled || !userId) return;
+      channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "message_threads",
+            filter: `landlord_id=eq.${userId}`,
+          },
+          schedule,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "message_threads",
+            filter: `tenant_user_id=eq.${userId}`,
+          },
+          schedule,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "message_thread_reads",
+            filter: `user_id=eq.${userId}`,
+          },
+          schedule,
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "message_thread_reads",
+            filter: `user_id=eq.${userId}`,
+          },
+          schedule,
+        )
+        .subscribe();
+    });
 
     function onFocus() {
       void refresh();
     }
     function onLocalRead() {
-      void refresh();
+      void refresh(true);
     }
 
     window.addEventListener("focus", onFocus);
@@ -79,9 +113,10 @@ export function useMessageUnreadCount(): number {
     const stopInvalidation = onDataInvalidated("message-unread", onLocalRead);
 
     return () => {
+      cancelled = true;
       window.clearTimeout(initialTimer);
       if (debounceTimer != null) window.clearTimeout(debounceTimer);
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener(MESSAGES_READ_EVENT, onLocalRead);
       stopInvalidation();

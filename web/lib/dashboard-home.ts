@@ -1,17 +1,13 @@
 import {
   fetchPortfolioUnitsPage,
   type MaintenanceRequest,
+  type PortfolioOverviewProperty,
   type PortfolioTenancy,
   type RentalApplication,
   type UrgentActionItem,
 } from "@/lib/api";
 import { formatNaira } from "@/lib/dashboard";
-import type {
-  DashboardRow,
-  PortfolioPayment,
-  PortfolioUnit,
-  Property,
-} from "@/lib/types";
+import type { PortfolioPayment, PortfolioUnit } from "@/lib/types";
 
 /** Pages of /properties/portfolio/units the home view reads before stopping. */
 const PORTFOLIO_PAGE_CAP = 10;
@@ -46,104 +42,33 @@ export type PropertyCard = {
   caption: string;
 };
 
-function rowIsVacant(row: DashboardRow): boolean {
-  const tenant = (row.tenant || "").trim();
-  return !tenant || tenant === "-";
-}
-
-const STATUS_RANK: Record<PropertyCardStatus, number> = {
-  overdue: 0,
-  "due-soon": 1,
-  occupied: 2,
-  vacant: 3,
-  empty: 4,
+const CAPTION: Record<PropertyCardStatus, string> = {
+  overdue: "Overdue",
+  "due-soon": "Rent due",
+  occupied: "Rent roll",
+  vacant: "Asking rent",
+  empty: "Add a unit",
 };
 
-/** One card per property, most urgent first. */
-export function buildPropertyCards(
-  rows: DashboardRow[],
-  properties: Property[],
-  portfolioUnits: PortfolioUnit[],
+/** Server-built cards (already most urgent first) with display captions. */
+export function cardsFromOverview(
+  properties: PortfolioOverviewProperty[],
   formatDate: (date: Date | null) => string,
 ): PropertyCard[] {
-  const byId = new Map<string, Property>();
-  for (const property of properties) byId.set(property.id, property);
-
-  const photos = new Map<string, string>();
-  for (const item of portfolioUnits) {
-    const url = item.unit.photo_url?.trim();
-    if (url && !photos.has(item.property_id)) photos.set(item.property_id, url);
-  }
-
-  const grouped = new Map<string, { name: string; rows: DashboardRow[] }>();
-  for (const row of rows) {
-    if (!row.propertyId) continue;
-    const entry = grouped.get(row.propertyId) ?? {
-      name: row.propertyName?.trim() || "Untitled property",
-      rows: [],
+  return properties.map((property) => {
+    const nextDue = property.status === "occupied" ? parseDay(property.next_due) : null;
+    return {
+      id: property.id,
+      name: property.name,
+      address: property.address,
+      photoUrl: property.photo_url,
+      units: property.units,
+      occupied: property.occupied,
+      status: property.status,
+      amount: property.amount,
+      caption: nextDue ? `Next due ${formatDate(nextDue)}` : CAPTION[property.status],
     };
-    if (!row.needsUnit) entry.rows.push(row);
-    grouped.set(row.propertyId, entry);
-  }
-  for (const property of properties) {
-    if (!grouped.has(property.id)) {
-      grouped.set(property.id, { name: property.name, rows: [] });
-    }
-  }
-
-  const cards: PropertyCard[] = [];
-  for (const [id, { name, rows: unitRows }] of grouped) {
-    const occupiedRows = unitRows.filter((row) => !rowIsVacant(row));
-    const overdue = occupiedRows.filter((row) => row.status === "OVERDUE");
-    const dueSoon = occupiedRows.filter((row) => row.status === "DUE SOON");
-    const sum = (list: DashboardRow[]) =>
-      list.reduce((total, row) => total + row.rent + (row.serviceCharge ?? 0), 0);
-
-    let status: PropertyCardStatus;
-    let amount: number | null = null;
-    let caption: string;
-    if (unitRows.length === 0) {
-      status = "empty";
-      caption = "Add a unit";
-    } else if (overdue.length > 0) {
-      status = "overdue";
-      amount = sum(overdue);
-      caption = "Overdue";
-    } else if (dueSoon.length > 0) {
-      status = "due-soon";
-      amount = sum(dueSoon);
-      caption = "Rent due";
-    } else if (occupiedRows.length === 0) {
-      status = "vacant";
-      amount = sum(unitRows);
-      caption = "Asking rent";
-    } else {
-      status = "occupied";
-      const next = occupiedRows
-        .filter((row) => row.dueDate)
-        .sort((a, b) => a.dueDate!.getTime() - b.dueDate!.getTime())[0];
-      amount = next ? next.rent + (next.serviceCharge ?? 0) : sum(occupiedRows);
-      caption = next ? `Next due ${formatDate(next.dueDate)}` : "Rent roll";
-    }
-
-    cards.push({
-      id,
-      name: byId.get(id)?.name?.trim() || name,
-      address: byId.get(id)?.address?.trim() || null,
-      photoUrl: photos.get(id) ?? null,
-      units: unitRows.length,
-      occupied: occupiedRows.length,
-      status,
-      amount,
-      caption,
-    });
-  }
-
-  return cards.sort(
-    (a, b) =>
-      STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
-      a.name.localeCompare(b.name),
-  );
+  });
 }
 
 export type ActivityKind = "payment" | "action" | "application" | "work-order";
@@ -287,13 +212,6 @@ function inThisMonth(date: Date | null, now: Date): boolean {
   const { start, end } = monthWindow(now);
   const time = date.getTime();
   return time >= start && time < end;
-}
-
-/** Properties created since the first of this month. */
-export function countNewThisMonth(properties: Property[], now: Date): number {
-  return properties.filter((property) =>
-    inThisMonth(parseTime(property.created_at), now),
-  ).length;
 }
 
 /**

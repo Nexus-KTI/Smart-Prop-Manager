@@ -14,6 +14,7 @@ import {
   type UrgentActionItem,
   type UrgentActionsSummary,
 } from "@/lib/api";
+import { AttemptKey } from "@/lib/attemptKey";
 
 type ListFilter = "urgent" | "overdue" | "ending_soon" | "failed";
 
@@ -117,6 +118,7 @@ function RemindersPageInner() {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryKey] = useState(() => new AttemptKey());
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -223,10 +225,12 @@ function RemindersPageInner() {
     if (!item.reminder_id || retryingId) return;
     setRetryingId(item.id);
     try {
-      await retryReminder(item.reminder_id);
+      await retryReminder(item.reminder_id, retryKey.for(item.reminder_id));
+      retryKey.settle();
       showToast("Notice retry queued", "success");
       setReloadKey((k) => k + 1);
     } catch (err) {
+      retryKey.settle(err);
       showToast(
         err instanceof Error ? err.message : "Could not retry notice.",
         "error",
