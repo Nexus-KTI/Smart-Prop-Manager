@@ -4,6 +4,7 @@ import { MarketingAudiences } from "@/components/MarketingAudiences";
 import { MarketingCtaSection } from "@/components/MarketingCtaSection";
 import { MarketingFaq } from "@/components/MarketingFaq";
 import { MarketingHeroFrame } from "@/components/MarketingHeroFrame";
+import { MarketingHouse } from "@/components/MarketingHouse";
 import { MarketingOsModules } from "@/components/MarketingOsModules";
 import { MarketingReveal } from "@/components/MarketingReveal";
 import { MarketingSection } from "@/components/MarketingSection";
@@ -128,6 +129,7 @@ export default function MarketingPage() {
         lede="Landlords own the OS. Everyone else enters by invite."
         alt
       >
+        <MarketingHouse />
         <MarketingAudiences />
       </MarketingSection>
 

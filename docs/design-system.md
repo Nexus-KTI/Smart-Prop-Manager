@@ -190,12 +190,13 @@ Tokens live on `:root` in `globals.css`. Use them; do not invent per-screen dura
 | `--motion-fast` | `120ms` | Hover / color / focus chrome |
 | `--motion-ui` | `200ms` | Sidebar width, panel opacity, shell chrome |
 | `--motion-reveal` | `300ms` | Marketing hero fade-up + scroll reveal |
+| `--motion-ambient` | `28s` | One slow marketing loop: the turning house (`MarketingHouse`) |
 | `--ease-out` | `ease-out` | Default easing for the above |
 
 | Surface | Policy |
 |---------|--------|
 | Product | Hover/focus transitions on buttons/nav only; functional feedback OK (skeleton, row highlight, auth pulse, toasts). No scroll-storytelling under `.app-shell`. |
-| Marketing | One-shot `MarketingReveal`; short hero stagger (`.marketing-hero-animate`); hero mock idle autoplay (`MarketingHeroFrame`). |
+| Marketing | One-shot `MarketingReveal`; short hero stagger (`.marketing-hero-animate`); hero mock idle autoplay (`MarketingHeroFrame`); CSS 3D turning house in “Four doors. One estate.” (`MarketingHouse`: two storeys, one door per wall, face shading via `filter: brightness` so it works in both themes; still under reduced motion). |
 | Global | Calm; no Framer / AOS on dashboard. Always honor `prefers-reduced-motion` (show final state; kill loops). |
 
 ### Product feedback (toasts)

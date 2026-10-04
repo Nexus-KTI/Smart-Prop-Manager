@@ -21,6 +21,7 @@
   --motion-fast: 120ms;
   --motion-ui: 200ms;
   --motion-reveal: 300ms;
+  --motion-ambient: 28s;
   --ease-out: ease-out;
   /* Radius scale: controls 8px, cards 12px, pills 999px. */
   --radius-control: 8px;
@@ -3451,12 +3452,12 @@ html[data-sidebar-collapsed="true"] .shell-main {
   color: var(--muted);
 }
 
-.kpi-trend[data-tone="up"] {
 .kpi-trend svg {
   flex-shrink: 0;
   margin-top: 0.15em;
 }
 
+.kpi-trend[data-tone="up"] {
   color: var(--accent);
 }
 
@@ -4417,8 +4418,8 @@ a.property-group-name:focus-visible {
   gap: 2px;
 }
 
-.app-toast {
 /* Top-centre so it never sits on the bottom-right Let’s talk button. */
+.app-toast {
   position: fixed;
   top: 76px;
   left: 50%;
@@ -4452,13 +4453,13 @@ a.property-group-name:focus-visible {
   opacity: 1;
 }
 
-@media (max-width: 900px) {
 @media (max-width: 640px) {
   .app-toast {
     top: 64px;
   }
 }
 
+@media (max-width: 900px) {
   .app-shell {
     --shell-inset: 24px;
     /* Wide tables scroll inside .data-table-wrap — never the page. */
@@ -7068,6 +7069,450 @@ html[data-theme="dark"] .marketing .marketing-top[data-menu-open="true"] .market
   color: var(--muted);
   font-size: 0.92rem;
   line-height: 1.45;
+}
+
+/* Turning estate house. Origin sits on the ground at the centre of a 160×112px footprint;
+   walls are 100px (two storeys) under a 44px gable roof. Light stays fixed while the house
+   turns: each face runs the same brightness loop offset by its quarter turn (--face-turn). */
+.marketing-house-scene {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  height: 300px;
+  margin: 0 auto 20px;
+  perspective: 1000px;
+  pointer-events: none;
+}
+
+.marketing-house-stage {
+  position: absolute;
+  left: 50%;
+  top: 68%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.marketing-house {
+  --house-wall: color-mix(in srgb, var(--surface) 96%, var(--ink));
+  --house-frame: color-mix(in srgb, var(--ink) 30%, var(--surface));
+  --house-trim: color-mix(in srgb, var(--ink) 18%, var(--surface));
+  position: absolute;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  transform: rotateX(-16deg) rotateY(0deg);
+  animation: marketing-house-turn var(--motion-ambient) linear infinite;
+}
+
+:where(.marketing-house) span {
+  display: block;
+  box-sizing: border-box;
+}
+
+.marketing-house > span,
+.marketing-house-tree > span {
+  position: absolute;
+}
+
+.marketing-house-face {
+  --face-turn: 0;
+  --face-light: 1.02;
+  filter: brightness(var(--face-light));
+  animation: marketing-house-light var(--motion-ambient) linear infinite;
+  animation-delay: calc(var(--motion-ambient) * var(--face-turn) * -1);
+}
+
+.marketing-house-lawn {
+  width: 320px;
+  height: 320px;
+  left: -160px;
+  top: -160px;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--mark) 24%, transparent) 0 72%,
+    transparent
+  );
+  transform: rotateX(90deg);
+}
+
+.marketing-house-path {
+  width: 30px;
+  height: 82px;
+  left: -15px;
+  top: -41px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--house-wall) 0 12px,
+    var(--house-trim) 12px 14px
+  );
+  transform: translate3d(0, -1px, 109px) rotateX(90deg);
+}
+
+.marketing-house-wall {
+  display: flex;
+  flex-direction: column;
+  top: -100px;
+  height: 100px;
+  padding-top: 12px;
+  border: 1px solid var(--house-trim);
+  background: var(--house-wall);
+}
+
+.marketing-house-wall-front,
+.marketing-house-wall-back {
+  width: 160px;
+  left: -80px;
+}
+
+.marketing-house-wall-right,
+.marketing-house-wall-left {
+  width: 112px;
+  left: -56px;
+}
+
+.marketing-house-wall-front {
+  transform: translateZ(56px);
+}
+
+.marketing-house-wall-right {
+  --face-turn: 0.25;
+  --face-light: 0.82;
+  transform: rotateY(90deg) translateZ(80px);
+}
+
+.marketing-house-wall-back {
+  --face-turn: 0.5;
+  --face-light: 0.7;
+  transform: rotateY(180deg) translateZ(56px);
+}
+
+.marketing-house-wall-left {
+  --face-turn: 0.75;
+  --face-light: 0.9;
+  transform: rotateY(-90deg) translateZ(80px);
+}
+
+.marketing-house-storey {
+  display: flex;
+  justify-content: space-evenly;
+}
+
+.marketing-house-storey-upper {
+  height: 30px;
+  align-items: flex-start;
+}
+
+.marketing-house-storey-lower {
+  flex: 1;
+  align-items: flex-end;
+}
+
+.marketing-house-band {
+  height: 3px;
+  margin-top: 4px;
+  background: var(--house-trim);
+}
+
+.marketing-house-plinth {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: var(--house-trim);
+}
+
+.marketing-house-window {
+  width: 22px;
+  height: 24px;
+  border: 2px solid var(--house-frame);
+  background:
+    linear-gradient(var(--house-frame), var(--house-frame)) center / 2px 100% no-repeat,
+    linear-gradient(var(--house-frame), var(--house-frame)) center / 100% 2px no-repeat,
+    linear-gradient(
+      150deg,
+      color-mix(in srgb, var(--mark) 40%, var(--surface)) 0 45%,
+      color-mix(in srgb, var(--accent) 30%, var(--surface)) 45%
+    );
+}
+
+.marketing-house-storey-lower .marketing-house-window {
+  margin-bottom: 12px;
+}
+
+.marketing-house-door {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 42px;
+  border: 2px solid var(--house-frame);
+  border-bottom: 0;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(
+    var(--mark-deep),
+    color-mix(in srgb, var(--mark-deep) 85%, var(--mark))
+  );
+}
+
+.marketing-house-door::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 52%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.marketing-house-gable {
+  width: 112px;
+  height: 44px;
+  left: -56px;
+  top: -144px;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  background:
+    radial-gradient(circle at 50% 62%, var(--house-frame) 0 4px, transparent 4.5px),
+    var(--house-wall);
+}
+
+.marketing-house-gable-right {
+  --face-turn: 0.25;
+  --face-light: 0.82;
+  transform: rotateY(90deg) translateZ(80px);
+}
+
+.marketing-house-gable-left {
+  --face-turn: 0.75;
+  --face-light: 0.9;
+  transform: rotateY(-90deg) translateZ(80px);
+}
+
+/* Slopes hang from the ridge and swing out 51.84° so they overhang the eaves by ~8px. */
+.marketing-house-roof {
+  width: 180px;
+  height: 84px;
+  left: -90px;
+  top: -144px;
+  transform-origin: 50% 0;
+  border-bottom: 3px solid var(--mark-deep);
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--mark) 0 10px,
+    color-mix(in srgb, var(--mark) 75%, var(--mark-deep)) 10px 12px
+  );
+}
+
+.marketing-house-roof-front {
+  transform: rotateX(51.84deg);
+}
+
+.marketing-house-roof-back {
+  --face-turn: 0.5;
+  --face-light: 0.7;
+  transform: rotateY(180deg) rotateX(51.84deg);
+}
+
+.marketing-house-chimney {
+  width: 16px;
+  height: 44px;
+  top: -164px;
+  border-top: 4px solid var(--house-frame);
+  background: var(--house-trim);
+}
+
+.marketing-house-chimney-front {
+  left: 36px;
+  transform: translateZ(-16px);
+}
+
+.marketing-house-chimney-right {
+  --face-turn: 0.25;
+  --face-light: 0.82;
+  left: 44px;
+  transform: translateZ(-24px) rotateY(90deg);
+}
+
+.marketing-house-chimney-back {
+  --face-turn: 0.5;
+  --face-light: 0.7;
+  left: 36px;
+  transform: translateZ(-32px) rotateY(180deg);
+}
+
+.marketing-house-chimney-left {
+  --face-turn: 0.75;
+  --face-light: 0.9;
+  left: 28px;
+  transform: translateZ(-24px) rotateY(-90deg);
+}
+
+.marketing-house-chimney-cap {
+  width: 18px;
+  height: 18px;
+  left: 35px;
+  top: -173px;
+  background: var(--house-frame);
+  transform: translateZ(-24px) rotateX(90deg);
+}
+
+.marketing-house-canopy {
+  width: 52px;
+  height: 18px;
+  left: -26px;
+  top: -50px;
+  transform-origin: 50% 0;
+  background: var(--mark-deep);
+  transform: translateZ(57px) rotateX(72deg);
+}
+
+.marketing-house-step-top {
+  width: 44px;
+  height: 12px;
+  left: -22px;
+  top: -12px;
+  background: var(--house-wall);
+  transform: translateZ(62px) rotateX(90deg);
+}
+
+.marketing-house-step-front {
+  width: 44px;
+  height: 6px;
+  left: -22px;
+  top: -6px;
+  background: var(--house-trim);
+  transform: translateZ(68px);
+}
+
+.marketing-house-tree {
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+.marketing-house-tree-one {
+  transform: translate3d(-118px, 0, 40px);
+}
+
+.marketing-house-tree-two {
+  transform: translate3d(112px, 0, -64px) scale(0.85);
+}
+
+.marketing-house-tree-crown {
+  width: 40px;
+  height: 64px;
+  left: -20px;
+  top: -74px;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  background: linear-gradient(
+    to right,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 65%, var(--mark))
+  );
+}
+
+.marketing-house-tree-crown-cross {
+  transform: rotateY(90deg);
+}
+
+.marketing-house-tree-trunk {
+  width: 6px;
+  height: 12px;
+  left: -3px;
+  top: -12px;
+  background: var(--house-frame);
+}
+
+.marketing-house-sign-post {
+  width: 3px;
+  height: 40px;
+  left: 61px;
+  top: -40px;
+  background: var(--house-frame);
+  transform: translateZ(104px);
+}
+
+.marketing-house-sign {
+  width: 46px;
+  height: 22px;
+  left: 39px;
+  top: -46px;
+  border-radius: 2px;
+  background: var(--accent);
+  color: var(--surface);
+  font: 700 8px/22px var(--font-mono-data), ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-align: center;
+  backface-visibility: hidden;
+}
+
+.marketing-house-sign-front {
+  transform: translateZ(105px);
+}
+
+.marketing-house-sign-back {
+  transform: translateZ(103px) rotateY(180deg);
+}
+
+@keyframes marketing-house-turn {
+  from {
+    transform: rotateX(-16deg) rotateY(0deg);
+  }
+  to {
+    transform: rotateX(-16deg) rotateY(360deg);
+  }
+}
+
+/* Light from front-left: brightness(0.86 + 0.16·cos(angle + 45°)) sampled every 45°. */
+@keyframes marketing-house-light {
+  0%,
+  100% {
+    filter: brightness(0.97);
+  }
+  12.5% {
+    filter: brightness(0.86);
+  }
+  25% {
+    filter: brightness(0.75);
+  }
+  37.5% {
+    filter: brightness(0.7);
+  }
+  50% {
+    filter: brightness(0.75);
+  }
+  62.5% {
+    filter: brightness(0.86);
+  }
+  75% {
+    filter: brightness(0.97);
+  }
+  87.5% {
+    filter: brightness(1.02);
+  }
+}
+
+@media (max-width: 480px) {
+  .marketing-house-scene {
+    height: 250px;
+  }
+
+  .marketing-house-stage {
+    transform: scale(0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketing-house,
+  .marketing-house-face {
+    animation: none;
+  }
+
+  .marketing-house {
+    transform: rotateX(-16deg) rotateY(-32deg);
+  }
 }
 
 .marketing-audience-grid {
