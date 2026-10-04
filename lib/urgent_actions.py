@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
-from lib.unit_status import days_until_term_end, due_date_for_unit, resolve_unit_status
+from lib.unit_status import (
+    days_until_term_end,
+    due_date_for_unit,
+    lagos_today,
+    resolve_unit_status,
+)
 
 ActionKind = Literal[
     "overdue_chase",
@@ -18,10 +23,10 @@ ActionKind = Literal[
 LEASE_ENDING_DAYS = 60
 LEASE_ENDING_SOON_BOOST_DAYS = 14
 FAILED_LOOKBACK_DAYS = 14
-# Page through units so Action needed summary is not stuck at a single 200-row page.
-PORTFOLIO_PAGE_SIZE = 200
 PORTFOLIO_MAX_UNITS = 5000
-FAILED_UNIT_ID_CHUNK = 100
+# Enough history for the current period's status; same cap as the property pages
+# and the window portfolio_unit_snapshot (sql/055) reads.
+RECENT_TXN_LIMIT = 36
 
 # Higher = more urgent
 _PRIORITY = {
@@ -129,92 +134,58 @@ def _item(
     }
 
 
-def _latest_failed_by_unit(
-    db, unit_ids: list[str], *, today: date
-) -> dict[str, dict[str, Any]]:
-    """Map unit_id → most recent failed/skipped reminder within lookback."""
-    if not unit_ids:
-        return {}
+def _normalize_snapshot_row(row: dict[str, Any]) -> dict[str, Any]:
+    unit = dict(row)
+    property_name = unit.pop("property_name", None) or ""
+    failed = unit.pop("failed_reminder", None)
+    unit["transactions"] = unit.get("transactions") or []
+    return {
+        "unit": unit,
+        "property_id": unit.get("property_id"),
+        "property_name": property_name,
+        "failed_reminder": failed if isinstance(failed, dict) else None,
+    }
+
+
+def load_portfolio_snapshot(
+    db,
+    *,
+    owner_id: str,
+    property_ids: list[str],
+    today: date,
+    max_units: int = PORTFOLIO_MAX_UNITS,
+) -> list[dict[str, Any]]:
+    """Every unit in scope with its status-deciding transactions, in one call (sql/055)."""
+    if not property_ids:
+        return []
     since = datetime.combine(
         today - timedelta(days=FAILED_LOOKBACK_DAYS),
         datetime.min.time(),
         tzinfo=timezone.utc,
     ).isoformat()
-    out: dict[str, dict[str, Any]] = {}
-    for i in range(0, len(unit_ids), FAILED_UNIT_ID_CHUNK):
-        batch = unit_ids[i : i + FAILED_UNIT_ID_CHUNK]
-        rows = (
-            db.table("reminders")
-            .select("id, unit_id, status, error_detail, sent_at, kind")
-            .in_("unit_id", batch)
-            .in_("status", ["failed", "skipped"])
-            .gte("sent_at", since)
-            .order("sent_at", desc=True)
-            .limit(500)
-            .execute()
-            .data
-            or []
+    data = (
+        db.rpc(
+            "portfolio_unit_snapshot",
+            {
+                "p_owner_id": owner_id,
+                "p_property_ids": property_ids,
+                "p_failed_since": since,
+                "p_max_units": max_units,
+            },
         )
-        for row in rows:
-            uid = str(row.get("unit_id") or "")
-            if not uid or uid in out:
-                continue
-            out[uid] = row
-    return out
+        .execute()
+        .data
+    )
+    rows = data if isinstance(data, list) else []
+    return [_normalize_snapshot_row(row) for row in rows if isinstance(row, dict)]
 
 
-def _normalize_portfolio_row(row: dict[str, Any]) -> dict[str, Any]:
-    unit = dict(row)
-    prop = unit.pop("properties", None) or {}
-    if isinstance(prop, list):
-        prop = prop[0] if prop else {}
-    unit["transactions"] = unit.get("transactions") or []
+def failed_reminders_by_unit(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {
-        "unit": unit,
-        "property_id": prop.get("id") or unit.get("property_id"),
-        "property_name": prop.get("name") or "",
+        str(row["unit"].get("id")): row["failed_reminder"]
+        for row in rows
+        if row.get("failed_reminder") and row["unit"].get("id")
     }
-
-
-def load_portfolio_unit_rows(
-    db,
-    *,
-    owner_id: str,
-    property_ids: list[str],
-    page_size: int = PORTFOLIO_PAGE_SIZE,
-    max_units: int = PORTFOLIO_MAX_UNITS,
-) -> list[dict[str, Any]]:
-    """Load owner units in pages so Action needed is not capped at one page."""
-    if not property_ids:
-        return []
-    page = max(1, int(page_size))
-    cap = max(page, int(max_units))
-    items: list[dict[str, Any]] = []
-    offset = 0
-    while offset < cap:
-        end = min(offset + page, cap) - 1
-        rows = (
-            db.table("units")
-            .select(
-                "id, label, rent_amount, service_charge_amount, frequency, due_day, "
-                "due_month, term_end, tenant_name, tenant_contact, property_id, "
-                "properties!inner(id, name, owner_id), "
-                "transactions(status, amount, paid_at, created_at, charge_type)"
-            )
-            .in_("property_id", property_ids)
-            .eq("properties.owner_id", owner_id)
-            .order("created_at", desc=True)
-            .range(offset, end)
-            .execute()
-            .data
-            or []
-        )
-        for row in rows:
-            items.append(_normalize_portfolio_row(row))
-        if len(rows) < page:
-            break
-        offset += page
-    return items
 
 
 def build_urgent_actions(
@@ -224,7 +195,7 @@ def build_urgent_actions(
     today: date | None = None,
 ) -> list[dict[str, Any]]:
     """Pure ranking from portfolio rows + failed reminder map (testable)."""
-    day = today or date.today()
+    day = today or lagos_today()
     items: list[dict[str, Any]] = []
 
     for row in portfolio_rows:
@@ -239,9 +210,11 @@ def build_urgent_actions(
         status = resolve_unit_status(unit, txns, day)
         contact = _has_contact(unit)
         days_left = days_until_term_end(unit, day)
-        overdue = status == "OVERDUE"
+        # Nobody owes rent on a vacant unit, so it is never chased as overdue or due.
+        let = bool((unit.get("tenant_name") or "").strip())
+        overdue = let and status == "OVERDUE"
 
-        if status == "OVERDUE":
+        if overdue:
             kind: ActionKind = (
                 "overdue_chase" if contact else "overdue_no_contact"
             )
@@ -255,7 +228,7 @@ def build_urgent_actions(
                     overdue=True,
                 )
             )
-        elif status == "DUE SOON":
+        elif let and status == "DUE SOON":
             items.append(
                 _item(
                     unit=unit,
@@ -329,15 +302,9 @@ def collect_urgent_actions_for_owner(
     property_ids: list[str],
     today: date | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    day = today or date.today()
-    portfolio = load_portfolio_unit_rows(
-        db, owner_id=owner_id, property_ids=property_ids
+    day = today or lagos_today()
+    portfolio = load_portfolio_snapshot(
+        db, owner_id=owner_id, property_ids=property_ids, today=day
     )
-    unit_ids = [
-        str(row["unit"].get("id"))
-        for row in portfolio
-        if row.get("unit") and row["unit"].get("id")
-    ]
-    failed = _latest_failed_by_unit(db, unit_ids, today=day)
-    items = build_urgent_actions(portfolio, failed, today=day)
+    items = build_urgent_actions(portfolio, failed_reminders_by_unit(portfolio), today=day)
     return items, summarize_actions(items)

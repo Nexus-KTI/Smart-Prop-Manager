@@ -20,17 +20,9 @@ def _supabase_public_url() -> str:
 
 
 def _ensure_photos_bucket(client: Any) -> None:
-    try:
-        client.storage.get_bucket(PHOTOS_BUCKET)
-        try:
-            client.storage.update_bucket(PHOTOS_BUCKET, options={"public": True})
-        except TypeError:
-            client.storage.update_bucket(PHOTOS_BUCKET, {"public": True})
-    except Exception:
-        try:
-            client.storage.create_bucket(PHOTOS_BUCKET, options={"public": True})
-        except TypeError:
-            client.storage.create_bucket(PHOTOS_BUCKET, public=True)
+    from lib.storage_buckets import ensure_public_bucket
+
+    ensure_public_bucket(client, PHOTOS_BUCKET)
 
 
 def public_photo_url(storage_path: str) -> str:

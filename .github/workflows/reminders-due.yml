@@ -1,4 +1,4 @@
-# Free-tier due reminders + autopay — no Render Cron / no card required.
+# Free-tier due reminders + autopay, then data retention — no Render Cron / no card required.
 # Set repo secret CRON_SECRET to match Smart-Prop-Manager env.
 # Runs Africa/Lagos morning (07:00 WAT ≈ 06:00 UTC).
 name: reminders-due
@@ -28,3 +28,15 @@ jobs:
             -H "Content-Type: application/json" \
             --max-time 120 \
             "${API_BASE%/}/reminders/jobs/due"
+      - name: POST /jobs/retention
+        if: always()
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          API_BASE: https://smart-prop-manager.onrender.com
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            --max-time 120 \
+            "${API_BASE%/}/jobs/retention"

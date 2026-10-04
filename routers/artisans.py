@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
 from lib.invite_bind import require_invite_contact_match
-from lib.rate_limit import enforce_rate_limit
+from lib.rate_limit import enforce_invite_limit, enforce_rate_limit
 
 router = APIRouter(prefix="/artisans", tags=["artisans"])
 
@@ -54,6 +54,7 @@ def invite_artisan(payload: dict, user: AuthedUser = Depends(get_current_user)):
     contact = (payload.get("invite_contact") or "").strip()
     if not contact:
         raise HTTPException(status_code=400, detail="invite_contact is required")
+    enforce_invite_limit(user.id)
 
     token = secrets.token_urlsafe(24)
     row = {
@@ -151,55 +152,25 @@ def claim_invite(payload: dict, user: AuthedUser = Depends(get_current_user)):
         user.access_token,
         detail="Sign in with the phone or email this artisan invite was sent to.",
     )
-    now = _now()
-
-    # Upsert artisan profile
-    existing_profile = (
-        svc.table("artisan_profiles")
-        .select("user_id")
-        .eq("user_id", user.id)
-        .limit(1)
-        .execute()
-        .data
-        or []
-    )
-    profile_row = {
-        "user_id": user.id,
-        "display_name": display_name[:120],
-        "trades": trades,
-        "phone": phone,
-        "status": "active",
-        "updated_at": now,
-    }
-    if existing_profile:
-        svc.table("artisan_profiles").update(profile_row).eq("user_id", user.id).execute()
-    else:
-        svc.table("artisan_profiles").insert(profile_row).execute()
-
-    # Set role on profiles
-    svc.table("profiles").update({"role": "artisan"}).eq("id", user.id).execute()
-
-    updated = (
-        svc.table("landlord_artisans")
-        .update(
+    # Profile, role, and the landlord link in one transaction.
+    result = _first_row(
+        svc.rpc(
+            "claim_artisan_invite",
             {
-                "artisan_user_id": user.id,
-                "status": "active",
-                "invite_token": None,
-                "claimed_at": now,
-                "updated_at": now,
-            }
+                "p_invite_id": str(invite["id"]),
+                "p_token": token,
+                "p_user_id": user.id,
+                "p_display_name": display_name[:120],
+                "p_trades": trades,
+                "p_phone": phone,
+            },
         )
-        .eq("id", invite["id"])
         .execute()
         .data
-    )
-    membership = _first_row(updated) or {
-        **invite,
-        "artisan_user_id": user.id,
-        "status": "active",
-    }
-    return {"item": membership, "profile": profile_row}
+    ) or {}
+    if result.get("outcome") != "claimed":
+        raise HTTPException(status_code=404, detail="Invite not found or already claimed")
+    return {"item": result.get("link"), "profile": result.get("profile")}
 
 
 @router.get("/me")

@@ -104,6 +104,7 @@ def test_bulk_logs_channel_mismatch_as_failed(monkeypatch):
         "routers.reminders.contact_matches_channel",
         lambda _channel, _contact: False,
     )
+    monkeypatch.setattr("routers.reminders.enforce_rate_limit", lambda *_a, **_k: None)
 
     stats = send_bulk_reminders({"unit_ids": ["u1"]}, user)  # type: ignore[arg-type]
 

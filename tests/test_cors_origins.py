@@ -31,6 +31,28 @@ def test_local_regex_allows_any_localhost_port(monkeypatch) -> None:
         assert not re.fullmatch(pattern, origin)
 
 
+def test_supabase_timeout_is_503_and_still_allows_localhost(monkeypatch) -> None:
+    import httpx
+    from fastapi.testclient import TestClient
+
+    from main import app
+
+    monkeypatch.delenv("RENDER", raising=False)
+
+    @app.get("/__transport_probe")
+    def probe():
+        raise httpx.ConnectTimeout("timed out")
+
+    client = TestClient(app, raise_server_exceptions=False)
+    res = client.get(
+        "/__transport_probe",
+        headers={"Origin": "http://localhost:4010"},
+    )
+    assert res.status_code == 503
+    assert res.headers["access-control-allow-origin"] == "http://localhost:4010"
+    assert "account service" in res.json()["detail"]
+
+
 def test_render_disables_localhost_regex(monkeypatch) -> None:
     monkeypatch.setenv("RENDER", "true")
     assert _cors_origin_regex() is None

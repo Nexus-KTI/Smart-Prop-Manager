@@ -17,24 +17,43 @@ from routers import cron_jobs
 def test_require_cron_secret_rejects_missing_config(monkeypatch):
     monkeypatch.delenv("CRON_SECRET", raising=False)
     with pytest.raises(HTTPException) as ei:
-        cron_jobs._require_cron_secret(None, None)
+        cron_jobs.require_cron_secret(None, None)
     assert ei.value.status_code == 503
 
 
 def test_require_cron_secret_accepts_bearer(monkeypatch):
     monkeypatch.setenv("CRON_SECRET", "test-secret")
-    cron_jobs._require_cron_secret("Bearer test-secret", None)
+    cron_jobs.require_cron_secret("Bearer test-secret", None)
 
 
 def test_require_cron_secret_accepts_header(monkeypatch):
     monkeypatch.setenv("CRON_SECRET", "test-secret")
-    cron_jobs._require_cron_secret(None, "test-secret")
+    cron_jobs.require_cron_secret(None, "test-secret")
 
 
 def test_require_cron_secret_rejects_bad(monkeypatch):
     monkeypatch.setenv("CRON_SECRET", "test-secret")
     with pytest.raises(HTTPException) as ei:
-        cron_jobs._require_cron_secret("Bearer nope", None)
+        cron_jobs.require_cron_secret("Bearer nope", None)
+    assert ei.value.status_code == 401
+
+
+def test_secret_matches_is_constant_time_and_rejects_empty():
+    import inspect
+
+    assert cron_jobs.secret_matches("abc", "abc")
+    assert not cron_jobs.secret_matches("abd", "abc")
+    assert not cron_jobs.secret_matches("", "abc")
+    assert not cron_jobs.secret_matches("abc", "")
+    assert "compare_digest" in inspect.getsource(cron_jobs.secret_matches)
+
+
+def test_due_reminder_job_uses_shared_cron_check(monkeypatch):
+    from routers import reminders
+
+    monkeypatch.setenv("CRON_SECRET", "test-secret")
+    with pytest.raises(HTTPException) as ei:
+        reminders.run_due_reminder_job(authorization="Bearer nope", x_cron_secret=None)
     assert ei.value.status_code == 401
 
 

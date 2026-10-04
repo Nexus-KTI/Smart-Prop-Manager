@@ -1,3 +1,7 @@
+# Scheduled jobs run from GitHub Actions (.github/workflows/reminders-due.yml and
+# delivery-outbox.yml). Do not add Render cron services here as well.
+# The smart-prop-worker block at the bottom is the planned replacement (paid worker).
+# Cutover steps: docs/ops-checklist.md → "Background worker cutover".
 services:
   - type: web
     name: smart-prop-api
@@ -57,217 +61,67 @@ services:
         generateValue: true
       - key: SENTRY_DSN
         sync: false
+      # API worker processes (Dockerfile default 2). Raise to 3-4 only on a 1 GB+ plan.
+      # - key: WEB_CONCURRENCY
+      #   value: "2"
+      # Set to "0" to verify every token with Supabase Auth instead of the signing keys.
+      # - key: AUTH_LOCAL_JWT
+      #   value: "0"
+      # Optional Host allowlist (lib/edge.py); add custom domains before DNS moves.
+      # - key: ALLOWED_HOSTS
+      #   value: smart-prop-manager.onrender.com
+      # Set to "0" once smart-prop-worker is live, so requests stop sending inline.
+      # - key: OUTBOX_INLINE_FLUSH
+      #   value: "0"
 
-  - type: cron
-    name: smart-prop-due-reminders
-    runtime: docker
-    schedule: "0 8 * * *"
-    dockerCommand: python -m lib.reminder_job
-    envVars:
-      - key: SUPABASE_URL
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SUPABASE_URL
-      - key: SUPABASE_ANON_KEY
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SUPABASE_ANON_KEY
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SUPABASE_SERVICE_ROLE_KEY
-      - key: TWILIO_ACCOUNT_SID
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: TWILIO_ACCOUNT_SID
-      - key: TWILIO_AUTH_TOKEN
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: TWILIO_AUTH_TOKEN
-      - key: TWILIO_WHATSAPP_FROM
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: TWILIO_WHATSAPP_FROM
-      - key: TWILIO_SMS_FROM
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: TWILIO_SMS_FROM
-      - key: EMAIL_SERVICE_PROVIDER
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: EMAIL_SERVICE_PROVIDER
-      - key: MAILGUN_API_KEY
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: MAILGUN_API_KEY
-      - key: MAILGUN_DOMAIN
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: MAILGUN_DOMAIN
-      - key: MAILGUN_API_BASE_URL
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: MAILGUN_API_BASE_URL
-      - key: MAILGUN_SENDER_EMAIL
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: MAILGUN_SENDER_EMAIL
-      - key: EMAIL_FROM_NAME
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: EMAIL_FROM_NAME
-      - key: FROM_EMAIL
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: FROM_EMAIL
-      - key: FRONTEND_URL
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: FRONTEND_URL
-      - key: SMTP_HOST
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SMTP_HOST
-      - key: SMTP_PORT
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SMTP_PORT
-      - key: SMTP_USERNAME
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SMTP_USERNAME
-      - key: SMTP_PASSWORD
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SMTP_PASSWORD
-      - key: SMTP_FROM
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SMTP_FROM
-
-  - type: cron
-    name: smart-prop-delivery-outbox
-    runtime: docker
-    schedule: "*/5 * * * *"
-    dockerCommand: python -m scripts.delivery_outbox
-    envVars:
-      - key: SUPABASE_URL
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SUPABASE_URL
-      - key: SUPABASE_ANON_KEY
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SUPABASE_ANON_KEY
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SUPABASE_SERVICE_ROLE_KEY
-      - key: TWILIO_ACCOUNT_SID
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: TWILIO_ACCOUNT_SID
-      - key: TWILIO_AUTH_TOKEN
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: TWILIO_AUTH_TOKEN
-      - key: TWILIO_WHATSAPP_FROM
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: TWILIO_WHATSAPP_FROM
-      - key: TWILIO_SMS_FROM
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: TWILIO_SMS_FROM
-      - key: EMAIL_SERVICE_PROVIDER
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: EMAIL_SERVICE_PROVIDER
-      - key: MAILGUN_API_KEY
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: MAILGUN_API_KEY
-      - key: MAILGUN_DOMAIN
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: MAILGUN_DOMAIN
-      - key: MAILGUN_API_BASE_URL
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: MAILGUN_API_BASE_URL
-      - key: MAILGUN_SENDER_EMAIL
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: MAILGUN_SENDER_EMAIL
-      - key: EMAIL_FROM_NAME
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: EMAIL_FROM_NAME
-      - key: FROM_EMAIL
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: FROM_EMAIL
-      - key: FRONTEND_URL
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: FRONTEND_URL
-      - key: SMTP_HOST
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SMTP_HOST
-      - key: SMTP_PORT
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SMTP_PORT
-      - key: SMTP_USERNAME
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SMTP_USERNAME
-      - key: SMTP_PASSWORD
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SMTP_PASSWORD
-      - key: SMTP_FROM
-        fromService:
-          name: smart-prop-api
-          type: web
-          envVarKey: SMTP_FROM
+  # Background worker (not live yet). Uncomment to create it on the next Blueprint sync.
+  # - type: worker
+  #   name: smart-prop-worker
+  #   runtime: docker
+  #   plan: starter
+  #   dockerCommand: python -m scripts.worker
+  #   envVars:
+  #     - key: SUPABASE_URL
+  #       sync: false
+  #     - key: SUPABASE_ANON_KEY
+  #       sync: false
+  #     - key: SUPABASE_SERVICE_ROLE_KEY
+  #       sync: false
+  #     - key: FRONTEND_URL
+  #       sync: false
+  #     - key: PAYSTACK_SECRET_KEY
+  #       sync: false
+  #     - key: TWILIO_ACCOUNT_SID
+  #       sync: false
+  #     - key: TWILIO_AUTH_TOKEN
+  #       sync: false
+  #     - key: TWILIO_WHATSAPP_FROM
+  #       sync: false
+  #     - key: TWILIO_SMS_FROM
+  #       sync: false
+  #     - key: EMAIL_SERVICE_PROVIDER
+  #       value: mailgun
+  #     - key: MAILGUN_API_KEY
+  #       sync: false
+  #     - key: MAILGUN_DOMAIN
+  #       sync: false
+  #     - key: MAILGUN_API_BASE_URL
+  #       value: https://api.mailgun.net
+  #     - key: MAILGUN_SENDER_EMAIL
+  #       sync: false
+  #     - key: EMAIL_FROM_NAME
+  #       value: Nexora
+  #     - key: FROM_EMAIL
+  #       sync: false
+  #     - key: SMTP_HOST
+  #       sync: false
+  #     - key: SMTP_PORT
+  #       value: "587"
+  #     - key: SMTP_USERNAME
+  #       sync: false
+  #     - key: SMTP_PASSWORD
+  #       sync: false
+  #     - key: SMTP_FROM
+  #       sync: false
+  #     - key: SENTRY_DSN
+  #       sync: false

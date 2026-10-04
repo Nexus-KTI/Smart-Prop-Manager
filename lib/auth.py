@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -20,6 +21,12 @@ from supabase_auth.errors import AuthApiError
 from lib.admin import is_admin_email
 from lib.db import close_user_client, create_anon_client, create_user_client
 from lib.http_client import get_http_client
+from lib.jwt_verify import (
+    InvalidToken,
+    LocalVerifyUnavailable,
+    local_jwt_enabled,
+    verify_claims,
+)
 
 _bearer = HTTPBearer()
 logger = logging.getLogger(__name__)
@@ -28,6 +35,13 @@ _MFA_FACTOR_CACHE: dict[str, tuple[float, bool]] = {}
 _MFA_CACHE_TTL_SEC = 60.0
 _MFA_CACHE_MAX_ENTRIES = 2048
 _MFA_CACHE_LOCK = threading.Lock()
+
+# A dashboard load fires ~10 calls with the same JWT; GoTrue only needs to see it once.
+# Keyed by SHA-256 so raw tokens never sit in memory as dict keys.
+_TOKEN_CACHE: dict[str, tuple[float, object]] = {}
+_TOKEN_CACHE_TTL_SEC = 60.0
+_TOKEN_CACHE_MAX_ENTRIES = 4096
+_TOKEN_CACHE_LOCK = threading.Lock()
 
 
 @dataclass
@@ -38,16 +52,21 @@ class AuthedUser:
     db: Client
 
 
-def _jwt_aal(token: str) -> str:
-    """Read aal claim from an already-verified access token (no sig check)."""
+def _jwt_claims(token: str) -> dict:
+    """Decode claims without a signature check — only use after GoTrue verified the token."""
     try:
         payload_b64 = token.split(".")[1]
         padding = "=" * (-len(payload_b64) % 4)
         payload = json.loads(base64.urlsafe_b64decode(payload_b64 + padding))
-        aal = str(payload.get("aal") or "aal1").lower()
-        return aal if aal in {"aal1", "aal2"} else "aal1"
+        return payload if isinstance(payload, dict) else {}
     except Exception:
-        return "aal1"
+        return {}
+
+
+def _jwt_aal(token: str) -> str:
+    """Read aal claim from an already-verified access token (no sig check)."""
+    aal = str(_jwt_claims(token).get("aal") or "aal1").lower()
+    return aal if aal in {"aal1", "aal2"} else "aal1"
 
 
 def _user_has_verified_mfa(user_id: str) -> bool:
@@ -142,13 +161,49 @@ def enforce_aal2_if_mfa_enrolled(user_id: str, access_token: str) -> None:
     )
 
 
-def verify_access_token(token: str):
-    """Verify JWT via GoTrue, with one retry on flaky HTTP transport."""
+def _cached_token(key: str):
+    now = time.time()
+    with _TOKEN_CACHE_LOCK:
+        cached = _TOKEN_CACHE.get(key)
+        if cached is None:
+            return None
+        if cached[0] <= now:
+            _TOKEN_CACHE.pop(key, None)
+            return None
+        return cached[1]
+
+
+def _remember_token(key: str, token: str, response) -> None:
+    now = time.time()
+    expires_at = now + _TOKEN_CACHE_TTL_SEC
+    exp = _jwt_claims(token).get("exp")
+    if isinstance(exp, (int, float)):
+        expires_at = min(expires_at, float(exp))
+    if expires_at <= now:
+        return
+    with _TOKEN_CACHE_LOCK:
+        if len(_TOKEN_CACHE) >= _TOKEN_CACHE_MAX_ENTRIES:
+            for stale in [k for k, (until, _) in _TOKEN_CACHE.items() if until <= now]:
+                _TOKEN_CACHE.pop(stale, None)
+        if len(_TOKEN_CACHE) >= _TOKEN_CACHE_MAX_ENTRIES:
+            _TOKEN_CACHE.pop(min(_TOKEN_CACHE, key=lambda k: _TOKEN_CACHE[k][0]), None)
+        _TOKEN_CACHE[key] = (expires_at, response)
+
+
+def verify_access_token(token: str, *, fresh: bool = False):
+    """Verify JWT via GoTrue (cached up to 60s), with one retry on flaky HTTP transport."""
+    key = hashlib.sha256(token.encode()).hexdigest()
+    cached = None if fresh else _cached_token(key)
+    if cached is not None:
+        return cached
     client = create_anon_client()
     last_transport: Exception | None = None
     for attempt in range(2):
         try:
-            return client.auth.get_user(token)
+            response = client.auth.get_user(token)
+            if response is not None and getattr(response, "user", None) is not None:
+                _remember_token(key, token, response)
+            return response
         except AuthApiError:
             raise
         except httpx.TransportError as exc:
@@ -161,33 +216,54 @@ def verify_access_token(token: str):
     ) from last_transport
 
 
+def _invalid_token() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired token",
+    )
+
+
+def verify_identity(token: str) -> tuple[str, str | None]:
+    """Return (user id, email) for a valid access token.
+
+    Checked locally against the project's signing keys; GoTrue is only asked when
+    the token can't be checked locally (legacy HS256, unknown key, keys unreachable).
+    Like PostgREST, a local check accepts a signed-out session until its token expires.
+    """
+    if local_jwt_enabled():
+        try:
+            claims = verify_claims(token)
+        except InvalidToken as exc:
+            raise _invalid_token() from exc
+        except LocalVerifyUnavailable:
+            pass
+        else:
+            email = str(claims.get("email") or "").strip() or None
+            return str(claims["sub"]), email
+    try:
+        response = verify_access_token(token)
+    except AuthApiError as exc:
+        raise _invalid_token() from exc
+    user = getattr(response, "user", None)
+    if user is None:
+        raise _invalid_token()
+    return str(user.id), user.email
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> Generator[AuthedUser, None, None]:
     """Verify the Supabase JWT and return a user-scoped DB client."""
     token = credentials.credentials
-    try:
-        response = verify_access_token(token)
-    except AuthApiError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        ) from exc
+    user_id, email = verify_identity(token)
 
-    user = response.user
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    enforce_aal2_if_mfa_enrolled(user.id, token)
+    enforce_aal2_if_mfa_enrolled(user_id, token)
 
     db = create_user_client(token)
     try:
         yield AuthedUser(
-            id=user.id,
-            email=user.email,
+            id=user_id,
+            email=email,
             access_token=token,
             db=db,
         )

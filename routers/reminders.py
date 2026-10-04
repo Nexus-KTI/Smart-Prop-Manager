@@ -1,4 +1,3 @@
-import os
 import uuid
 from datetime import date
 from typing import Any
@@ -6,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from lib.auth import AuthedUser, get_current_user
+from lib.idempotency import optional_request_key
 from lib.notification_prefs import (
     is_prefs_opt_out_error,
     load_tenant_prefs_for_unit,
@@ -15,9 +15,30 @@ from lib.notify import (
     get_owner_notification_channel,
 )
 from lib.pagination import apply_desc_cursor, page_size, paginate_desc
+from lib.rate_limit import enforce_rate_limit
 from lib.reminder_job import run_reminder_jobs
 
 router = APIRouter(prefix="/reminders", tags=["reminders"])
+
+# Every send costs an SMS; these stop a stuck button or script from draining credit.
+USER_SENDS_PER_10_MIN = 30
+UNIT_SENDS_PER_HOUR = 6
+BULK_RUNS_PER_HOUR = 10
+
+
+def _limit_sends(user_id: str, unit_id: str) -> None:
+    enforce_rate_limit(
+        f"reminder-user:{user_id}",
+        limit=USER_SENDS_PER_10_MIN,
+        window_seconds=600,
+        detail="Too many reminders sent. Wait a few minutes and try again.",
+    )
+    enforce_rate_limit(
+        f"reminder-unit:{unit_id}",
+        limit=UNIT_SENDS_PER_HOUR,
+        window_seconds=3600,
+        detail="This tenant was reminded several times this hour. Try again later.",
+    )
 
 
 def _clip_detail(detail: str | None, limit: int = 180) -> str | None:
@@ -156,7 +177,12 @@ def reminder_log(
 
 
 @router.post("/send")
-def send_reminder(payload: dict, user: AuthedUser = Depends(get_current_user)):
+def send_reminder(
+    payload: dict,
+    user: AuthedUser = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
+    request_key = optional_request_key(idempotency_key)
     unit_id = payload.get("unit_id")
     contact = (payload.get("contact") or "").strip()
     message = (payload.get("message") or "").strip()
@@ -182,6 +208,7 @@ def send_reminder(payload: dict, user: AuthedUser = Depends(get_current_user)):
     from lib.db import create_service_client
 
     ctx = require_unit_access(user.id, str(unit_id), permission=PERM_CHASE)
+    _limit_sends(user.id, str(unit_id))
     db = user.db if ctx.role == "owner" else create_service_client()
 
     # Notify using the portfolio owner's channel preference.
@@ -215,7 +242,7 @@ def send_reminder(payload: dict, user: AuthedUser = Depends(get_current_user)):
         )
         queued = _queue_tenant_notice(
             db,
-            idempotency_key=f"manual-due:{unit_id}:{uuid.uuid4()}",
+            idempotency_key=f"manual-due:{unit_id}:{request_key or uuid.uuid4()}",
             channel=channel,
             contact=contact,
             message=message,
@@ -319,6 +346,12 @@ def send_bulk_reminders(
             detail="unit_ids is required",
         )
     unit_ids = [str(u) for u in unit_ids if u][:50]
+    enforce_rate_limit(
+        f"reminder-bulk:{user.id}",
+        limit=BULK_RUNS_PER_HOUR,
+        window_seconds=3600,
+        detail="Too many bulk reminder runs this hour. Try again later.",
+    )
     svc = create_service_client()
 
     stats: dict = {
@@ -476,13 +509,19 @@ def send_bulk_reminders(
 
 
 @router.post("/retry/{reminder_id}")
-def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user)):
+def retry_reminder(
+    reminder_id: str,
+    user: AuthedUser = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
     """
     Retry a failed reminder/receipt/landlord-notice row.
     Inserts a new log entry; never blocks on prior row state beyond ownership checks.
     """
     from lib.access import PERM_CHASE, require_unit_access
     from lib.db import create_service_client
+
+    attempt = optional_request_key(idempotency_key) or str(uuid.uuid4())
 
     svc = create_service_client()
     rows = (
@@ -519,6 +558,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Reminder not found")
 
     ctx = require_unit_access(user.id, str(unit_id), permission=PERM_CHASE)
+    _limit_sends(user.id, str(unit_id))
     db = user.db if ctx.role == "owner" else svc
     owner_id = ctx.owner_id
     kind = reminder.get("kind") or "due"
@@ -570,7 +610,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         try:
             _queue_tenant_notice(
                 db,
-                idempotency_key=f"retry-landlord-payment:{reminder_id}:{uuid.uuid4()}",
+                idempotency_key=f"retry-landlord-payment:{reminder_id}:{attempt}",
                 channel="email",
                 contact=email,
                 message=content.text,
@@ -690,7 +730,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
                 )
                 queued = _queue_tenant_notice(
                     db,
-                    idempotency_key=f"retry-receipt:{reminder_id}:{uuid.uuid4()}",
+                    idempotency_key=f"retry-receipt:{reminder_id}:{attempt}",
                     channel=channel,
                     contact=contact,
                     message=receipt_mail.text,
@@ -848,7 +888,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         try:
             _queue_tenant_notice(
                 db,
-                idempotency_key=f"retry-renewal:{reminder_id}:{uuid.uuid4()}",
+                idempotency_key=f"retry-renewal:{reminder_id}:{attempt}",
                 channel="email",
                 contact=email,
                 message=content.text,
@@ -948,7 +988,7 @@ def retry_reminder(reminder_id: str, user: AuthedUser = Depends(get_current_user
         )
         queued = _queue_tenant_notice(
             db,
-            idempotency_key=f"retry-due:{reminder_id}:{uuid.uuid4()}",
+            idempotency_key=f"retry-due:{reminder_id}:{attempt}",
             channel=channel,
             contact=contact,
             message=due_mail.text,
@@ -1077,21 +1117,7 @@ def run_due_reminder_job(
     Cron entrypoint for scheduled due reminders.
     Auth with CRON_SECRET via Authorization: Bearer <secret> or X-Cron-Secret.
     """
-    secret = (os.getenv("CRON_SECRET") or "").strip()
-    if not secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="CRON_SECRET is not configured",
-        )
+    from routers.cron_jobs import require_cron_secret
 
-    provided = (x_cron_secret or "").strip()
-    if not provided and authorization and authorization.lower().startswith("bearer "):
-        provided = authorization[7:].strip()
-
-    if not provided or provided != secret:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid cron secret",
-        )
-
+    require_cron_secret(authorization, x_cron_secret)
     return run_reminder_jobs()

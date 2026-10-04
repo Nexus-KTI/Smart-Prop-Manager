@@ -58,6 +58,27 @@ Required:
 - `CRON_SECRET` (HTTP due job) · cron service inherits Mailgun + Twilio from web in `render.yaml`
 - `ADMIN_EMAILS`
 
+Optional:
+
+- `ALLOWED_HOSTS` — comma list of Host headers the API answers (`*.example.com`
+  wildcards). Unset = not enforced. Suggested once confirmed:
+  `smart-prop-manager.onrender.com`; add any custom API domain **before**
+  pointing DNS at it, or that domain gets `400 Invalid host header`. `/health`
+  is always exempt so Render health checks pass.
+- The API also sends security headers (nosniff, `DENY` framing, no-referrer,
+  strict CSP except `/docs`, HSTS on Render) and gzips JSON ≥ 1 KB (`lib/edge.py`).
+- `WEB_CONCURRENCY` — API worker processes; the Dockerfile defaults to `2`
+  (~100 MB each, fits 512 MB). Use 3–4 only on a 1 GB+ plan. Rate limits,
+  idempotency, and the outbox live in Postgres, so workers need no coordination.
+- `AUTH_LOCAL_JWT` — default on. Access tokens are checked against the project's
+  signing keys (`/auth/v1/.well-known/jwks.json`, cached ≤ 10 min) instead of a
+  Supabase Auth call per request (`lib/jwt_verify.py`). Legacy HS256 tokens, an
+  unknown key ID, or unreachable keys fall back to Supabase Auth. Like the
+  Supabase Data API, a signed-out or revoked session's access token keeps working
+  until it expires (Auth → JWT expiry, default 1 hour). Set `0` to send every
+  check to Supabase Auth.
+  After rotating signing keys, wait 20 minutes before revoking the old key.
+
 Web (`web/.env`):
 
 - `NEXT_PUBLIC_API_URL` → API origin  
@@ -100,6 +121,28 @@ Operational rights, hold, incident and rollback steps are in
 - Manual, pending-checkout, and saved-card POST retries must preserve their
   original `Idempotency-Key`; reusing a key with changed inputs is a conflict.
 
+### Event ledger, refunds, disputes (`sql/053`)
+
+- Every verified webhook is recorded in `paystack_events` keyed by the SHA-256 of
+  the signed body. A redelivery of a processed event returns `{"replayed": true}`
+  and does nothing; an event whose processing crashed (`processed_at` null) is
+  run again on Paystack's retry.
+- `refund.processed` adds to `transactions.refunded_amount` and sets
+  `refunded_at`; `charge.dispute.*` sets `disputed_at` / `dispute_status`. The
+  rent **status is not changed** — decide by hand whether the rent is owed again.
+  Refund processed / failed / needs-attention and dispute create/remind log at
+  ERROR (`alert=paystack`) so Sentry raises them.
+- Review:
+
+```sql
+select received_at, event, reference, outcome, transaction_id
+from public.paystack_events
+where outcome like 'refund%' or outcome like 'dispute%'
+   or outcome in ('unmatched', 'conflict') or processed_at is null
+order by received_at desc
+limit 50;
+```
+
 ---
 
 ## 4. Due reminders cron
@@ -107,8 +150,8 @@ Operational rights, hold, incident and rollback steps are in
 - Preferred (Free tier): GitHub Actions [`.github/workflows/reminders-due.yml`](../.github/workflows/reminders-due.yml)
   daily `0 6 * * *` UTC (~07:00 WAT) → `POST /reminders/jobs/due` with
   `Authorization: Bearer $CRON_SECRET` (same secret as delivery-outbox).
-- Optional Render cron `smart-prop-due-reminders` schedule `0 8 * * *` →
-  `python -m lib.reminder_job` (needs a paid cron / card).
+- One scheduler per job: `render.yaml` no longer defines Render cron services.
+  If you move to Render Cron later, disable the matching workflow first.
 - Or manual: `POST /reminders/jobs/due` with `Authorization: Bearer $CRON_SECRET`
   or `X-Cron-Secret`.
 - That job runs **due reminders, renewal notices, autopay, and stale-session
@@ -122,8 +165,8 @@ Operational rights, hold, incident and rollback steps are in
 
 ## 5. Delivery outbox and rate-limit cleanup
 
-- Render cron `smart-prop-delivery-outbox` runs every five minutes with
-  `python -m scripts.delivery_outbox`.
+- GitHub Actions [`.github/workflows/delivery-outbox.yml`](../.github/workflows/delivery-outbox.yml)
+  POSTs `/jobs/delivery-outbox` every ~5 minutes (see below).
 - Healthy: ready work is normally drained within 10 minutes:
 
 ```sql
@@ -136,6 +179,10 @@ order by status;
 - Investigate any `pending`/`retry` row older than 15 minutes, any expired
   `processing` lease, or any `dead` row. Check `attempt_count`, `last_error`,
   `event_name`, and provider status before replay.
+- Each dead letter logs one ERROR `Outbox delivery <id> dead-lettered`
+  (`alert=outbox`, with `event_name`, `channel`, `attempts`, `permanent`; no
+  contact or message text), so Sentry raises it. Failures that will retry log a
+  WARNING only. In Sentry, alert on `alert:outbox` and `alert:paystack`.
 - Safe replay: after fixing the cause, move only the reviewed dead row to
   `retry`, clear `completed_at`, and set `next_attempt_at=now()`. Do not change
   its `idempotency_key` and do not bulk replay payment receipts without checking
@@ -151,6 +198,40 @@ order by status;
 - The same cron purges rate-limit buckets expired for more than one day. A
   sustained `503 Request protection temporarily unavailable` means the
   service-role RPC or database is unavailable; do not bypass the limiter.
+
+### Data retention (`sql/052`, `sql/054`, `lib/retention.py`)
+
+- Daily after due reminders: `reminders-due.yml` also POSTs `/jobs/retention`
+  (same Bearer secret). Manual: same call, or `workflow_dispatch`.
+- Deletes: outbox rows `sent`/`dead` for 30+ days (they hold phone numbers and
+  message text), `product_events` older than 180 days, `reminders` log rows
+  older than 18 months, `paystack_events` ledger rows older than 12 months
+  (Paystack stops retrying after 72 hours). Pending/retry/processing outbox rows
+  are never touched.
+- Batched 5,000 rows per table per call; the response lists totals per table
+  and `rounds`. A log line "Retention stopped after 50 rounds" means more remain —
+  run it again.
+- Replay a `dead` row before it turns 30 days old, or it is gone.
+
+### Background worker cutover (not live yet)
+
+`scripts/worker.py` (`python -m scripts.worker`) drains the outbox every ~10s,
+purges rate-limit buckets hourly, and runs due reminders + retention once per
+Lagos day at 07:00. Render background workers need a paid plan; the live API is
+on Free. To switch over:
+
+1. Uncomment `smart-prop-worker` in `render.yaml` (or create a Background Worker
+   by hand: Docker, command `python -m scripts.worker`) and copy the API env
+   (Supabase URL + anon + service role, Twilio, Mailgun/SMTP, Paystack,
+   `FRONTEND_URL`, `SENTRY_DSN`).
+2. Deploy; logs show `Worker started`, then `Outbox drained` when work arrives.
+   Send one test reminder and confirm it leaves within ~15s.
+3. On the API, set `OUTBOX_INLINE_FLUSH=0` so requests only enqueue.
+4. Disable both GitHub workflows (`delivery-outbox`, `reminders-due`). Overlap on
+   the cutover day is safe (jobs are idempotent) but can add a duplicate
+   "contact does not match channel" log row.
+5. Rollback: re-enable the workflows, unset `OUTBOX_INLINE_FLUSH`, suspend the
+   worker.
 
 ---
 
@@ -169,12 +250,11 @@ over blind re-apply. `038_signup_attribution` applied 2026-09-24.
 
 `delivery_outbox` and `rate_limit_buckets` intentionally use RLS with no
 client policies (service-role RPCs only), matching `product_events`.
-Same pattern: `access_pass_events` (API/service-role reads only).
+Same pattern: `access_pass_events` and `paystack_events` (API/service-role only).
 
 Interactive chase can log `queued` reminder rows while the outbox worker
-delivers. Ensure Render cron `smart-prop-delivery-outbox` is created from
-`render.yaml` (`*/5 * * * *`) — it is defined in-repo but may not yet be live
-in every Render workspace.
+delivers. The GitHub Actions `delivery-outbox` workflow drains it every ~5
+minutes; `GET /ready` reports the oldest waiting row.
 
 **2026-09-24 check:** the Render MCP account (`emmanuel@keyriumconsulting.com` /
 `My Workspace`) has ProjectX/kronix only — **not** Nexora.
@@ -202,6 +282,8 @@ Cancel the Render “New Cron Job” / Add Card flow. Use GitHub Actions instead
 Optional: [cron-job.org](https://cron-job.org) with the same URL + Bearer header.
 
 ### Native Render Cron (only if you add billing later)
+
+Disable the matching GitHub workflow first so each job has one scheduler.
 
 1. Name: `smart-prop-delivery-outbox`
 2. Schedule: `*/5 * * * *` · Docker command: `python -m scripts.delivery_outbox`

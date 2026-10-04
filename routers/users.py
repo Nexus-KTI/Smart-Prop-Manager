@@ -120,9 +120,9 @@ def _format_phone(phone: str | None) -> str | None:
     return digits if digits.startswith("+") else f"+{digits}"
 
 
-def _fetch_auth_user(access_token: str):
+def _fetch_auth_user(access_token: str, *, fresh: bool = False):
     try:
-        response = verify_access_token(access_token)
+        response = verify_access_token(access_token, fresh=fresh)
     except AuthApiError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -292,13 +292,13 @@ def get_me(user: AuthedUser = Depends(get_current_user)):
 
 
 @router.post("/me/avatar")
-async def upload_me_avatar(
+def upload_me_avatar(
     file: UploadFile = File(...),
     user: AuthedUser = Depends(get_current_user),
 ):
-    from lib.avatars import upload_avatar
+    from lib.avatars import MAX_AVATAR_BYTES, upload_avatar
 
-    raw = await file.read()
+    raw = file.file.read(MAX_AVATAR_BYTES + 1)
     content_type = (file.content_type or "").strip() or "image/jpeg"
     try:
         url = upload_avatar(
@@ -470,6 +470,6 @@ def update_me(
 
     if auth_attributes:
         _update_auth_user(user.access_token, user.id, auth_attributes)
-        auth_user = _fetch_auth_user(user.access_token)
+        auth_user = _fetch_auth_user(user.access_token, fresh=True)
 
     return _serialize(auth_user, profile)

@@ -441,85 +441,24 @@ def decide_application(
     if current.get("status") not in ("open", "submitted"):
         raise HTTPException(status_code=400, detail="Application already decided")
 
-    now = datetime.now(timezone.utc).isoformat()
-    patch = {
-        "status": next_status,
-        "updated_at": now,
-        "decided_at": now if next_status in ("approved", "rejected") else None,
-    }
-    updated = (
-        user.db.table("rental_applications")
-        .update(patch)
-        .eq("id", application_id)
-        .eq("landlord_id", user.id)
+    # Status change and (on approve) the unit's tenancy in one locked transaction:
+    # approve reuses the open tenancy, filling blank contact/name and the paper
+    # checklist, or creates a draft. See sql/050.
+    result = _first_row(
+        user.db.rpc(
+            "decide_rental_application",
+            {"p_application_id": application_id, "p_status": next_status},
+        )
         .execute()
         .data
-    )
-    row = _first_row(updated) or {**current, **patch}
-
-    tenancy_id = None
-    # On approve: reuse an open tenancy or create a draft.
-    if next_status == "approved":
-        contact = (
-            (current.get("applicant_phone") or current.get("applicant_email") or "")
-            .strip()
-            or None
-        )
-        tenant_name = (current.get("applicant_name") or "").strip() or None
-        existing = (
-            user.db.table("tenancies")
-            .select("id, tenant_contact, tenant_name, tenant_user_id")
-            .eq("unit_id", current["unit_id"])
-            .in_("status", ["draft", "pending_verification", "active"])
-            .limit(1)
-            .execute()
-            .data
-            or []
-        )
-        if existing:
-            tenancy_id = existing[0].get("id")
-            # Sync applicant contact onto the reused row so claim mint can succeed.
-            sync_patch: dict = {"updated_at": now}
-            if contact and not (existing[0].get("tenant_contact") or "").strip():
-                sync_patch["tenant_contact"] = contact
-            if tenant_name and not (existing[0].get("tenant_name") or "").strip():
-                sync_patch["tenant_name"] = tenant_name
-            if (
-                current.get("applicant_user_id")
-                and not existing[0].get("tenant_user_id")
-            ):
-                sync_patch["tenant_user_id"] = current.get("applicant_user_id")
-            # Application decide counts as the paper checklist for this path.
-            sync_patch["checklist_id_collected"] = True
-            sync_patch["checklist_agreement_signed"] = True
-            sync_patch["checklist_references_checked"] = True
-            user.db.table("tenancies").update(sync_patch).eq(
-                "id", tenancy_id
-            ).execute()
-        else:
-            inserted = (
-                user.db.table("tenancies")
-                .insert(
-                    {
-                        "unit_id": current["unit_id"],
-                        "landlord_id": user.id,
-                        "tenant_user_id": current.get("applicant_user_id"),
-                        "status": "draft",
-                        "tenant_name": tenant_name,
-                        "tenant_contact": contact,
-                        # Application approve stands in for the paper checklist
-                        # so activate is not blocked after claim.
-                        "checklist_id_collected": True,
-                        "checklist_agreement_signed": True,
-                        "checklist_references_checked": True,
-                    }
-                )
-                .execute()
-                .data
-            )
-            created_tenancy = _first_row(inserted)
-            if created_tenancy:
-                tenancy_id = created_tenancy.get("id")
+    ) or {}
+    outcome = result.get("outcome")
+    if outcome == "not_found":
+        raise HTTPException(status_code=404, detail="Application not found")
+    if outcome != "decided":
+        raise HTTPException(status_code=400, detail="Application already decided")
+    row = {**current, **(result.get("application") or {})}
+    tenancy_id = result.get("tenancy_id")
 
     claim_path = None
     claim_url = None

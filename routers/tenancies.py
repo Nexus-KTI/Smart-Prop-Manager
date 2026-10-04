@@ -22,7 +22,7 @@ from fastapi import (
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
 from lib.invite_bind import require_invite_contact_match
-from lib.rate_limit import client_ip, enforce_rate_limit
+from lib.rate_limit import client_ip, enforce_invite_limit, enforce_rate_limit
 from lib.tenancy import (
     CHECKLIST_LABELS,
     OPTIONAL_IDENTITY_KEY,
@@ -321,23 +321,21 @@ def claim_tenancy(payload: dict, user: AuthedUser = Depends(get_current_user)):
     )
     if tenancy.get("tenant_user_id") and tenancy["tenant_user_id"] != user.id:
         raise HTTPException(status_code=409, detail="Invite already claimed")
-    now = datetime.now(timezone.utc).isoformat()
-    svc.table("tenancies").update(
-        {
-            "tenant_user_id": user.id,
-            "updated_at": now,
-            "invite_token": None,
-        }
-    ).eq("id", tenancy["id"]).execute()
-    svc.table("profiles").upsert(
-        {"id": user.id, "role": "tenant"},
-        on_conflict="id",
-    ).execute()
-    refreshed = (
-        svc.table("tenancies").select("*").eq("id", tenancy["id"]).limit(1).execute().data
-        or []
-    )
-    return {"tenancy": _serialize(dict(refreshed[0] if refreshed else tenancy))}
+    # Link, clear the token, and set the tenant role in one transaction.
+    result = _first_row(
+        svc.rpc(
+            "claim_tenancy_invite",
+            {"p_tenancy_id": str(tenancy["id"]), "p_token": token, "p_user_id": user.id},
+        )
+        .execute()
+        .data
+    ) or {}
+    outcome = result.get("outcome")
+    if outcome == "already_claimed":
+        raise HTTPException(status_code=409, detail="Invite already claimed")
+    if outcome != "claimed":
+        raise HTTPException(status_code=404, detail="Invite not found")
+    return {"tenancy": _serialize(dict(result.get("tenancy") or tenancy))}
 
 
 @router.get("/me/current")
@@ -523,8 +521,8 @@ def activate_tenancy(tenancy_id: str, user: AuthedUser = Depends(get_current_use
                 detail={
                     "message": "Resolve requested documents before starting occupancy",
                     "blockers": ["Requested documents"],
-                },
-            )
+            },
+        )
     now = datetime.now(timezone.utc).isoformat()
     updated = (
         user.db.table("tenancies")
@@ -646,6 +644,7 @@ def issue_tenancy_claim(user: AuthedUser, tenancy_id: str, *, notify: bool = Tru
 
 @router.post("/{tenancy_id}/invite")
 def invite_tenant(tenancy_id: str, user: AuthedUser = Depends(get_current_user)):
+    enforce_invite_limit(user.id)
     return issue_tenancy_claim(user, tenancy_id)
 
 
@@ -1002,10 +1001,10 @@ def list_documents(tenancy_id: str, user: AuthedUser = Depends(get_current_user)
             svc.table("tenancy_document_acknowledgments")
             .select("document_id, actor_id, acknowledged_at, text_version")
             .in_("document_id", document_ids)
-            .execute()
-            .data
-            or []
-        )
+        .execute()
+        .data
+        or []
+    )
         for row in rows:
             if row.get("actor_id") == tenancy.get("tenant_user_id"):
                 acknowledgments[str(row.get("document_id"))] = dict(row)
@@ -1234,10 +1233,10 @@ def delete_document(
             raise _rpc_error(exc) from exc
     else:  # Lightweight local test doubles; production uses the locked RPC.
         claimed = _first_row(
-            svc.table("tenancy_documents")
+        svc.table("tenancy_documents")
             .update({"deleted_at": now, "deleted_by": user.id})
-            .eq("id", document_id)
-            .eq("tenancy_id", tenancy_id)
+        .eq("id", document_id)
+        .eq("tenancy_id", tenancy_id)
             .eq("legal_hold", False)
             .is_("deleted_at", "null")
             .execute()

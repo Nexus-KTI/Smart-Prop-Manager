@@ -81,11 +81,57 @@ class _Query:
 
 
 class _Svc:
+    """Fake service client; rpc mirrors sql/049 admit_access_pass."""
+
     def __init__(self, store: dict[str, list[dict]]):
         self._store = store
+        self.events: list[dict] = []
 
     def table(self, name: str):
         return _Query(self._store, name)
+
+    def rpc(self, name: str, params: dict):
+        assert name == "admit_access_pass"
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=self._admit(params)))
+
+    def _admit(self, p: dict) -> dict:
+        passes = self._store["access_passes"]
+        idx = next((i for i, r in enumerate(passes) if r["id"] == p["p_pass_id"]), None)
+        if idx is None:
+            return {"admitted": False, "reason": "not_found"}
+        row = passes[idx]
+        key = p.get("p_request_key")
+        if key:
+            prior = next(
+                (e for e in self.events if e["pass_id"] == row["id"] and e["key"] == key),
+                None,
+            )
+            if prior:
+                return {"admitted": True, "replayed": True, "pass": dict(row), "event_id": prior["id"]}
+        now = datetime.now(timezone.utc)
+        if row["status"] != "active":
+            return {"admitted": False, "reason": row["status"]}
+        if datetime.fromisoformat(row["valid_until"]) < now:
+            return {"admitted": False, "reason": "expired"}
+        if datetime.fromisoformat(row["valid_from"]) > now:
+            return {"admitted": False, "reason": "scheduled"}
+        if row.get("max_uses") is not None and row["uses_count"] >= row["max_uses"]:
+            return {
+                "admitted": False,
+                "reason": "used_up",
+                "uses_count": row["uses_count"],
+                "max_uses": row["max_uses"],
+            }
+        row = {
+            **row,
+            "uses_count": row["uses_count"] + 1,
+            "last_admitted_by": p["p_actor_user_id"],
+            "last_admitted_at": now.isoformat(),
+        }
+        passes[idx] = row
+        event = {"id": f"evt-{len(self.events) + 1}", "pass_id": row["id"], "key": key}
+        self.events.append(event)
+        return {"admitted": True, "replayed": False, "pass": dict(row), "event_id": event["id"]}
 
 
 def _future(hours: float = 4) -> str:
@@ -215,6 +261,41 @@ def test_admit_max_uses_denied(store, svc):
         )
     assert ei.value.status_code == 400
     assert "limit" in str(ei.value.detail).lower()
+
+
+def test_admit_replay_with_same_key_counts_once(store, svc, monkeypatch):
+    notices: list[dict] = []
+    monkeypatch.setattr(
+        "lib.access_notify.notify_guest_admitted", lambda *_a, **k: notices.append(k)
+    )
+    store["access_passes"][0]["max_uses"] = 1
+    payload = {"property_id": "prop-1", "raw": "ABC123"}
+    first = access.admit_pass(payload, _User(), idempotency_key="scan-key-0001")  # type: ignore[arg-type]
+    replay = access.admit_pass(payload, _User(), idempotency_key="scan-key-0001")  # type: ignore[arg-type]
+    assert first["admitted"] is True and replay["admitted"] is True
+    assert store["access_passes"][0]["uses_count"] == 1
+    assert len(svc.events) == 1
+    assert len(notices) == 1
+
+
+def test_admit_second_scan_of_single_use_pass_is_refused(store, svc):
+    store["access_passes"][0]["max_uses"] = 1
+    payload = {"property_id": "prop-1", "raw": "ABC123"}
+    access.admit_pass(payload, _User(), idempotency_key="scan-key-0001")  # type: ignore[arg-type]
+    with pytest.raises(HTTPException) as ei:
+        access.admit_pass(payload, _User(), idempotency_key="scan-key-0002")  # type: ignore[arg-type]
+    assert ei.value.status_code == 400
+    assert "1/1" in str(ei.value.detail)
+
+
+def test_admit_rejects_malformed_key(store, svc):
+    with pytest.raises(HTTPException) as ei:
+        access.admit_pass(
+            {"property_id": "prop-1", "raw": "ABC123"},
+            _User(),  # type: ignore[arg-type]
+            idempotency_key="bad key!",
+        )
+    assert ei.value.status_code == 400
 
 
 def test_list_passes_uses_owner_id(store, svc, monkeypatch):

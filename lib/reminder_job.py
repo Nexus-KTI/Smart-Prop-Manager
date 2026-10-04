@@ -141,6 +141,24 @@ def _business_name(db: Any, owner_id: str | None) -> str | None:
     return name or None
 
 
+UNIT_PAGE = 500
+
+
+def _select_all_units(build: Any) -> list[dict]:
+    """Page through units by id; one unpaged select stops at PostgREST's row cap."""
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        page = (
+            build().order("id").range(offset, offset + UNIT_PAGE - 1).execute().data
+            or []
+        )
+        rows.extend(page)
+        if len(page) < UNIT_PAGE:
+            return rows
+        offset += UNIT_PAGE
+
+
 def run_due_reminders(*, today: date | None = None) -> dict[str, int]:
     """
     Send due reminders for units due today (Africa/Lagos), using frequency + due_day.
@@ -157,16 +175,13 @@ def run_due_reminders(*, today: date | None = None) -> dict[str, int]:
     day = _today_lagos(today)
     db = create_service_client()
 
-    rows = (
-        db.table("units")
+    rows = _select_all_units(
+        lambda: db.table("units")
         .select(
             "id, label, rent_amount, tenant_contact, due_day, frequency, "
             "properties(id, name, owner_id)"
         )
         .or_("frequency.eq.daily,due_day.not.is.null")
-        .execute()
-        .data
-        or []
     )
 
     due_rows = [unit for unit in rows if unit_is_due_today(unit, day)]
@@ -291,16 +306,13 @@ def run_renewal_reminders(*, today: date | None = None) -> dict[str, int]:
     day = _today_lagos(today)
     db = create_service_client()
 
-    rows = (
-        db.table("units")
+    rows = _select_all_units(
+        lambda: db.table("units")
         .select(
             "id, label, tenant_name, term_end, "
             "properties(id, name, owner_id)"
         )
         .not_.is_("term_end", "null")
-        .execute()
-        .data
-        or []
     )
 
     due_rows = [unit for unit in rows if unit_renewal_due_today(unit, day)]
@@ -417,7 +429,9 @@ def run_reminder_jobs(*, today: date | None = None) -> dict[str, Any]:
 if __name__ == "__main__":
     from dotenv import load_dotenv
 
+    from lib.observability import configure_logging
+
     load_dotenv()
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
     result = run_reminder_jobs()
     print(result)

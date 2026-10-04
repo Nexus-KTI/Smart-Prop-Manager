@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi.concurrency import run_in_threadpool
 
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
@@ -174,6 +175,7 @@ def _log_reminder(
     channel: str,
     reminder_status: str,
     error_detail: str | None = None,
+    transaction_id: str | None = None,
 ) -> None:
     row: dict = {
         "unit_id": unit_id,
@@ -181,6 +183,8 @@ def _log_reminder(
         "kind": kind,
         "status": reminder_status,
     }
+    if transaction_id:
+        row["transaction_id"] = transaction_id
     detail = _clip_detail(error_detail)
     if detail:
         row["error_detail"] = detail
@@ -193,6 +197,7 @@ def _log_receipt_reminder(
     reminder_status: str,
     channel: str,
     error_detail: str | None = None,
+    transaction_id: str | None = None,
 ) -> None:
     _log_reminder(
         db,
@@ -201,11 +206,16 @@ def _log_receipt_reminder(
         channel=channel,
         reminder_status=reminder_status,
         error_detail=error_detail,
+        transaction_id=transaction_id,
     )
 
 
 def _log_landlord_payment_notice(
-    db, unit_id: str, notify_status: str, error_detail: str | None = None
+    db,
+    unit_id: str,
+    notify_status: str,
+    error_detail: str | None = None,
+    transaction_id: str | None = None,
 ) -> None:
     """Persist landlord payment email outcome for the unit reminders UI."""
     status = (
@@ -223,63 +233,74 @@ def _log_landlord_payment_notice(
         channel="email",
         reminder_status=status,
         error_detail=detail,
+        transaction_id=transaction_id,
     )
 
 
-def _landlord_payment_notice_already_sent(
-    db, unit_id: str, paid_at: Any = None
+def _payment_notice_already_logged(
+    db,
+    unit_id: str,
+    kind: str,
+    done_statuses: list[str],
+    transaction_id: str | None = None,
+    paid_at: Any = None,
 ) -> bool:
-    """True if we already emailed the landlord for this payment window."""
+    """True if this payment's notice of `kind` already went out.
+
+    Rows logged before transaction_id existed fall back to the unit + paid_at window.
+    """
     table = getattr(db, "table", None)
     if not callable(table):
         return False
     try:
+        if transaction_id:
+            rows = (
+                db.table("reminders")
+                .select("id")
+                .eq("transaction_id", transaction_id)
+                .eq("kind", kind)
+                .in_("status", done_statuses)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+            if rows:
+                return True
         q = (
             db.table("reminders")
             .select("id")
             .eq("unit_id", unit_id)
-            .eq("kind", "landlord_payment")
-            .eq("status", "sent")
+            .eq("kind", kind)
+            .in_("status", done_statuses)
+            .is_("transaction_id", "null")
             .order("sent_at", desc=True)
             .limit(1)
         )
         if paid_at:
             q = q.gte("sent_at", paid_at)
-        rows = q.execute().data or []
-        return bool(rows)
+        return bool(q.execute().data or [])
     except Exception:
-        logger.exception(
-            "Could not check prior landlord_payment notice for unit %s", unit_id
-        )
+        logger.exception("Could not check prior %s notice for unit %s", kind, unit_id)
         return False
+
+
+def _landlord_payment_notice_already_sent(
+    db, unit_id: str, paid_at: Any = None, transaction_id: str | None = None
+) -> bool:
+    """True if we already emailed the landlord for this payment."""
+    return _payment_notice_already_logged(
+        db, unit_id, "landlord_payment", ["sent"], transaction_id, paid_at
+    )
 
 
 def _tenant_receipt_notice_already_sent(
-    db, unit_id: str, paid_at: Any = None
+    db, unit_id: str, paid_at: Any = None, transaction_id: str | None = None
 ) -> bool:
     """True if the tenant already received a receipt notice for this payment."""
-    table = getattr(db, "table", None)
-    if not callable(table):
-        return False
-    try:
-        q = (
-            db.table("reminders")
-            .select("id")
-            .eq("unit_id", unit_id)
-            .eq("kind", "receipt")
-            .in_("status", ["sent", "skipped"])
-            .order("sent_at", desc=True)
-            .limit(1)
-        )
-        if paid_at:
-            q = q.gte("sent_at", paid_at)
-        rows = q.execute().data or []
-        return bool(rows)
-    except Exception:
-        logger.exception(
-            "Could not check prior receipt notice for unit %s", unit_id
-        )
-        return False
+    return _payment_notice_already_logged(
+        db, unit_id, "receipt", ["sent", "skipped"], transaction_id, paid_at
+    )
 
 
 def _owner_id_for_unit(db, unit_id: str) -> str | None:
@@ -397,7 +418,7 @@ def deliver_payment_receipt(
         # Skip re-send if a successful landlord_payment notice already logged
         # for this payment (Paystack confirm/webhook can re-enter after PDF fail).
         if _landlord_payment_notice_already_sent(
-            db, str(unit_id), paid_at
+            db, str(unit_id), paid_at, str(txn_id)
         ):
             landlord_result_status = "sent"
             landlord_detail = None
@@ -426,6 +447,7 @@ def deliver_payment_receipt(
                     unit_id,
                     landlord_result_status,
                     error_detail=landlord_detail,
+                    transaction_id=str(txn_id),
                 )
             except Exception:
                 logger.exception(
@@ -446,7 +468,9 @@ def deliver_payment_receipt(
             pdf_bytes = generate_receipt(receipt_payload)
             receipt_url = upload_receipt(str(txn_id), pdf_bytes)
 
-        if _tenant_receipt_notice_already_sent(db, str(unit_id), paid_at):
+        if _tenant_receipt_notice_already_sent(
+            db, str(unit_id), paid_at, str(txn_id)
+        ):
             return receipt_url
 
         contact = (unit.get("tenant_contact") or "").strip()
@@ -499,7 +523,12 @@ def deliver_payment_receipt(
 
         try:
             _log_receipt_reminder(
-                db, unit_id, reminder_status, channel, error_detail=receipt_error
+                db,
+                unit_id,
+                reminder_status,
+                channel,
+                error_detail=receipt_error,
+                transaction_id=str(txn_id),
             )
         except Exception:
             logger.exception("Failed to log receipt reminder for %s", txn_id)
@@ -516,6 +545,7 @@ def deliver_payment_receipt(
                 "failed",
                 channel,
                 error_detail=str(exc).strip() or "Receipt delivery failed",
+                transaction_id=str(txn_id),
             )
         except Exception:
             logger.exception("Failed to log failed receipt reminder for %s", txn_id)
@@ -979,67 +1009,206 @@ async def paystack_webhook(request: Request):
     body = await request.body()
     verify_webhook_signature(request.headers, body)
     event = json.loads(body)
-    if event.get("event") == "charge.success":
-        data = event.get("data") or {}
-        metadata = data.get("metadata") or {}
-        transaction_id = metadata.get("transaction_id")
-        paystack_ref = (data.get("reference") or "").strip()
-        if transaction_id or paystack_ref:
-            db = create_service_client()
-            target = db.table("transactions").select("*").limit(1)
-            if paystack_ref:
-                target = target.eq("payment_reference", paystack_ref)
-            else:
-                target = target.eq("id", transaction_id)
-            target_row = _first_row(target.execute().data)
-            if not target_row and transaction_id:
-                target_row = _first_row(
-                    db.table("transactions")
-                    .select("*")
-                    .eq("id", transaction_id)
-                    .limit(1)
-                    .execute()
-                    .data
-                )
-            if not target_row:
-                logger.warning("Unmatched Paystack webhook reference %s", paystack_ref)
-                return {"status": "ok"}
-            try:
-                _validate_paystack_binding(
-                    data,
-                    target_row,
-                    reference=paystack_ref,
-                )
-            except HTTPException:
-                logger.exception(
-                    "Conflicting Paystack webhook reference %s", paystack_ref
-                )
-                return {"status": "ok"}
+    event_key = hashlib.sha256(body).hexdigest()
+    return await run_in_threadpool(_apply_paystack_event, event, event_key)
 
-            txn = target_row
-            if target_row.get("status") != "paid":
-                updated = (
-                    db.table("transactions")
-                    .update(
-                        {
-                            "status": "paid",
-                            "paid_at": data.get("paid_at")
-                            or datetime.now(timezone.utc).isoformat(),
-                            "method": "paystack",
-                            "payment_reference": paystack_ref,
-                            "processing_lease_token": None,
-                            "processing_lease_expires_at": None,
-                        }
-                    )
-                    .eq("id", target_row["id"])
-                    .in_("status", ["pending", "failed"])
-                    .execute()
-                    .data
-                )
-                txn = _first_row(updated) or target_row
-            if txn and txn.get("status") == "paid":
-                _queue_paid_side_effects(db, txn)
+
+def _apply_paystack_event(event: dict, event_key: str | None = None) -> dict:
+    """Blocking ledger work for a verified webhook; runs off the event loop.
+
+    A handler exception propagates as a 500 so Paystack retries; the ledger row
+    stays unprocessed and the retry runs the (idempotent) handler again.
+    """
+    name = str(event.get("event") or "")
+    data = event.get("data") or {}
+    db = create_service_client()
+    if event_key and not _claim_paystack_event(
+        db, event_key, name, _paystack_event_reference(name, data)
+    ):
+        return {"status": "ok", "replayed": True}
+
+    handler = _paystack_handler(name)
+    outcome, transaction_id = handler(db, name, data) if handler else ("ignored", None)
+    if event_key:
+        db.table("paystack_events").update(
+            {
+                "outcome": outcome,
+                "transaction_id": transaction_id,
+                "processed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).eq("event_key", event_key).execute()
     return {"status": "ok"}
+
+
+def _claim_paystack_event(db: Any, event_key: str, name: str, reference: str) -> bool:
+    """False when this exact delivery was already processed."""
+    inserted = (
+        db.table("paystack_events")
+        .upsert(
+            {"event_key": event_key, "event": name or "unknown", "reference": reference or None},
+            on_conflict="event_key",
+            ignore_duplicates=True,
+        )
+        .execute()
+        .data
+    )
+    if inserted:
+        return True
+    existing = _first_row(
+        db.table("paystack_events")
+        .select("processed_at")
+        .eq("event_key", event_key)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return not (existing and existing.get("processed_at"))
+
+
+def _paystack_event_reference(name: str, data: dict) -> str:
+    if name.startswith("refund."):
+        return str(data.get("transaction_reference") or "").strip()
+    if name.startswith("charge.dispute."):
+        return str((data.get("transaction") or {}).get("reference") or "").strip()
+    return str(data.get("reference") or "").strip()
+
+
+def _paystack_handler(name: str):
+    if name == "charge.success":
+        return _apply_charge_success
+    if name.startswith("refund."):
+        return _apply_refund_event
+    if name.startswith("charge.dispute."):
+        return _apply_dispute_event
+    return None
+
+
+def _transaction_by_reference(db: Any, reference: str) -> dict | None:
+    if not reference:
+        return None
+    return _first_row(
+        db.table("transactions")
+        .select("*")
+        .eq("payment_reference", reference)
+        .limit(1)
+        .execute()
+        .data
+    )
+
+
+def _alert_ops(message: str, *args: Any) -> None:
+    """Money moved outside the app; logged at ERROR so Sentry raises it for review."""
+    logger.error(message, *args, extra={"alert": "paystack"})
+
+
+def _apply_charge_success(db: Any, _name: str, data: dict) -> tuple[str, str | None]:
+    metadata = data.get("metadata") or {}
+    transaction_id = metadata.get("transaction_id")
+    paystack_ref = (data.get("reference") or "").strip()
+    if not transaction_id and not paystack_ref:
+        return "unmatched", None
+    target_row = _transaction_by_reference(db, paystack_ref)
+    if not target_row and transaction_id:
+        target_row = _first_row(
+            db.table("transactions")
+            .select("*")
+            .eq("id", transaction_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+    if not target_row:
+        logger.warning("Unmatched Paystack webhook reference %s", paystack_ref)
+        return "unmatched", None
+    try:
+        _validate_paystack_binding(
+            data,
+            target_row,
+            reference=paystack_ref,
+        )
+    except HTTPException:
+        logger.exception("Conflicting Paystack webhook reference %s", paystack_ref)
+        return "conflict", target_row.get("id")
+
+    txn = target_row
+    outcome = "already_paid"
+    if target_row.get("status") != "paid":
+        updated = (
+            db.table("transactions")
+            .update(
+                {
+                    "status": "paid",
+                    "paid_at": data.get("paid_at")
+                    or datetime.now(timezone.utc).isoformat(),
+                    "method": "paystack",
+                    "payment_reference": paystack_ref,
+                    "processing_lease_token": None,
+                    "processing_lease_expires_at": None,
+                }
+            )
+            .eq("id", target_row["id"])
+            .in_("status", ["pending", "failed"])
+            .execute()
+            .data
+        )
+        txn = _first_row(updated) or target_row
+        outcome = "paid"
+    if txn and txn.get("status") == "paid":
+        _queue_paid_side_effects(db, txn)
+    return outcome, target_row.get("id")
+
+
+def _apply_refund_event(db: Any, name: str, data: dict) -> tuple[str, str | None]:
+    """Record refunds against the transaction; rent status is left for review."""
+    stage = name.split(".", 1)[1]
+    reference = _paystack_event_reference(name, data)
+    txn = _transaction_by_reference(db, reference)
+    if not txn:
+        logger.warning("Unmatched Paystack refund %s for reference %s", stage, reference)
+        return f"refund_{stage}_unmatched", None
+
+    if stage == "processed":
+        try:
+            amount = Decimal(str(data.get("amount") or 0)) / 100
+        except InvalidOperation:
+            amount = Decimal(0)
+        total = Decimal(str(txn.get("refunded_amount") or 0)) + amount
+        db.table("transactions").update(
+            {
+                "refunded_amount": str(total),
+                "refunded_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).eq("id", txn["id"]).execute()
+        _alert_ops(
+            "Paystack refund processed for transaction %s (NGN %s); rent status unchanged",
+            txn["id"],
+            amount,
+        )
+    elif stage in {"failed", "needs-attention"}:
+        _alert_ops("Paystack refund %s for transaction %s", stage, txn["id"])
+    else:
+        logger.info("Paystack refund %s for transaction %s", stage, txn["id"])
+    return f"refund_{stage}", txn["id"]
+
+
+def _apply_dispute_event(db: Any, name: str, data: dict) -> tuple[str, str | None]:
+    stage = name.rsplit(".", 1)[1]
+    reference = _paystack_event_reference(name, data)
+    txn = _transaction_by_reference(db, reference)
+    if not txn:
+        logger.warning("Unmatched Paystack dispute %s for reference %s", stage, reference)
+        return f"dispute_{stage}_unmatched", None
+
+    label = data.get("resolution") if stage == "resolve" else data.get("status")
+    patch: dict[str, Any] = {"dispute_status": str(label or stage)[:60]}
+    if stage != "resolve" and not txn.get("disputed_at"):
+        patch["disputed_at"] = datetime.now(timezone.utc).isoformat()
+    db.table("transactions").update(patch).eq("id", txn["id"]).execute()
+    if stage == "resolve":
+        logger.info("Paystack dispute resolved for transaction %s", txn["id"])
+    else:
+        _alert_ops("Paystack dispute %s for transaction %s", stage, txn["id"])
+    return f"dispute_{stage}", txn["id"]
 
 
 def _serialize_card(row: dict) -> dict:
@@ -1174,6 +1343,59 @@ def confirm_saved_card(payload: dict, user: AuthedUser = Depends(get_current_use
     return {"item": _serialize_card(dict(row))}
 
 
+def _guard_new_saved_card_charge(db, unit_id: str, idempotency_key: str) -> None:
+    """Refuse a fresh saved-card charge that would pay this period's rent twice.
+
+    A replay of an existing key skips these checks so the claim can return the
+    first result. Concurrent charges on one unit are refused inside
+    claim_saved_card_transaction, which holds a per-unit lock.
+    """
+    from lib.reminder_job import _today_lagos
+    from lib.unit_status import _paid_in_current_period
+
+    existing = (
+        db.table("transactions")
+        .select("id")
+        .eq("idempotency_key", idempotency_key)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if existing:
+        return
+
+    unit = _first_row(
+        db.table("units")
+        .select("id, frequency, due_day, due_month")
+        .eq("id", unit_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    if not unit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unit not found")
+    frequency = str(unit.get("frequency") or "monthly").strip().lower()
+    if frequency not in {"monthly", "annual"}:
+        return
+    paid_rows = (
+        db.table("transactions")
+        .select("status, paid_at, created_at, charge_type")
+        .eq("unit_id", unit_id)
+        .eq("status", "paid")
+        .order("paid_at", desc=True)
+        .limit(24)
+        .execute()
+        .data
+        or []
+    )
+    if _paid_in_current_period(unit, paid_rows, _today_lagos(), "rent"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Rent for this period is already paid",
+        )
+
+
 @router.post("/cards/charge")
 def charge_saved_card(
     payload: dict,
@@ -1256,9 +1478,10 @@ def charge_saved_card(
     idempotency_key = f"saved-card:{user.id}:{request_key}"
     digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
     reference = f"nexora_sc_{digest}"
+    _guard_new_saved_card_charge(db, unit_id, idempotency_key)
     claim = (
         db.rpc(
-            "claim_autopay_transaction",
+            "claim_saved_card_transaction",
             {
                 "p_idempotency_key": idempotency_key,
                 "p_unit_id": unit_id,

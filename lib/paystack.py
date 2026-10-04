@@ -10,10 +10,32 @@ import httpx
 from fastapi import HTTPException, status
 from starlette.datastructures import Headers
 
+from lib.circuit import CircuitOpenError, paystack_breaker
 from lib.http_client import PAYMENT_TIMEOUT, get_http_client
 
 PAYSTACK_VERIFY_URL = "https://api.paystack.co/transaction/verify/{reference}"
 PAYSTACK_CHARGE_URL = "https://api.paystack.co/transaction/charge_authorization"
+
+
+def _through_breaker(send) -> httpx.Response:
+    """Fail with 503 before contacting Paystack while it is known to be down."""
+    try:
+        paystack_breaker.before_call()
+    except CircuitOpenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Paystack is temporarily unavailable. Try again in a minute.",
+        ) from exc
+    try:
+        response = send()
+    except httpx.TransportError:
+        paystack_breaker.record_failure()
+        raise
+    if response.status_code >= 500:
+        paystack_breaker.record_failure()
+    else:
+        paystack_breaker.record_success()
+    return response
 
 
 def verify_webhook_signature(headers: Headers, body: bytes) -> None:
@@ -58,10 +80,12 @@ def verify_transaction(reference: str) -> dict[str, Any]:
     last_error: Exception | None = None
     for attempt in range(2):
         try:
-            response = get_http_client().get(
-                PAYSTACK_VERIFY_URL.format(reference=reference),
-                headers={"Authorization": f"Bearer {secret}"},
-                timeout=PAYMENT_TIMEOUT,
+            response = _through_breaker(
+                lambda: get_http_client().get(
+                    PAYSTACK_VERIFY_URL.format(reference=reference),
+                    headers={"Authorization": f"Bearer {secret}"},
+                    timeout=PAYMENT_TIMEOUT,
+                )
             )
             if response.status_code not in {502, 503, 504}:
                 break
@@ -142,14 +166,16 @@ def charge_authorization(
 
     # A charge mutation is never retried here. The caller must verify the stable
     # provider reference before deciding whether to issue another attempt.
-    response = get_http_client().post(
-        PAYSTACK_CHARGE_URL,
-        headers={
-            "Authorization": f"Bearer {secret}",
-            "Content-Type": "application/json",
-        },
-        json=body,
-        timeout=PAYMENT_TIMEOUT,
+    response = _through_breaker(
+        lambda: get_http_client().post(
+            PAYSTACK_CHARGE_URL,
+            headers={
+                "Authorization": f"Bearer {secret}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=PAYMENT_TIMEOUT,
+        )
     )
 
     try:

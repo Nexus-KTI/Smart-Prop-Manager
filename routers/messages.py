@@ -2,17 +2,32 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
+from lib.idempotency import optional_request_key
 
 router = APIRouter(prefix="/messages", tags=["messages"])
+logger = logging.getLogger(__name__)
 
 THREADS_LIST_LIMIT = 100
+MESSAGES_PAGE = 50
+MESSAGES_PAGE_MAX = 100
 UNREAD_SCAN_PAGE = 200
 UNREAD_SCAN_MAX = 2000
 
@@ -70,23 +85,45 @@ def _load_thread(user: AuthedUser, thread_id: str) -> dict:
     return thread
 
 
-def _unread_for_thread(user: AuthedUser, thread: dict) -> bool:
+READ_MARKER_BATCH = 100
+
+
+def _read_markers(user: AuthedUser, thread_ids: list[str]) -> dict[str, str]:
+    """thread_id -> last_read_at for this user, fetched in a few batched queries."""
+    markers: dict[str, str] = {}
+    for start in range(0, len(thread_ids), READ_MARKER_BATCH):
+        batch = thread_ids[start : start + READ_MARKER_BATCH]
+        rows = (
+            user.db.table("message_thread_reads")
+            .select("thread_id, last_read_at")
+            .eq("user_id", user.id)
+            .in_("thread_id", batch)
+            .execute()
+            .data
+            or []
+        )
+        for row in rows:
+            markers[str(row.get("thread_id"))] = str(row.get("last_read_at") or "")
+    return markers
+
+
+def _is_unread(thread: dict, markers: dict[str, str]) -> bool:
     last = thread.get("last_message_at")
     if not last:
         return False
-    reads = (
-        user.db.table("message_thread_reads")
-        .select("last_read_at")
-        .eq("thread_id", thread["id"])
-        .eq("user_id", user.id)
-        .limit(1)
-        .execute()
-        .data
-        or []
-    )
-    if not reads:
+    read_at = markers.get(str(thread.get("id")))
+    if read_at is None:
         return True
-    return str(reads[0].get("last_read_at") or "") < str(last)
+    return _ts(read_at) < _ts(last)
+
+
+def _ts(value: Any) -> datetime:
+    text = str(value).replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def ensure_maintenance_thread(
@@ -314,7 +351,13 @@ def post_payment_to_chat(db: Any, transaction: dict) -> dict | None:
 
 @router.get("/unread-count")
 def unread_count(user: AuthedUser = Depends(get_current_user)):
-    """Unread thread count — pages through threads so the rail badge is not stuck at 200."""
+    """Unread thread count for the rail badge, counted in one database query."""
+    try:
+        count = user.db.rpc("unread_thread_count", {}).execute().data
+        if isinstance(count, int):
+            return {"unread_threads": count, "scanned": None, "capped": False}
+    except Exception:
+        logger.warning("unread_thread_count RPC failed; scanning threads", exc_info=True)
 
     def _page(eq_col: str, offset: int) -> list:
         end = offset + UNREAD_SCAN_PAGE - 1
@@ -349,7 +392,8 @@ def unread_count(user: AuthedUser = Depends(get_current_user)):
                 capped = True
                 break
 
-    count = sum(1 for t in threads if _unread_for_thread(user, t))
+    markers = _read_markers(user, [str(t["id"]) for t in threads])
+    count = sum(1 for t in threads if _is_unread(t, markers))
     return {
         "unread_threads": count,
         "scanned": len(threads),
@@ -455,10 +499,11 @@ def list_threads(
         if r["id"] not in seen:
             rows.append(r)
 
+    markers = _read_markers(user, [str(r["id"]) for r in rows])
     items = []
     for row in rows:
         item = dict(row)
-        item["unread"] = _unread_for_thread(user, item)
+        item["unread"] = _is_unread(item, markers)
         items.append(item)
     items.sort(key=lambda x: x.get("last_message_at") or x.get("created_at") or "", reverse=True)
     capped = (
@@ -566,43 +611,73 @@ def open_maintenance_thread(
 @router.get("/threads/{thread_id}")
 def get_thread(thread_id: str, user: AuthedUser = Depends(get_current_user)):
     thread = _load_thread(user, thread_id)
-    thread["unread"] = _unread_for_thread(user, thread)
+    thread["unread"] = _is_unread(thread, _read_markers(user, [str(thread["id"])]))
     return {"item": thread}
 
 
 @router.get("/threads/{thread_id}/messages")
-def list_messages(thread_id: str, user: AuthedUser = Depends(get_current_user)):
+def list_messages(
+    thread_id: str,
+    user: AuthedUser = Depends(get_current_user),
+    before: str | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=MESSAGES_PAGE_MAX),
+):
+    """Newest page first; `before` (from `next_before`) loads the page above it.
+
+    Items are returned oldest-to-newest for display.
+    """
+    from lib.message_media import present_message
+    from lib.pagination import apply_desc_cursor, paginate_desc
+
     thread = _load_thread(user, thread_id)
     svc = _svc_or_user(user)
+    cursor = before if isinstance(before, str) else None
+    size = limit if isinstance(limit, int) else MESSAGES_PAGE
+
+    def _fetch(db: Any) -> list:
+        query = (
+            db.table("messages")
+            .select("*")
+            .eq("thread_id", thread_id)
+            .order("created_at", desc=True)
+            .order("id", desc=True)
+        )
+        query = apply_desc_cursor(query, cursor)
+        return query.limit(size + 1).execute().data or []
+
+    rows = _fetch(user.db)
+    if not rows:
+        # RLS edge: use svc filtered by participant already checked
+        rows = _fetch(svc)
+    page, next_before = paginate_desc(rows, size)
+    page.reverse()
+    return {
+        "items": [present_message(dict(row)) for row in page],
+        "peer_last_read_at": _peer_last_read_at(svc, thread, user.id),
+        "next_before": next_before,
+    }
+
+
+def _sent_with_key(svc: Any, user_id: str, client_key: str, thread_id: str) -> dict | None:
     rows = (
-        user.db.table("messages")
+        svc.table("messages")
         .select("*")
-        .eq("thread_id", thread_id)
-        .order("created_at")
-        .limit(200)
+        .eq("sender_id", user_id)
+        .eq("client_key", client_key)
+        .limit(1)
         .execute()
         .data
         or []
     )
     if not rows:
-        # RLS edge: use svc filtered by participant already checked
-        rows = (
-            svc.table("messages")
-            .select("*")
-            .eq("thread_id", thread_id)
-            .order("created_at")
-            .limit(200)
-            .execute()
-            .data
-            or []
+        return None
+    row = dict(rows[0])
+    if str(row.get("thread_id")) != str(thread_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Idempotency-Key was already used in another conversation",
         )
-    peer_last_read_at = _peer_last_read_at(svc, thread, user.id)
-    from lib.message_media import present_message
-
-    return {
-        "items": [present_message(dict(row)) for row in rows],
-        "peer_last_read_at": peer_last_read_at,
-    }
+    return row
 
 
 def _store_user_message(
@@ -611,39 +686,50 @@ def _store_user_message(
     user_id: str,
     body: str,
     extra: dict | None = None,
-) -> dict:
+    client_key: str | None = None,
+) -> tuple[dict, bool]:
+    """Returns (message, created). A replayed client_key returns the first send.
+
+    Message, thread preview, and the sender's read marker commit together (sql/050).
+    """
     from lib.message_media import present_message, preview_for
 
-    now = _now()
-    row = {
-        "thread_id": thread["id"],
-        "sender_id": user_id,
-        "body": body,
-        "kind": "user",
-        "created_at": now,
-    }
-    if extra:
-        row.update(extra)
-    inserted = svc.table("messages").insert(row).execute().data
-    msg = _first_row(inserted)
-    if not msg:
+    media = dict(extra) if extra else None
+    result = _first_row(
+        svc.rpc(
+            "store_thread_message",
+            {
+                "p_thread_id": str(thread["id"]),
+                "p_sender_id": user_id,
+                "p_body": body,
+                "p_preview": preview_for(body, (media or {}).get("media_kind")),
+                "p_media": media,
+                "p_client_key": client_key,
+            },
+        )
+        .execute()
+        .data
+    ) or {}
+    outcome = result.get("outcome")
+    if outcome == "key_conflict":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Idempotency-Key was already used in another conversation",
+        )
+    msg = result.get("message")
+    if not isinstance(msg, dict):
         raise HTTPException(status_code=500, detail="Could not send message")
-    svc.table("message_threads").update(
-        {
-            "last_message_at": now,
-            "last_message_preview": preview_for(body, row.get("media_kind")),
-        }
-    ).eq("id", thread["id"]).execute()
-    svc.table("message_thread_reads").upsert(
-        {"thread_id": thread["id"], "user_id": user_id, "last_read_at": now}
-    ).execute()
-    return present_message(msg)
+    return present_message(dict(msg)), outcome == "created"
 
 
 @router.post("/threads/{thread_id}/messages", status_code=status.HTTP_201_CREATED)
 def send_message(
-    thread_id: str, payload: dict, user: AuthedUser = Depends(get_current_user)
+    thread_id: str,
+    payload: dict,
+    user: AuthedUser = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
+    client_key = optional_request_key(idempotency_key)
     thread = _load_thread(user, thread_id)
     body = (payload.get("body") or "").strip()
     if not body:
@@ -652,32 +738,41 @@ def send_message(
         raise HTTPException(status_code=400, detail="Message too long")
 
     svc = _svc_or_user(user)
-    msg = _store_user_message(svc, thread, user.id, body)
+    msg, _created = _store_user_message(svc, thread, user.id, body, client_key=client_key)
     return {"item": msg, "thread_id": thread["id"]}
 
 
 @router.post("/threads/{thread_id}/media", status_code=status.HTTP_201_CREATED)
-async def send_media_message(
+def send_media_message(
     thread_id: str,
     file: UploadFile = File(...),
     caption: str = Form(""),
     duration_ms: str = Form(""),
     user: AuthedUser = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
     """Photo, short video, voice note, or document. Optional caption rides in the body."""
     from lib.message_media import (
         MAX_VIDEO_BYTES,
         clamp_duration_ms,
         delete_message_media,
+        present_message,
         upload_message_media,
     )
 
+    client_key = optional_request_key(idempotency_key)
     thread = _load_thread(user, thread_id)
     text = (caption or "").strip()
     if len(text) > 4000:
         raise HTTPException(status_code=400, detail="Message too long")
 
-    raw = await file.read(MAX_VIDEO_BYTES + 1)
+    svc = _svc_or_user(user)
+    if client_key:
+        prior = _sent_with_key(svc, user.id, client_key, thread["id"])
+        if prior:
+            return {"item": present_message(prior), "thread_id": thread["id"]}
+
+    raw = file.file.read(MAX_VIDEO_BYTES + 1)
     if len(raw) > MAX_VIDEO_BYTES:
         raise HTTPException(status_code=400, detail="Videos must be 25 MB or smaller")
 
@@ -700,9 +795,12 @@ async def send_media_message(
     extra = dict(uploaded)
     if duration is not None:
         extra["media_duration_ms"] = duration
-    svc = _svc_or_user(user)
     try:
-        msg = _store_user_message(svc, thread, user.id, text, extra)
+        msg, created = _store_user_message(
+            svc, thread, user.id, text, extra, client_key=client_key
+        )
+        if not created:
+            delete_message_media(str(uploaded.get("media_path") or ""))
     except HTTPException:
         delete_message_media(str(uploaded.get("media_path") or ""))
         raise

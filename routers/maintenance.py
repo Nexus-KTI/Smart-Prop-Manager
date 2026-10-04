@@ -89,15 +89,15 @@ def list_my_requests(user: AuthedUser = Depends(get_current_user)):
 
 
 @router.post("/me/photo")
-async def upload_my_request_photo(
+def upload_my_request_photo(
     file: UploadFile = File(...),
     user: AuthedUser = Depends(get_current_user),
 ):
     """Upload a repair photo; returns a public URL to attach on create."""
     _require_active_tenancy_for_tenant(user)
-    from lib.maintenance_photos import upload_maintenance_photo
+    from lib.maintenance_photos import MAX_PHOTO_BYTES, upload_maintenance_photo
 
-    raw = await file.read()
+    raw = file.file.read(MAX_PHOTO_BYTES + 1)
     content_type = (file.content_type or "").strip() or "image/jpeg"
     try:
         url = upload_maintenance_photo(

@@ -20,7 +20,9 @@ from lib.audit import list_audit_for_owner, record_audit
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
 from lib.invite_bind import require_invite_contact_match
-from lib.rate_limit import enforce_rate_limit
+from lib.rate_limit import enforce_invite_limit, enforce_rate_limit
+from lib.unit_status import lagos_today, resolve_unit_status
+from lib.urgent_actions import PORTFOLIO_MAX_UNITS, load_portfolio_snapshot
 
 router = APIRouter(prefix="/staff", tags=["staff"])
 
@@ -206,6 +208,7 @@ def invite_staff(
         owner_id = ctx.owner_id
     else:
         raise HTTPException(status_code=403, detail="Cannot invite staff")
+    enforce_invite_limit(user.id)
 
     role = (payload.get("role") or "").strip().lower()
     if role not in ("manager", "caretaker"):
@@ -378,6 +381,8 @@ def claim_staff_invite(payload: dict, user: AuthedUser = Depends(get_current_use
         raise HTTPException(status_code=400, detail="Cannot claim your own invite")
 
     now = datetime.now(timezone.utc).isoformat()
+    # Only the row still holding this token and not revoked: a revoke or another
+    # claim that lands first wins, instead of being overwritten.
     updated = (
         svc.table("staff_memberships")
         .update(
@@ -390,10 +395,24 @@ def claim_staff_invite(payload: dict, user: AuthedUser = Depends(get_current_use
             }
         )
         .eq("id", membership["id"])
+        .eq("invite_token", token)
+        .neq("status", "revoked")
         .execute()
         .data
     )
-    row = _first(updated) or {**membership, "user_id": user.id, "status": "active"}
+    row = _first(updated)
+    if not row:
+        latest = _first(
+            svc.table("staff_memberships")
+            .select("*")
+            .eq("id", membership["id"])
+            .limit(1)
+            .execute()
+            .data
+        )
+        if not latest or str(latest.get("user_id") or "") != user.id or latest.get("status") != "active":
+            raise HTTPException(status_code=409, detail="Invite no longer available")
+        row = latest
     return {"membership": _serialize_membership(dict(row))}
 
 
@@ -464,37 +483,27 @@ def portfolio_overdue_ops(
             "capped": False,
         }
 
-    OPS_UNIT_CAP = 200
-    svc = create_service_client()
-    rows = (
-        svc.table("units")
-        .select(
-            "id, label, rent_amount, service_charge_amount, frequency, due_day, "
-            "due_month, term_end, tenant_name, tenant_contact, property_id, "
-            "properties!inner(id, name, owner_id), "
-            "transactions(status, amount, paid_at, created_at, charge_type)"
-        )
-        .in_("property_id", property_ids)
-        .eq("properties.owner_id", ctx.owner_id)
-        .order("created_at", desc=True)
-        .limit(OPS_UNIT_CAP)
-        .execute()
-        .data
-        or []
+    today = lagos_today()
+    rows = load_portfolio_snapshot(
+        create_service_client(),
+        owner_id=str(ctx.owner_id),
+        property_ids=property_ids,
+        today=today,
     )
 
     items = []
     for row in rows:
-        unit = dict(row)
-        prop = unit.pop("properties", None) or {}
-        if isinstance(prop, list):
-            prop = prop[0] if prop else {}
-        txns = unit.get("transactions") or []
+        unit = row["unit"]
+        txns = unit.pop("transactions", None) or []
+        if not str(unit.get("tenant_name") or "").strip():
+            continue
+        if resolve_unit_status(unit, txns, today) != "OVERDUE":
+            continue
         items.append(
             {
                 "unit": unit,
-                "property_id": prop.get("id") or unit.get("property_id"),
-                "property_name": prop.get("name") or "",
+                "property_id": row["property_id"],
+                "property_name": row["property_name"],
                 "owner_id": ctx.owner_id,
                 "transactions": txns,
             }
@@ -504,8 +513,8 @@ def portfolio_overdue_ops(
         "owner_id": ctx.owner_id,
         "role": ctx.role,
         "permissions": sorted(ctx.permissions),
-        "loaded": len(items),
-        "capped": len(items) >= OPS_UNIT_CAP,
+        "loaded": len(rows),
+        "capped": len(rows) >= PORTFOLIO_MAX_UNITS,
     }
 
 

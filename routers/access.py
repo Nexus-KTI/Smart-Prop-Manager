@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from lib.access import (
     PERM_ACCESS_VISITOR_PASSES,
@@ -15,8 +16,10 @@ from lib.access import (
 )
 from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
+from lib.idempotency import optional_request_key
 
 router = APIRouter(prefix="/access", tags=["access"])
+logger = logging.getLogger(__name__)
 
 VALID_SUBJECTS = frozenset({"tenant", "guest", "artisan", "contractor"})
 
@@ -509,9 +512,35 @@ def _parse_admit_raw(raw: str) -> tuple[str | None, str]:
     return None, text.upper()
 
 
+def _refuse_admit(result: dict) -> None:
+    reason = str(result.get("reason") or "")
+    if reason == "not_found":
+        raise HTTPException(status_code=404, detail="No matching gate code")
+    if reason == "revoked":
+        raise HTTPException(status_code=400, detail="Pass was revoked")
+    if reason == "expired":
+        raise HTTPException(status_code=400, detail="Pass has expired")
+    if reason == "scheduled":
+        raise HTTPException(status_code=400, detail="Pass is not valid yet (scheduled)")
+    if reason == "used_up":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Pass use limit reached "
+                f"({result.get('uses_count')}/{result.get('max_uses')})"
+            ),
+        )
+    raise HTTPException(status_code=400, detail=f"Pass is not usable ({reason or 'unknown'})")
+
+
 @router.post("/admit")
-def admit_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
+def admit_pass(
+    payload: dict,
+    user: AuthedUser = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+):
     """Caretaker/landlord admits a visitor by typed code or scanned QR string."""
+    request_key = optional_request_key(idempotency_key)
     property_id = (payload.get("property_id") or "").strip()
     if not property_id:
         raise HTTPException(status_code=400, detail="property_id is required")
@@ -537,35 +566,6 @@ def admit_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="No matching gate code")
 
     current = dict(rows[0])
-    serialized = _serialize_pass(current)
-    effective = serialized.get("effective_status") or current.get("status")
-
-    if effective == "revoked" or current.get("status") == "revoked":
-        raise HTTPException(status_code=400, detail="Pass was revoked")
-    if effective == "expired":
-        raise HTTPException(status_code=400, detail="Pass has expired")
-    if effective == "scheduled":
-        raise HTTPException(
-            status_code=400, detail="Pass is not valid yet (scheduled)"
-        )
-    if effective != "active":
-        raise HTTPException(status_code=400, detail=f"Pass is not usable ({effective})")
-
-    max_uses = current.get("max_uses")
-    uses_count = int(current.get("uses_count") or 0)
-    if max_uses is not None:
-        try:
-            max_uses_i = int(max_uses)
-        except (TypeError, ValueError):
-            max_uses_i = None
-        if max_uses_i is not None and uses_count >= max_uses_i:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Pass use limit reached ({uses_count}/{max_uses_i})",
-            )
-
-    new_uses = uses_count + 1
-    now_iso = _now().isoformat()
     actor_label = _resolve_actor_label(user.id, role_hint=ctx.role)
     issuer_label = (
         (current.get("created_by_label") or "").strip()
@@ -575,61 +575,57 @@ def admit_pass(payload: dict, user: AuthedUser = Depends(get_current_user)):
             else "Unknown"
         )
     )
-    patch = {
-        "uses_count": new_uses,
-        "last_admitted_by": user.id,
-        "last_admitted_by_label": actor_label,
-        "last_admitted_at": now_iso,
-        "updated_at": now_iso,
-    }
-    updated = (
-        svc.table("access_passes")
-        .update(patch)
-        .eq("id", current["id"])
+    # Check, count, and log in one locked transaction so two scans can't both
+    # get through on a single-use pass.
+    result = (
+        svc.rpc(
+            "admit_access_pass",
+            {
+                "p_pass_id": str(current["id"]),
+                "p_actor_user_id": user.id,
+                "p_actor_role": ctx.role,
+                "p_actor_label": actor_label,
+                "p_issuer_label": issuer_label,
+                "p_request_key": request_key,
+            },
+        )
         .execute()
         .data
     )
-    row = _first_row(updated) or {**current, **patch}
-    event_id = _log_pass_event(
-        pass_id=str(current["id"]),
-        landlord_id=ctx.owner_id,
-        property_id=property_id,
-        event_type="admitted",
-        actor_user_id=user.id,
-        actor_role=ctx.role,
-        actor_label=actor_label,
-        code=str(current.get("code") or code),
-        subject_label=str(current.get("subject_label") or ""),
-        metadata={
-            "uses_count": new_uses,
-            "created_by": current.get("created_by"),
-            "created_by_label": issuer_label,
-        },
-    )
-    try:
-        from lib.access_notify import notify_guest_admitted
+    result = _first_row(result)
+    if not result:
+        raise HTTPException(status_code=502, detail="Could not record admit")
+    if not result.get("admitted"):
+        _refuse_admit(result)
 
-        notify_guest_admitted(
-            svc,
-            landlord_id=ctx.owner_id,
-            property_id=property_id,
-            unit_id=current.get("unit_id"),
-            pass_id=str(current["id"]),
-            event_id=event_id,
-            code=str(current.get("code") or code),
-            subject_label=str(current.get("subject_label") or "") or None,
-            admitter_user_id=user.id,
-            admitter_label=actor_label,
-            issuer_user_id=(
-                str(current["created_by"]) if current.get("created_by") else None
-            ),
-            issuer_label=issuer_label,
-            admitted_at=now_iso,
-            uses_count=new_uses,
-        )
-    except Exception:
-        pass
-    item = _serialize_pass(dict(row))
+    row = dict(result.get("pass") or current)
+    new_uses = int(row.get("uses_count") or 0)
+    now_iso = str(row.get("last_admitted_at") or _now().isoformat())
+    if not result.get("replayed"):
+        try:
+            from lib.access_notify import notify_guest_admitted
+
+            notify_guest_admitted(
+                svc,
+                landlord_id=ctx.owner_id,
+                property_id=property_id,
+                unit_id=current.get("unit_id"),
+                pass_id=str(current["id"]),
+                event_id=result.get("event_id"),
+                code=str(current.get("code") or code),
+                subject_label=str(current.get("subject_label") or "") or None,
+                admitter_user_id=user.id,
+                admitter_label=actor_label,
+                issuer_user_id=(
+                    str(current["created_by"]) if current.get("created_by") else None
+                ),
+                issuer_label=issuer_label,
+                admitted_at=now_iso,
+                uses_count=new_uses,
+            )
+        except Exception:
+            logger.exception("Admit notice failed for pass %s", current["id"])
+    item = _serialize_pass(row)
     if not item.get("created_by_label"):
         item["created_by_label"] = issuer_label
     return {

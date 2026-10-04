@@ -10,10 +10,11 @@ load_dotenv()
 
 from lib.delivery_outbox import process_delivery_outbox
 from lib.db import create_service_client
+from lib.observability import configure_logging
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
     db = create_service_client()
     result = process_delivery_outbox(db=db)
     try:

@@ -5,10 +5,17 @@ from __future__ import annotations
 import calendar
 from datetime import date, datetime, timedelta
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 ChargeStatus = Literal["PAID", "OVERDUE", "DUE SOON", "PENDING"]
 DUE_SOON_DAYS = 7
 STATUS_RANK = {"OVERDUE": 3, "DUE SOON": 2, "PENDING": 1, "PAID": 0}
+LAGOS = ZoneInfo("Africa/Lagos")
+
+
+def lagos_today() -> date:
+    """Landlords' calendar day (the web resolves status in the browser's Lagos time)."""
+    return datetime.now(LAGOS).date()
 
 
 def _to_number(value: Any) -> float:
@@ -56,18 +63,43 @@ def due_date_for_unit(unit: dict, today: date) -> date | None:
     return date(today.year, today.month, min(due_day, last))
 
 
+def next_due_date_for_unit(unit: dict, today: date) -> date | None:
+    """The due date of the period after the current one (mirrors nextDueDateForUnit)."""
+    current = due_date_for_unit(unit, today)
+    if current is None:
+        return None
+    freq = str(unit.get("frequency") or "monthly").strip().lower()
+    if freq == "daily":
+        return current + timedelta(days=1)
+    if freq == "weekly":
+        return current + timedelta(days=7)
+    due_day = int(unit.get("due_day") or 1)
+    if freq == "annual":
+        year = current.year + 1
+        last = calendar.monthrange(year, current.month)[1]
+        return date(year, current.month, min(due_day, last))
+    year = current.year + (1 if current.month == 12 else 0)
+    month = 1 if current.month == 12 else current.month + 1
+    last = calendar.monthrange(year, month)[1]
+    return date(year, month, min(due_day, last))
+
+
 def _parse_txn_day(value: Any) -> date | None:
     if not value:
         return None
     if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
+        parsed = value
+    elif isinstance(value, date):
         return value
-    text = str(value).strip().replace("Z", "+00:00")
-    try:
-        return datetime.fromisoformat(text).date()
-    except ValueError:
-        return None
+    else:
+        text = str(value).strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(LAGOS)
+    return parsed.date()
 
 
 def _paid_in_current_period(
@@ -87,7 +119,12 @@ def _paid_in_current_period(
             for t in matching
         )
     freq = str(unit.get("frequency") or "monthly").strip().lower()
-    if freq == "annual":
+    if freq == "daily":
+        start = end = due
+    elif freq == "weekly":
+        start = due - timedelta(days=6)
+        end = due
+    elif freq == "annual":
         start = date(due.year, 1, 1)
         end = date(due.year, 12, 31)
     else:

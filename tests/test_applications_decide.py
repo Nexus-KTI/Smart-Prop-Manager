@@ -112,11 +112,64 @@ class _Query:
 
 
 class _Db:
+    """Fake user client; rpc mirrors sql/050 decide_rental_application."""
+
     def __init__(self, store):
         self._store = store
 
     def table(self, name):
         return _Query(self._store, name)
+
+    def rpc(self, name, params):
+        assert name == "decide_rental_application"
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=self._decide(**params)))
+
+    def _decide(self, p_application_id, p_status):
+        app = next(
+            (a for a in self._store["rental_applications"] if a["id"] == p_application_id),
+            None,
+        )
+        if app is None:
+            return {"outcome": "not_found"}
+        if app["status"] not in ("open", "submitted"):
+            return {"outcome": "already_decided", "status": app["status"]}
+        app.update(status=p_status, decided_at="now")
+        if p_status != "approved":
+            return {"outcome": "decided", "application": dict(app)}
+        contact = (app.get("applicant_phone") or app.get("applicant_email") or "").strip() or None
+        name = (app.get("applicant_name") or "").strip() or None
+        open_rows = [
+            t
+            for t in self._store.setdefault("tenancies", [])
+            if t["unit_id"] == app["unit_id"]
+            and t["status"] in ("draft", "pending_verification", "active")
+        ]
+        checklist = {
+            "checklist_id_collected": True,
+            "checklist_agreement_signed": True,
+            "checklist_references_checked": True,
+        }
+        if open_rows:
+            t = open_rows[0]
+            if contact and not (t.get("tenant_contact") or "").strip():
+                t["tenant_contact"] = contact
+            if name and not (t.get("tenant_name") or "").strip():
+                t["tenant_name"] = name
+            t["tenant_user_id"] = t.get("tenant_user_id") or app.get("applicant_user_id")
+            t.update(checklist)
+        else:
+            t = {
+                "id": "ten-new",
+                "unit_id": app["unit_id"],
+                "landlord_id": app["landlord_id"],
+                "tenant_user_id": app.get("applicant_user_id"),
+                "status": "draft",
+                "tenant_name": name,
+                "tenant_contact": contact,
+                **checklist,
+            }
+            self._store["tenancies"].append(t)
+        return {"outcome": "decided", "application": dict(app), "tenancy_id": t["id"]}
 
 
 def test_decide_approve_returns_new_tenancy_id():
@@ -244,3 +297,41 @@ def test_decide_approve_syncs_contact_on_existing_tenancy(monkeypatch):
     out = applications.decide_application("app1", {"status": "approved"}, user)
     assert out["claim_path"] == "/tenant/claim?token=xyz"
     assert store["tenancies"][0]["checklist_references_checked"] is True
+
+
+def test_decide_lost_race_is_already_decided():
+    store = {
+        "rental_applications": [
+            {"id": "app1", "landlord_id": "ll1", "unit_id": "u1", "status": "submitted"}
+        ],
+        "tenancies": [],
+    }
+    db = _Db(store)
+    user = SimpleNamespace(id="ll1", db=db)
+    real = db._decide
+
+    def decided_elsewhere(**params):
+        store["rental_applications"][0]["status"] = "rejected"
+        return real(**params)
+
+    db._decide = decided_elsewhere  # type: ignore[method-assign]
+    with pytest.raises(HTTPException) as ei:
+        applications.decide_application("app1", {"status": "approved"}, user)
+    assert ei.value.status_code == 400
+    assert store["tenancies"] == []
+
+
+def test_migration_050_locks_and_scopes_decide():
+    from pathlib import Path
+
+    sql = (
+        Path(__file__).resolve().parents[1]
+        / "sql"
+        / "050_atomic_claims_decide_and_messages.sql"
+    ).read_text(encoding="utf-8")
+    assert "landlord_id = auth.uid()" in sql
+    assert "pg_advisory_xact_lock(hashtext('tenancy-open-unit:'" in sql
+    assert "security invoker" in sql
+    for fn in ("claim_tenancy_invite", "claim_artisan_invite", "store_thread_message"):
+        assert f"grant execute on function public.{fn}(" in sql
+    assert sql.count("to service_role;") >= 3

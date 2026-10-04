@@ -16,4 +16,7 @@ COPY . .
 
 EXPOSE 8000
 
+# uvicorn reads WEB_CONCURRENCY as its worker count. ~100 MB per process: 2 fits 512 MB.
+ENV WEB_CONCURRENCY=2
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,4 +1,4 @@
-﻿"""Tests for landlord payment-received email + reminder log wiring."""
+"""Tests for landlord payment-received email + reminder log wiring."""
 
 import inspect
 from pathlib import Path
@@ -101,7 +101,7 @@ def test_notify_swallows_smtp_errors(monkeypatch):
 def test_paid_paths_queue_shared_receipt_delivery():
     """Every paid path durably queues the shared receipt/notice helper."""
     manual_src = inspect.getsource(payments.record_manual_payment)
-    webhook_src = inspect.getsource(payments.paystack_webhook)
+    webhook_src = inspect.getsource(payments._apply_charge_success)
     confirm_src = inspect.getsource(payments.confirm_paystack_payment)
     assert "_queue_paid_side_effects" in manual_src
     assert "_queue_paid_side_effects" in webhook_src
@@ -139,7 +139,7 @@ def test_deliver_payment_receipt_logs_landlord_notice(monkeypatch):
     monkeypatch.setattr(
         payments,
         "_log_reminder",
-        lambda _db, unit_id, *, kind, channel, reminder_status, error_detail=None: logged.append(
+        lambda _db, unit_id, *, kind, channel, reminder_status, error_detail=None, transaction_id=None: logged.append(
             {
                 "unit_id": unit_id,
                 "kind": kind,
@@ -191,7 +191,7 @@ def test_deliver_payment_receipt_logs_skipped_when_no_email(monkeypatch):
     monkeypatch.setattr(
         payments,
         "_log_reminder",
-        lambda _db, unit_id, *, kind, channel, reminder_status, error_detail=None: logged.append(
+        lambda _db, unit_id, *, kind, channel, reminder_status, error_detail=None, transaction_id=None: logged.append(
             {
                 "kind": kind,
                 "status": reminder_status,
@@ -241,7 +241,7 @@ def test_deliver_payment_receipt_logs_failed_smtp_without_raising(monkeypatch):
     monkeypatch.setattr(
         payments,
         "_log_reminder",
-        lambda _db, unit_id, *, kind, channel, reminder_status, error_detail=None: logged.append(
+        lambda _db, unit_id, *, kind, channel, reminder_status, error_detail=None, transaction_id=None: logged.append(
             {
                 "kind": kind,
                 "status": reminder_status,

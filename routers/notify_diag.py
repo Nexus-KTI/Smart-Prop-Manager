@@ -34,7 +34,9 @@ def _require_diag_secret(secret: str | None) -> None:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="SMS delivery diagnostics are disabled",
         )
-    if not secret or secret.strip() != expected:
+    from routers.cron_jobs import secret_matches
+
+    if not secret_matches((secret or "").strip(), expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",

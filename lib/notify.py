@@ -15,6 +15,12 @@ from twilio.rest import Client
 from twilio.http.http_client import TwilioHttpClient
 
 from lib.brand import BRAND_NAME
+from lib.circuit import (
+    ProviderServerError,
+    is_http_provider_failure,
+    mailgun_breaker,
+    twilio_breaker,
+)
 from lib.http_client import DEFAULT_TIMEOUT, get_http_client
 
 logger = logging.getLogger(__name__)
@@ -25,6 +31,10 @@ DEFAULT_CHANNEL: NotificationChannel = "sms"
 VALID_CHANNELS = frozenset({"whatsapp", "sms", "email"})
 _twilio_lock = threading.Lock()
 _twilio_clients: dict[tuple[str, str], Client] = {}
+
+
+class PermanentDeliveryError(RuntimeError):
+    """Provider rejected the message itself (bad number, bad address); retrying won't help."""
 
 
 def _twilio_client(account_sid: str, auth_token: str) -> Client:
@@ -290,7 +300,7 @@ def send_whatsapp(contact: str, message: str):
     phone = normalize_e164(contact)
     to = phone if phone.startswith("whatsapp:") else f"whatsapp:{phone}"
     client = _twilio_client(account_sid, auth_token)
-    return client.messages.create(from_=from_number, to=to, body=message)
+    return _twilio_create(client, from_=from_number, to=to, body=message)
 
 
 def send_sms(contact: str, message: str):
@@ -306,7 +316,34 @@ def send_sms(contact: str, message: str):
 
     to = normalize_e164(contact)
     client = _twilio_client(account_sid, auth_token)
-    return client.messages.create(from_=from_number, to=to, body=message)
+    return _twilio_create(client, from_=from_number, to=to, body=message)
+
+
+def _twilio_create(client: Client, **kwargs: Any):
+    from twilio.base.exceptions import TwilioRestException
+
+    try:
+        return twilio_breaker.call(
+            lambda: client.messages.create(**kwargs),
+            is_failure=_is_twilio_outage,
+        )
+    except TwilioRestException as exc:
+        code = int(getattr(exc, "status", 0) or 0)
+        if 400 <= code < 500 and code != 429:
+            raise PermanentDeliveryError(
+                f"Twilio rejected the message ({code}): {getattr(exc, 'msg', exc)}"
+            ) from exc
+        raise
+
+
+def _is_twilio_outage(exc: BaseException) -> bool:
+    """Network trouble or Twilio 5xx; a bad number or rate limit is not an outage."""
+    import requests
+    from twilio.base.exceptions import TwilioRestException
+
+    if isinstance(exc, TwilioRestException):
+        return int(getattr(exc, "status", 0) or 0) >= 500
+    return isinstance(exc, requests.exceptions.RequestException)
 
 
 def _send_email_mailgun(
@@ -329,14 +366,27 @@ def _send_email_mailgun(
     }
     if html:
         data["html"] = html
-    response = get_http_client().post(
-        url,
-        auth=("api", api_key),
-        data=data,
-        timeout=DEFAULT_TIMEOUT,
-    )
+    def post():
+        response = get_http_client().post(
+            url,
+            auth=("api", api_key),
+            data=data,
+            timeout=DEFAULT_TIMEOUT,
+        )
+        if response.status_code >= 500:
+            raise ProviderServerError(
+                f"Mailgun send failed ({response.status_code}): {response.text[:200]}"
+            )
+        return response
+
+    response = mailgun_breaker.call(post, is_failure=is_http_provider_failure)
     if response.status_code >= 400:
-        raise RuntimeError(
+        error = (
+            RuntimeError
+            if response.status_code in {408, 429}
+            else PermanentDeliveryError
+        )
+        raise error(
             f"Mailgun send failed ({response.status_code}): {response.text[:200]}"
         )
 

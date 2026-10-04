@@ -240,17 +240,9 @@ def generate_receipt(transaction: dict) -> bytes:
 
 def _ensure_receipts_bucket(client) -> None:
     """Create the public receipts bucket if missing; keep it public if it exists."""
-    try:
-        client.storage.get_bucket(RECEIPTS_BUCKET)
-        try:
-            client.storage.update_bucket(RECEIPTS_BUCKET, options={"public": True})
-        except TypeError:
-            client.storage.update_bucket(RECEIPTS_BUCKET, {"public": True})
-    except Exception:
-        try:
-            client.storage.create_bucket(RECEIPTS_BUCKET, options={"public": True})
-        except TypeError:
-            client.storage.create_bucket(RECEIPTS_BUCKET, public=True)
+    from lib.storage_buckets import ensure_public_bucket
+
+    ensure_public_bucket(client, RECEIPTS_BUCKET)
 
 
 def upload_receipt(transaction_id: str, pdf_bytes: bytes) -> str:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 
 from lib.urgent_actions import build_urgent_actions, summarize_actions
 
@@ -106,78 +107,70 @@ def test_summary_counts():
     assert summary["urgent"] == len(items)
 
 
-class _FakeExecute:
+class _SnapshotDb:
     def __init__(self, data):
         self.data = data
+        self.calls: list[tuple[str, dict]] = []
+
+    def rpc(self, name, params):
+        self.calls.append((name, params))
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=self.data))
+
+    def table(self, name):
+        raise AssertionError(f"unexpected table read: {name}")
 
 
-class _FakeQuery:
-    def __init__(self, pages: dict[tuple[int, int], list], calls: list[tuple[int, int]]):
-        self._pages = pages
-        self._calls = calls
-        self._range: tuple[int, int] | None = None
-
-    def select(self, *_a, **_k):
-        return self
-
-    def in_(self, *_a, **_k):
-        return self
-
-    def eq(self, *_a, **_k):
-        return self
-
-    def order(self, *_a, **_k):
-        return self
-
-    def range(self, start: int, end: int):
-        self._calls.append((start, end))
-        self._range = (start, end)
-        return self
-
-    def execute(self):
-        assert self._range is not None
-        return _FakeExecute(self._pages.get(self._range, []))
+def _snapshot_unit(i: int, **extra) -> dict:
+    return {
+        "id": f"u-{i}",
+        "label": f"U{i}",
+        "rent_amount": 1,
+        "service_charge_amount": 0,
+        "frequency": "monthly",
+        "due_day": 1,
+        "due_month": None,
+        "term_end": None,
+        "tenant_name": "T",
+        "tenant_contact": "+234",
+        "property_id": "p1",
+        "property_name": "P",
+        "transactions": [],
+        "failed_reminder": None,
+        **extra,
+    }
 
 
-class _FakeDb:
-    def __init__(self, pages: dict[tuple[int, int], list]):
-        self._pages = pages
-        self.range_calls: list[tuple[int, int]] = []
+def test_snapshot_is_one_call_for_every_unit_and_failed_chase():
+    from lib.urgent_actions import collect_urgent_actions_for_owner
 
-    def table(self, _name: str):
-        return _FakeQuery(self._pages, self.range_calls)
-
-
-def test_load_portfolio_unit_rows_pages_past_200():
-    from lib.urgent_actions import load_portfolio_unit_rows
-
-    def unit_row(i: int) -> dict:
-        return {
-            "id": f"u-{i}",
-            "label": f"U{i}",
-            "rent_amount": 1,
-            "service_charge_amount": 0,
-            "frequency": "monthly",
-            "due_day": 1,
-            "due_month": None,
-            "term_end": None,
-            "tenant_name": "T",
-            "tenant_contact": "+234",
-            "property_id": "p1",
-            "properties": {"id": "p1", "name": "P", "owner_id": "o1"},
-            "transactions": [],
-        }
-
-    page0 = [unit_row(i) for i in range(200)]
-    page1 = [unit_row(i) for i in range(200, 250)]
-    db = _FakeDb({(0, 199): page0, (200, 399): page1})
-    items = load_portfolio_unit_rows(
-        db, owner_id="o1", property_ids=["p1"], page_size=200, max_units=5000
+    failed = {"id": "rem-9", "status": "failed", "error_detail": "Bad number", "kind": "chase"}
+    db = _SnapshotDb(
+        [_snapshot_unit(i) for i in range(250)]
+        + [_snapshot_unit(250, failed_reminder=failed)]
     )
-    assert len(items) == 250
-    assert db.range_calls == [(0, 199), (200, 399)]
-    assert items[0]["unit"]["id"] == "u-0"
-    assert items[-1]["unit"]["id"] == "u-249"
+    items, summary = collect_urgent_actions_for_owner(
+        db, owner_id="o1", property_ids=["p1", "p2"], today=date(2026, 8, 15)
+    )
+    assert summary["overdue"] == 251
+    assert summary["failed"] == 1
+    assert items[0]["reminder_id"] == "rem-9"
+    assert items[0]["property_name"] == "P"
+    (name, params), = db.calls
+    assert name == "portfolio_unit_snapshot"
+    assert params == {
+        "p_owner_id": "o1",
+        "p_property_ids": ["p1", "p2"],
+        "p_failed_since": "2026-08-01T00:00:00+00:00",
+        "p_max_units": 5000,
+    }
+
+
+def test_snapshot_skips_the_call_without_properties():
+    from lib.urgent_actions import load_portfolio_snapshot
+
+    db = _SnapshotDb([])
+    assert load_portfolio_snapshot(db, owner_id="o1", property_ids=[], today=date(2026, 8, 15)) == []
+    assert db.calls == []
 
 
 def test_summary_matches_full_build_not_truncated_slice():

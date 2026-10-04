@@ -160,7 +160,7 @@ RLS and hardening live in later `sql/002_*`… files. Apply in order via Supabas
 | Piece | How |
 |-------|-----|
 | API | Docker → Render web service `smart-prop-api` (`/health`) |
-| Due reminders | Render cron → `python -m lib.reminder_job` (daily) calling secured job route |
+| Due reminders | GitHub Actions `reminders-due` (daily) → `POST /reminders/jobs/due` with `CRON_SECRET` |
 | Web | Vercel or similar (README); no committed `vercel.json` required |
 | CI | `.github/workflows/ci.yml` — API import/pytest; web lint; optional smoke |
 

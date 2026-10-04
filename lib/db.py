@@ -23,21 +23,53 @@ _service_client: Client | None = None
 _anon_client: Client | None = None
 
 
+class _SharedPool(httpx.BaseTransport):
+    """One socket pool behind every Supabase client; closing a client must not close it.
+
+    Headers (apikey, user JWT) live on each client, so sharing sockets cannot mix callers.
+    """
+
+    def __init__(self) -> None:
+        self._inner = self._open()
+
+    @staticmethod
+    def _open() -> httpx.HTTPTransport:
+        # supabase-py defaults http2=True; keep-alive GOAWAYs show up as
+        # httpx.RemoteProtocolError and the browser reports a bogus CORS failure.
+        # Lossy links drop the odd SYN and Windows then stalls ~20s; a short connect
+        # timeout plus retries (nothing has been sent yet, so always safe) recovers fast.
+        return httpx.HTTPTransport(
+            http2=False,
+            retries=3,
+            limits=httpx.Limits(
+                max_connections=50,
+                max_keepalive_connections=20,
+                keepalive_expiry=30.0,
+            ),
+        )
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        return self._inner.handle_request(request)
+
+    def close(self) -> None:
+        pass
+
+    def shutdown(self) -> None:
+        self._inner.close()
+        self._inner = self._open()
+
+
+_pool = _SharedPool()
+
+
 def _new_client(key: str) -> Client:
-    # supabase-py defaults http2=True; keep-alive GOAWAYs show up as
-    # httpx.RemoteProtocolError and the browser reports a bogus CORS failure.
     transport = httpx.Client(
-        http2=False,
+        transport=_pool,
         timeout=httpx.Timeout(
-            connect=5.0,
+            connect=4.0,
             read=30.0,
             write=15.0,
-            pool=5.0,
-        ),
-        limits=httpx.Limits(
-            max_connections=50,
-            max_keepalive_connections=20,
-            keepalive_expiry=30.0,
+            pool=15.0,
         ),
     )
     client = create_client(
@@ -102,3 +134,4 @@ def close_shared_clients() -> None:
                 transport.close()
         _anon_client = None
         _service_client = None
+        _pool.shutdown()

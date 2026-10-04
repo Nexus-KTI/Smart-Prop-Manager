@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from fastapi import HTTPException, status
 
+from lib.request_cache import memo
+
 StaffRole = Literal["owner", "manager", "caretaker"]
 
 # Permission keys — visitor passes enforced in access router (Phase 5).
@@ -96,28 +98,30 @@ def _svc():
 
 
 def list_active_memberships(user_id: str) -> list[dict[str, Any]]:
-    rows = (
-        _svc()
+    rows = memo(
+        ("access:memberships", user_id),
+        lambda: _svc()
         .table("staff_memberships")
         .select("*")
         .eq("user_id", user_id)
         .eq("status", "active")
         .execute()
         .data
-        or []
+        or [],
     )
     return [dict(r) for r in rows]
 
 
 def list_owned_property_ids(owner_id: str) -> set[str]:
-    rows = (
-        _svc()
+    rows = memo(
+        ("access:owned", owner_id),
+        lambda: _svc()
         .table("properties")
         .select("id")
         .eq("owner_id", owner_id)
         .execute()
         .data
-        or []
+        or [],
     )
     return {str(r["id"]) for r in rows if r.get("id")}
 
@@ -126,14 +130,15 @@ def membership_property_ids(membership: dict[str, Any]) -> set[str] | None:
     """None means all properties of the owner."""
     if membership.get("scope_all_properties", True):
         return None
-    rows = (
-        _svc()
+    rows = memo(
+        ("access:scope", str(membership["id"])),
+        lambda: _svc()
         .table("staff_membership_properties")
         .select("property_id")
         .eq("membership_id", membership["id"])
         .execute()
         .data
-        or []
+        or [],
     )
     return {str(r["property_id"]) for r in rows if r.get("property_id")}
 
@@ -225,15 +230,16 @@ def resolve_portfolio(user_id: str, owner_id: str | None) -> AccessContext:
 
 
 def _property_owner_id(property_id: str) -> str | None:
-    rows = (
-        _svc()
+    rows = memo(
+        ("access:property-owner", property_id),
+        lambda: _svc()
         .table("properties")
         .select("owner_id")
         .eq("id", property_id)
         .limit(1)
         .execute()
         .data
-        or []
+        or [],
     )
     if not rows:
         return None
@@ -243,15 +249,16 @@ def _property_owner_id(property_id: str) -> str | None:
 
 def _unit_property_owner(unit_id: str) -> tuple[str, str] | None:
     """Return (property_id, owner_id) for a unit."""
-    rows = (
-        _svc()
+    rows = memo(
+        ("access:unit-owner", unit_id),
+        lambda: _svc()
         .table("units")
         .select("id, property_id, properties!inner(owner_id)")
         .eq("id", unit_id)
         .limit(1)
         .execute()
         .data
-        or []
+        or [],
     )
     if not rows:
         return None

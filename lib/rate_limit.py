@@ -34,6 +34,56 @@ def client_ip(request: Request) -> str:
     return "unknown"
 
 
+INVITES_PER_HOUR = 30
+
+
+def consume_rate_limit(
+    key: str,
+    *,
+    limit: int,
+    window_seconds: float,
+) -> tuple[bool, int]:
+    """Count one hit in a Postgres fixed window. Returns (allowed, retry_after_seconds).
+
+    Raises when the limiter itself is unavailable; callers choose fail-open or closed.
+    """
+    from lib.db import create_service_client
+
+    if limit < 1 or window_seconds < 1:
+        raise ValueError("Rate-limit bounds must be positive")
+    key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    data = (
+        create_service_client()
+        .rpc(
+            "consume_rate_limit",
+            {
+                "p_key_hash": key_hash,
+                "p_limit": int(limit),
+                "p_window_seconds": max(1, int(window_seconds)),
+            },
+        )
+        .execute()
+        .data
+    )
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if not isinstance(data, dict) or "allowed" not in data:
+        raise RuntimeError("Invalid rate-limit response")
+    if data["allowed"]:
+        return True, 0
+    try:
+        reset_at = datetime.fromisoformat(
+            str(data.get("reset_at") or "").replace("Z", "+00:00")
+        )
+        retry_after = max(
+            1,
+            int((reset_at - datetime.now(timezone.utc)).total_seconds()) + 1,
+        )
+    except (TypeError, ValueError):
+        retry_after = max(1, int(window_seconds))
+    return False, retry_after
+
+
 def enforce_rate_limit(
     key: str,
     *,
@@ -42,49 +92,31 @@ def enforce_rate_limit(
     detail: str = "Too many requests. Try again shortly.",
 ) -> None:
     """Fixed window enforced atomically in Postgres; fail closed if unavailable."""
-    from lib.db import create_service_client
-
-    if limit < 1 or window_seconds < 1:
-        raise ValueError("Rate-limit bounds must be positive")
-    key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
     try:
-        data = (
-            create_service_client()
-            .rpc(
-                "consume_rate_limit",
-                {
-                    "p_key_hash": key_hash,
-                    "p_limit": int(limit),
-                    "p_window_seconds": max(1, int(window_seconds)),
-                },
-            )
-            .execute()
-            .data
+        allowed, retry_after = consume_rate_limit(
+            key, limit=limit, window_seconds=window_seconds
         )
-        if isinstance(data, list):
-            data = data[0] if data else None
-        if not isinstance(data, dict) or "allowed" not in data:
-            raise RuntimeError("Invalid rate-limit response")
+    except ValueError:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Request protection temporarily unavailable. Try again shortly.",
         ) from exc
 
-    if not data["allowed"]:
-        retry_after = 1
-        try:
-            reset_at = datetime.fromisoformat(
-                str(data.get("reset_at") or "").replace("Z", "+00:00")
-            )
-            retry_after = max(
-                1,
-                int((reset_at - datetime.now(timezone.utc)).total_seconds()) + 1,
-            )
-        except (TypeError, ValueError):
-            retry_after = max(1, int(window_seconds))
+    if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=detail,
             headers={"Retry-After": str(retry_after)},
         )
+
+
+def enforce_invite_limit(user_id: str) -> None:
+    """Invites send SMS/email on our account; cap them per landlord."""
+    enforce_rate_limit(
+        f"invite:{user_id}",
+        limit=INVITES_PER_HOUR,
+        window_seconds=3600,
+        detail="Too many invites sent this hour. Try again later.",
+    )

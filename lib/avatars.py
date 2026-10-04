@@ -19,17 +19,9 @@ def _supabase_public_url() -> str:
 
 
 def _ensure_avatars_bucket(client: Any) -> None:
-    try:
-        client.storage.get_bucket(AVATARS_BUCKET)
-        try:
-            client.storage.update_bucket(AVATARS_BUCKET, options={"public": True})
-        except TypeError:
-            client.storage.update_bucket(AVATARS_BUCKET, {"public": True})
-    except Exception:
-        try:
-            client.storage.create_bucket(AVATARS_BUCKET, options={"public": True})
-        except TypeError:
-            client.storage.create_bucket(AVATARS_BUCKET, public=True)
+    from lib.storage_buckets import ensure_public_bucket
+
+    ensure_public_bucket(client, AVATARS_BUCKET)
 
 
 def public_avatar_url(storage_path: str) -> str:

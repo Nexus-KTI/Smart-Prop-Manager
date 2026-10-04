@@ -5,10 +5,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import sentry_sdk
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.gzip import GZipMiddleware
 
+from lib.edge import SecurityHeadersMiddleware, TrustedHostMiddleware
+from lib.observability import RequestIdMiddleware, configure_logging, init_sentry
 from lib.request_limits import DocumentUploadLimitMiddleware
 from routers import (
     access,
@@ -34,13 +38,8 @@ from routers import (
     utilities,
 )
 
-_sentry_dsn = (os.getenv("SENTRY_DSN") or "").strip()
-if _sentry_dsn:
-    sentry_sdk.init(
-        dsn=_sentry_dsn,
-        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE") or "0.1"),
-        send_default_pii=False,
-    )
+configure_logging()
+init_sentry()
 
 
 def _cors_origins() -> list[str]:
@@ -91,7 +90,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+# Last added runs first: request ID → host check → security headers → gzip → CORS.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(TrustedHostMiddleware)
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(properties.router)
 app.include_router(payments.router)
@@ -116,7 +121,25 @@ app.include_router(users.router)
 app.include_router(notify_diag.router)
 
 
+@app.exception_handler(httpx.TransportError)
+async def supabase_transport_error(_request: Request, _exc: httpx.TransportError):
+    """A dropped Supabase connection must still carry CORS headers."""
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Could not reach the account service. Try again."},
+    )
+
+
 @app.get("/")
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready():
+    """Deeper than /health: database reachable in 2s, plus outbox backlog age."""
+    from lib.readiness import check_readiness
+
+    ok, body = check_readiness()
+    return JSONResponse(status_code=200 if ok else 503, content=body)

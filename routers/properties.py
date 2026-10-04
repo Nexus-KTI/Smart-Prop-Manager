@@ -266,6 +266,39 @@ def portfolio_summary(
     return summarize_portfolio_counts(rows)
 
 
+@router.get("/portfolio/overview")
+def portfolio_overview(
+    user: AuthedUser = Depends(get_current_user),
+    portfolio_owner_id: str | None = Depends(_portfolio_owner),
+):
+    """Dashboard KPIs and property cards from one snapshot (overdue money on let units)."""
+    from lib.portfolio_overview import build_portfolio_overview
+    from lib.unit_status import lagos_today
+    from lib.urgent_actions import PORTFOLIO_MAX_UNITS, load_portfolio_snapshot
+
+    ctx = resolve_portfolio(user.id, portfolio_owner_id)
+    db = _db_for_ctx(user, ctx)
+    property_ids = accessible_property_ids_for_portfolio(ctx)
+    today = lagos_today()
+    if not property_ids:
+        return build_portfolio_overview([], [], today=today)
+    properties = (
+        db.table("properties")
+        .select("id, name, address, created_at")
+        .eq("owner_id", ctx.owner_id)
+        .in_("id", property_ids)
+        .execute()
+        .data
+        or []
+    )
+    rows = load_portfolio_snapshot(
+        db, owner_id=str(ctx.owner_id), property_ids=property_ids, today=today
+    )
+    return build_portfolio_overview(
+        properties, rows, today=today, capped=len(rows) >= PORTFOLIO_MAX_UNITS
+    )
+
+
 @router.get("/")
 def list_properties(
     user: AuthedUser = Depends(get_current_user),
@@ -357,7 +390,7 @@ def update_unit(
 
 
 @router.post("/units/{unit_id}/photo")
-async def upload_unit_apply_photo(
+def upload_unit_apply_photo(
     unit_id: str,
     file: UploadFile = File(...),
     user: AuthedUser = Depends(get_current_user),
@@ -368,9 +401,9 @@ async def upload_unit_apply_photo(
         raise HTTPException(
             status_code=403, detail="Only the owner can edit unit fields"
         )
-    from lib.unit_photos import upload_unit_photo
+    from lib.unit_photos import MAX_PHOTO_BYTES, upload_unit_photo
 
-    raw = await file.read()
+    raw = file.file.read(MAX_PHOTO_BYTES + 1)
     content_type = (file.content_type or "").strip() or "image/jpeg"
     try:
         url = upload_unit_photo(
@@ -413,9 +446,11 @@ def delete_unit(unit_id: str, user: AuthedUser = Depends(get_current_user)):
     if ctx.role != "owner":
         raise HTTPException(status_code=403, detail="Only the owner can delete units")
 
-    user.db.table("reminders").delete().eq("unit_id", unit_id).execute()
-    user.db.table("transactions").delete().eq("unit_id", unit_id).execute()
-    user.db.table("units").delete().eq("id", unit_id).execute()
+    # One statement: every child table cascades (or sets null) on units, so a
+    # failure part-way can no longer leave a unit with its ledger deleted.
+    deleted = user.db.table("units").delete().eq("id", unit_id).execute().data or []
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Unit not found")
     return {"ok": True, "id": unit_id}
 
 
@@ -512,24 +547,18 @@ def delete_property(property_id: str, user: AuthedUser = Depends(get_current_use
     if not _owned_property(user, property_id):
         raise HTTPException(status_code=404, detail="Property not found")
 
-    units = (
-        user.db.table("units")
-        .select("id")
-        .eq("property_id", property_id)
+    # Units, and through them the ledger and reminders, cascade in one statement.
+    deleted = (
+        user.db.table("properties")
+        .delete()
+        .eq("id", property_id)
+        .eq("owner_id", user.id)
         .execute()
         .data
         or []
     )
-    unit_ids = [u["id"] for u in units if u.get("id")]
-    if unit_ids:
-        for unit_id in unit_ids:
-            user.db.table("reminders").delete().eq("unit_id", unit_id).execute()
-            user.db.table("transactions").delete().eq("unit_id", unit_id).execute()
-        user.db.table("units").delete().eq("property_id", property_id).execute()
-
-    user.db.table("properties").delete().eq("id", property_id).eq(
-        "owner_id", user.id
-    ).execute()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Property not found")
     return {"ok": True, "id": property_id}
 
 
