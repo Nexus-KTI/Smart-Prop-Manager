@@ -12,6 +12,7 @@ import {
   fetchUnitContext,
   type UnitContext,
 } from "@/lib/api";
+import { chargeBreakdown } from "@/lib/dashboard";
 import type { Reminder } from "@/lib/types";
 
 function UnitRemindersSkeleton() {
@@ -137,7 +138,10 @@ export default function UnitRemindersPage() {
     );
   }
 
-  const rentAmount = Number(context.unit.rent_amount) || 0;
+  const amountLeft = Object.values(
+    chargeBreakdown(context.unit, context.unit.transactions ?? []),
+  ).reduce((sum, line) => sum + line.remaining, 0);
+  const rentAmount = amountLeft > 0 ? amountLeft : Number(context.unit.rent_amount) || 0;
 
   return (
     <UnitRemindersClient

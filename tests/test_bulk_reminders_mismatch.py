@@ -119,3 +119,61 @@ def test_bulk_logs_channel_mismatch_as_failed(monkeypatch):
     assert db.inserted[0]["status"] == "failed"
     assert db.inserted[0]["kind"] == "due"
     assert db.inserted[0].get("error_detail")
+
+
+def test_bulk_asks_for_what_is_left_and_skips_paid_tenants(monkeypatch):
+    from datetime import date
+    from types import SimpleNamespace
+
+    def unit(uid):
+        return {
+            "id": uid,
+            "label": uid,
+            "rent_amount": 1000,
+            "service_charge_amount": 0,
+            "frequency": "monthly",
+            "due_day": 1,
+            "tenant_contact": "+2348000000000",
+            "properties": {"name": "Palm", "owner_id": "owner-1"},
+        }
+
+    db = _FakeDb({"u-paid": unit("u-paid"), "u-part": unit("u-part")})
+    paid_at = "2026-08-02T09:00:00Z"
+    period = {
+        "u-paid": [{"id": "t1", "status": "paid", "amount": 1000, "paid_at": paid_at, "charge_type": "rent"}],
+        "u-part": [{"id": "t2", "status": "paid", "amount": 400, "paid_at": paid_at, "charge_type": "rent"}],
+    }
+    amounts: list[float] = []
+    queued: list[str] = []
+
+    class _Ctx:
+        role = "owner"
+        owner_id = "owner-1"
+
+    def fake_due(*, amount, **_kw):
+        amounts.append(amount)
+        return SimpleNamespace(text="due", subject="due", html="<p>due</p>")
+
+    monkeypatch.setattr("lib.access.require_unit_access", lambda *_a, **_k: _Ctx())
+    monkeypatch.setattr("lib.db.create_service_client", lambda: db)
+    monkeypatch.setattr("routers.reminders.get_owner_notification_channel", lambda _db, _oid: "sms")
+    monkeypatch.setattr("routers.reminders.contact_matches_channel", lambda *_a: True)
+    monkeypatch.setattr("routers.reminders.enforce_rate_limit", lambda *_a, **_k: None)
+    monkeypatch.setattr("routers.reminders._tenant_prefs_kwargs", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        "routers.reminders._queue_tenant_notice",
+        lambda _db, *, idempotency_key, **_k: queued.append(idempotency_key) or {"channel": "sms"},
+    )
+    monkeypatch.setattr("lib.delivery_outbox.flush_delivery_outbox", lambda **_k: None)
+    monkeypatch.setattr("lib.email_templates.tenant_due", fake_due)
+    monkeypatch.setattr("lib.unit_status.lagos_today", lambda: date(2026, 8, 15))
+    monkeypatch.setattr(
+        "lib.period_payments.load_period_payments",
+        lambda _db, units, _day: {units[0]["id"]: period[units[0]["id"]]},
+    )
+
+    stats = send_bulk_reminders({"unit_ids": ["u-paid", "u-part"]}, _FakeUser(db))  # type: ignore[arg-type]
+
+    assert (stats["sent"], stats["skipped"], stats["failed"]) == (1, 1, 0)
+    assert amounts == [600]
+    assert len(queued) == 1 and queued[0].startswith("bulk-due:u-part:")

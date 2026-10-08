@@ -114,20 +114,16 @@ def _insert_reminder(
     return db.table("reminders").insert(row).execute().data
 
 
-def _default_message(
-    property_name: str,
-    unit_label: str,
-    rent_amount,
-    business_name: str | None,
-) -> str:
-    from lib.email_templates import tenant_due
+def _amount_left(db, unit: dict) -> float:
+    """Rent + service charge still owed this period after part payments (0 when paid)."""
+    from lib.period_payments import load_period_payments
+    from lib.unit_status import lagos_today, outstanding_for_unit, resolve_unit_status
 
-    return tenant_due(
-        amount=rent_amount,
-        property_name=property_name,
-        unit_label=unit_label,
-        business_name=business_name,
-    ).text
+    today = lagos_today()
+    txns = load_period_payments(db, [unit], today).get(str(unit.get("id")), [])
+    if resolve_unit_status(unit, txns, today) == "PAID":
+        return 0.0
+    return outstanding_for_unit(unit, txns, today)
 
 
 def _business_name_for_owner(db, owner_id: str) -> str | None:
@@ -379,8 +375,8 @@ def send_bulk_reminders(
         rows = (
             db.table("units")
             .select(
-                "id, label, rent_amount, tenant_contact, "
-                "properties!inner(name, owner_id)"
+                "id, label, rent_amount, service_charge_amount, frequency, "
+                "due_day, due_month, tenant_contact, properties!inner(name, owner_id)"
             )
             .eq("id", unit_id)
             .eq("properties.owner_id", ctx.owner_id)
@@ -431,10 +427,15 @@ def send_bulk_reminders(
             )
             continue
 
+        amount_left = _amount_left(db, unit)
+        if amount_left <= 0:
+            stats["skipped"] += 1
+            continue
+
         from lib.email_templates import tenant_due
 
         due_mail = tenant_due(
-            amount=unit.get("rent_amount") or 0,
+            amount=amount_left,
             property_name=property_name,
             unit_label=unit_label,
             business_name=business,
@@ -527,7 +528,8 @@ def retry_reminder(
     rows = (
         svc.table("reminders")
         .select(
-            "*, units!inner(id, label, rent_amount, tenant_contact, tenant_name, "
+            "*, units!inner(id, label, rent_amount, service_charge_amount, frequency, "
+            "due_day, due_month, tenant_contact, tenant_name, "
             "property_id, properties!inner(id, name, owner_id))"
         )
         .eq("id", reminder_id)
@@ -974,10 +976,17 @@ def retry_reminder(
             detail=detail,
         )
 
+    amount_left = _amount_left(db, unit)
+    if amount_left <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Rent for this period is already paid",
+        )
+
     from lib.email_templates import tenant_due
 
     due_mail = tenant_due(
-        amount=unit.get("rent_amount") or 0,
+        amount=amount_left,
         property_name=property_name,
         unit_label=unit_label,
         business_name=business,

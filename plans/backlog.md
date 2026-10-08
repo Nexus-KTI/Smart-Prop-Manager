@@ -76,7 +76,7 @@ No artisan payout rail until ops demand is real.
 
 ## Closed recently
 
-- Partial payments, step A: a charge is paid only when this period's payments (less refunds) cover it; one combined rent + service-charge row settles both; overview, Action needed, ops overdue, unit payments and tenant home show what is left ("₦X of ₦Y paid"); reminders and autopay ask only for the remainder and skip covered periods; `sql/057` snapshot returns every paid row this year
+- Partial payments, step A: a charge is paid only when this period's payments (less refunds) cover it; one combined rent + service-charge row settles both; overview, Action needed, ops overdue, unit payments and tenant home show what is left ("₦X of ₦Y paid"); reminders (daily, bulk, retry, and the unit form's prefill) and autopay ask only for the remainder and skip covered periods; `sql/057` snapshot returns every paid row this year
 - Hardening — long-term slice 5: dashboard "Overdue rent" KPI (past-due charges on let units) and property cards served by `GET /properties/portfolio/overview` from the snapshot (`sql/056` adds `photo_url`); dashboard drops the all-pages `/properties/` fetch; vacant units off Action needed rent items and ops overdue
 
 - Hardening — long-term slice 4: `portfolio_unit_snapshot` read model (`sql/055`) — Action needed and ops overdue in one call; status rules on the Lagos date with weekly/daily periods matching the web

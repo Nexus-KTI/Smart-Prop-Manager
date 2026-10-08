@@ -310,6 +310,20 @@ def test_autopay_charges_the_remainder_skips_covered_and_survives_a_refused_clai
     assert stats == {"checked": 3, "charged": 1, "skipped": 1, "failed": 1}
 
 
+def test_hand_sent_reminders_use_what_is_left(monkeypatch):
+    from routers import reminders
+
+    period = {"u-paid": [_paid(100_000)], "u-part": [_paid(40_000)]}
+    monkeypatch.setattr("lib.unit_status.lagos_today", lambda: TODAY)
+    monkeypatch.setattr(
+        "lib.period_payments.load_period_payments",
+        lambda _db, units, _day: {units[0]["id"]: period.get(units[0]["id"], [])},
+    )
+    assert reminders._amount_left(object(), _unit(id="u-paid")) == 0
+    assert reminders._amount_left(object(), _unit(id="u-part")) == 60_000
+    assert reminders._amount_left(object(), _unit(id="u-none", service_charge_amount=5_000)) == 105_000
+
+
 # --- migration ------------------------------------------------------------------
 
 
