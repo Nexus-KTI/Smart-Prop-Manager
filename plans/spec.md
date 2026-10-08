@@ -39,6 +39,47 @@ as they are. Payment lines are unchanged.
 
 ---
 
+# Spec — Partial payments, step A (period sums, no ledger)
+
+**Updated:** 2026-10-08 · **Status:** built (`sql/057` applied remotely; 0 of 8 let units change status today)
+
+Part payment is normal (₦100k now, the rest later). Today any paid row in the period marks
+the charge PAID, so a part-paid tenant drops off every chase list.
+
+1. **Rule (`lib/unit_status.py` `charge_breakdown`, mirrored in `web/lib/dashboard.ts`
+   `chargeBreakdown`).** Per charge (rent; service charge when set): expected = the unit
+   amount; paid = sum of `amount − refunded_amount` over paid rows dated in the current
+   period. Overpaying one charge covers the other (tenant checkout and autopay record
+   rent + service charge as one `rent` row). PAID only when paid ≥ expected (₦0.50
+   tolerance); otherwise the existing overdue / due soon / pending rules, with
+   remaining = expected − paid. Expected ₦0 keeps the old any-row rule. A refund puts the
+   refunded money back on the chase list.
+2. **Complete period data.** Status inputs include every paid row from the current period,
+   not a capped history: `sql/057` snapshot returns all paid rows since 1 Jan (Lagos) − 7 days
+   (cap 120 per unit) with `id` and `refunded_amount`; property/unit endpoints merge the same
+   window into embedded transactions; `GET /properties/units/{id}` returns them for the unit
+   payments page.
+3. **Money shown and charged = what is left.** Dashboard overdue / due this week and cards,
+   properties outstanding, unit page "Amount due this cycle" (+ "₦X of ₦Y paid"), Record
+   payment and Paystack prefill, Action needed detail, ops overdue, tenant "Amount due"
+   (`balance` on `/tenancies/me/current`), automatic due reminders, autopay amount.
+4. **Money-safety.** Autopay charges only the remainder and skips a covered period (was:
+   skip only if rent paid today). Due reminders skip covered units (was: sent regardless).
+   Saved-card guard refuses only when the period is fully covered.
+5. **Not in this step:** arrears across periods, overpayment carried forward, allocation of
+   one payment to several periods — step B (charges ledger).
+
+## Acceptance
+
+- Part payment → charge stays DUE SOON / OVERDUE with the remainder everywhere; full sum → PAID.
+- Combined rent + service charge row settles both; refund reopens the charge.
+- Annual tenant paying monthly: 12 installments all counted (no history cap).
+- Live (read-only): count units whose status changes under the new rule; `sql/057` grants and
+  advisors unchanged.
+- `pytest` green; web `tsc` + lint clean.
+
+---
+
 # Spec — Hardening: long-term, slice 5 (dashboard overview)
 
 **Updated:** 2026-10-03 · **Status:** built (`sql/056` applied remotely)
