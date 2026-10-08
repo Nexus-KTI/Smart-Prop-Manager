@@ -146,7 +146,10 @@ export function TenantHomeClient() {
 
   const rent = Number(unit?.rent_amount || 0);
   const sc = Number(unit?.service_charge_amount || 0);
-  const due = rent + sc;
+  const balance = tenancy?.balance ?? null;
+  const due = balance ? Math.round(balance.remaining * 100) / 100 : rent + sc;
+  const settled = Boolean(balance && balance.expected > 0 && balance.remaining <= 0);
+  const partPaid = Boolean(balance && balance.paid > 0 && balance.remaining > 0);
   const isActive = tenancy?.status === "active";
   const isLinkedPending = Boolean(tenancy && !isActive);
 
@@ -419,7 +422,20 @@ export function TenantHomeClient() {
             <p className="stat-label">Amount due</p>
             <p className="stat-value mono-data">{formatNaira(due)}</p>
             <p className="table-muted">
-              {sc > 0 ? "Rent + service charge" : "Rent"}
+              {settled ? (
+                "Paid for this period"
+              ) : partPaid && balance ? (
+                <>
+                  <span className="mono-data">{formatNaira(balance.paid)}</span>
+                  {" of "}
+                  <span className="mono-data">{formatNaira(balance.expected)}</span>
+                  {" paid"}
+                </>
+              ) : sc > 0 ? (
+                "Rent + service charge"
+              ) : (
+                "Rent"
+              )}
             </p>
           </div>
         </div>

@@ -46,11 +46,13 @@ def test_all_paid_stays_paid():
             "charge_type": "rent",
             "status": "paid",
             "paid_at": "2026-08-01T10:00:00+00:00",
+            "amount": 100_000,
         },
         {
             "charge_type": "service_charge",
             "status": "paid",
             "paid_at": "2026-08-01T10:00:00+00:00",
+            "amount": 10_000,
         },
     ]
     assert resolve_unit_status(unit, txns, today) == "PAID"
@@ -65,6 +67,7 @@ def test_rent_paid_service_due_soon_shows_due_soon():
             "charge_type": "rent",
             "status": "paid",
             "paid_at": "2026-08-01T10:00:00+00:00",
+            "amount": 100_000,
         }
     ]
     assert resolve_charge_status(unit, txns, "rent", today) == "PAID"
@@ -80,6 +83,7 @@ def test_other_without_due_does_not_force_overdue():
             "charge_type": "rent",
             "status": "paid",
             "paid_at": "2026-08-01T10:00:00+00:00",
+            "amount": 100_000,
         },
         {
             "charge_type": "other",

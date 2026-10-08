@@ -7,48 +7,32 @@ from typing import Any
 
 from lib.unit_status import _parse_txn_day as lagos_day
 from lib.unit_status import (
+    charge_breakdown,
     due_date_for_unit,
     next_due_date_for_unit,
-    resolve_charge_status,
 )
 
 _CARD_RANK = {"overdue": 0, "due-soon": 1, "occupied": 2, "vacant": 3, "empty": 4}
-
-
-def _amount(value: Any) -> float:
-    try:
-        return float(value or 0)
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def is_occupied(unit: dict) -> bool:
     return bool(str(unit.get("tenant_name") or "").strip())
 
 
-def _charges(unit: dict, today: date) -> list[tuple[str, float]]:
-    """(status, amount) for rent and, when set, the service charge."""
-    txns = unit.get("transactions") or []
-    out = [(resolve_charge_status(unit, txns, "rent", today), _amount(unit.get("rent_amount")))]
-    service = _amount(unit.get("service_charge_amount"))
-    if service > 0:
-        out.append((resolve_charge_status(unit, txns, "service_charge", today), service))
-    return out
-
-
 def _unit_view(unit: dict, today: date) -> dict[str, Any]:
-    charges = _charges(unit, today)
-    overdue = sum(amount for status, amount in charges if status == "OVERDUE")
-    due_soon = sum(amount for status, amount in charges if status == "DUE SOON")
-    paid = all(status == "PAID" for status, _ in charges)
+    """Overdue / due-soon money is what is left this period after part payments."""
+    lines = list(charge_breakdown(unit, unit.get("transactions") or [], today).values())
+    overdue = sum(line["remaining"] for line in lines if line["status"] == "OVERDUE")
+    due_soon = sum(line["remaining"] for line in lines if line["status"] == "DUE SOON")
+    paid = all(line["status"] == "PAID" for line in lines)
     next_due = next_due_date_for_unit(unit, today) if paid else due_date_for_unit(unit, today)
     return {
         "occupied": is_occupied(unit),
         "overdue": overdue,
         "due_soon": due_soon,
-        "is_overdue": any(status == "OVERDUE" for status, _ in charges),
-        "is_due_soon": any(status == "DUE SOON" for status, _ in charges),
-        "full": sum(amount for _, amount in charges),
+        "is_overdue": any(line["status"] == "OVERDUE" for line in lines),
+        "is_due_soon": any(line["status"] == "DUE SOON" for line in lines),
+        "full": sum(line["expected"] for line in lines),
         "next_due": next_due,
     }
 

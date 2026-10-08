@@ -144,42 +144,114 @@ function txnChargeType(txn: Transaction): ChargeType {
   return "rent";
 }
 
-function paidInCurrentPeriod(
+function currentPeriod(unit: Unit, now: Date): { start: Date; end: Date } {
+  const due = dueDateForUnit(unit.due_day, unit.frequency, now, unit.due_month);
+  if (due) {
+    return { start: periodStart(due, unit.frequency), end: periodEnd(due, unit.frequency) };
+  }
+  const y = now.getFullYear();
+  if ((unit.frequency || "monthly") === "annual") {
+    return { start: new Date(y, 0, 1), end: new Date(y, 11, 31) };
+  }
+  const m = now.getMonth();
+  return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) };
+}
+
+function paidRowsInPeriod(
   unit: Unit,
   transactions: Transaction[],
-  now: Date = new Date(),
-  chargeType: ChargeType = "rent",
-): boolean {
-  const matching = transactions.filter(
-    (t) => txnChargeType(t) === chargeType,
-  );
-  const due = dueDateForUnit(unit.due_day, unit.frequency, now, unit.due_month);
-  if (!due) {
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    return matching.some((t) => {
-      if (t.status !== "paid") return false;
-      const paid = parseTxnDate(t.paid_at) || parseTxnDate(t.created_at);
-      if (!paid) return false;
-      if ((unit.frequency || "monthly") === "annual") {
-        return paid.getFullYear() === y;
-      }
-      return paid.getFullYear() === y && paid.getMonth() === m;
-    });
-  }
-
-  const start = periodStart(due, unit.frequency);
-  const end = periodEnd(due, unit.frequency);
-
-  return matching.some((t) => {
-    if (t.status !== "paid") return false;
+  now: Date,
+  chargeType: ChargeType,
+): Transaction[] {
+  const { start, end } = currentPeriod(unit, now);
+  return transactions.filter((t) => {
+    if (t.status !== "paid" || txnChargeType(t) !== chargeType) return false;
     const paid = parseTxnDate(t.paid_at) || parseTxnDate(t.created_at);
-    if (!paid) return false;
-    return paid >= start && paid <= end;
+    return Boolean(paid && paid >= start && paid <= end);
   });
 }
 
+function netPaid(t: Transaction): number {
+  return Math.max(0, toNumber(t.amount) - toNumber(t.refunded_amount));
+}
+
 const DUE_SOON_DAYS = 7;
+const PAID_TOLERANCE = 0.5;
+
+function statusWhenOpen(
+  unit: Unit,
+  transactions: Transaction[],
+  chargeType: ChargeType,
+  now: Date,
+): ChargeLineStatus {
+  if (
+    transactions.some(
+      (t) => t.status === "overdue" && txnChargeType(t) === chargeType,
+    )
+  ) {
+    return "OVERDUE";
+  }
+  const due = dueDateForUnit(unit.due_day, unit.frequency, now, unit.due_month);
+  const today = startOfDay(now);
+  if (due && due < today) return "OVERDUE";
+  if (due) {
+    const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+    if (days >= 0 && days <= DUE_SOON_DAYS) return "DUE SOON";
+  }
+  return "PENDING";
+}
+
+export type ChargeLine = {
+  status: ChargeLineStatus;
+  expected: number;
+  paid: number;
+  remaining: number;
+};
+
+/**
+ * This period per charge (mirrors lib/unit_status.py charge_breakdown): paid = net of
+ * refunds over paid rows dated in the period; PAID only when that covers the amount.
+ * Overpaying one charge covers the other (tenant checkout records rent + service
+ * charge as one rent row).
+ */
+export function chargeBreakdown(
+  unit: Unit,
+  transactions: Transaction[],
+  now: Date = new Date(),
+): Partial<Record<"rent" | "service_charge", ChargeLine>> {
+  const expected: Partial<Record<"rent" | "service_charge", number>> = {
+    rent: toNumber(unit.rent_amount),
+  };
+  const service = toNumber(unit.service_charge_amount);
+  if (service > 0) expected.service_charge = service;
+
+  const kinds = Object.keys(expected) as Array<"rent" | "service_charge">;
+  const rows = Object.fromEntries(
+    kinds.map((kind) => [kind, paidRowsInPeriod(unit, transactions, now, kind)]),
+  ) as Record<"rent" | "service_charge", Transaction[]>;
+  const raw = Object.fromEntries(
+    kinds.map((kind) => [kind, rows[kind].reduce((sum, t) => sum + netPaid(t), 0)]),
+  ) as Record<"rent" | "service_charge", number>;
+  const paid = { ...raw };
+  if (service > 0) {
+    paid.rent += Math.max(0, raw.service_charge - service);
+    paid.service_charge += Math.max(0, raw.rent - (expected.rent ?? 0));
+  }
+
+  const out: Partial<Record<"rent" | "service_charge", ChargeLine>> = {};
+  for (const kind of kinds) {
+    const amount = expected[kind] ?? 0;
+    const covered =
+      amount > 0 ? paid[kind] >= amount - PAID_TOLERANCE : rows[kind].length > 0;
+    out[kind] = {
+      status: covered ? "PAID" : statusWhenOpen(unit, transactions, kind, now),
+      expected: amount,
+      paid: amount > 0 ? Math.min(paid[kind], amount) : paid[kind],
+      remaining: covered ? 0 : Math.max(0, amount - paid[kind]),
+    };
+  }
+  return out;
+}
 
 /**
  * Status for a recurring charge line (rent or service charge).
@@ -191,20 +263,10 @@ export function resolveChargeStatus(
   chargeType: "rent" | "service_charge",
   now: Date = new Date(),
 ): ChargeLineStatus {
-  const matching = transactions.filter(
-    (t) => txnChargeType(t) === chargeType,
-  );
-  if (paidInCurrentPeriod(unit, transactions, now, chargeType)) return "PAID";
-  if (matching.some((t) => t.status === "overdue")) return "OVERDUE";
-
-  const due = dueDateForUnit(unit.due_day, unit.frequency, now, unit.due_month);
-  const today = startOfDay(now);
-  if (due && due < today) return "OVERDUE";
-  if (due) {
-    const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
-    if (days >= 0 && days <= DUE_SOON_DAYS) return "DUE SOON";
-  }
-  return "PENDING";
+  const line = chargeBreakdown(unit, transactions, now)[chargeType];
+  if (line) return line.status;
+  if (paidRowsInPeriod(unit, transactions, now, chargeType).length > 0) return "PAID";
+  return statusWhenOpen(unit, transactions, chargeType, now);
 }
 
 const STATUS_RANK: Record<ChargeLineStatus, number> = {
@@ -301,11 +363,6 @@ function appendUnitRow(
   const rent = toNumber(unit.rent_amount);
   const serviceCharge = toNumber(unit.service_charge_amount);
   const status = resolveUnitStatus(unit, transactions);
-  const rentStatus = resolveChargeStatus(unit, transactions, "rent");
-  const serviceStatus =
-    serviceCharge > 0
-      ? resolveChargeStatus(unit, transactions, "service_charge")
-      : null;
 
   let collected = 0;
   for (const txn of transactions) {
@@ -314,9 +371,10 @@ function appendUnitRow(
     }
   }
 
-  let outstanding = 0;
-  if (rentStatus !== "PAID") outstanding += rent;
-  if (serviceStatus && serviceStatus !== "PAID") outstanding += serviceCharge;
+  const outstanding = Object.values(chargeBreakdown(unit, transactions)).reduce(
+    (sum, line) => sum + (line?.remaining ?? 0),
+    0,
+  );
   const overdue = status === "OVERDUE" ? 1 : 0;
 
   rows.push({

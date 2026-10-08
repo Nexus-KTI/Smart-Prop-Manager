@@ -182,6 +182,7 @@ export default function UnitPaymentsPage() {
       tenantName={context.unit.tenant_name}
       tenantContact={context.unit.tenant_contact}
       paystackPublicKey={process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY ?? ""}
+      periodTransactions={context.unit.transactions ?? []}
       transactions={transactions}
       initialNextCursor={nextCursor}
     />

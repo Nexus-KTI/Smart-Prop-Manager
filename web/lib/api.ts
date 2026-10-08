@@ -1285,6 +1285,7 @@ export async function fetchOpsOverdue(): Promise<{
     property_name: string;
     owner_id: string;
     transactions: Transaction[];
+    outstanding?: number;
   }>;
   owner_id: string;
   role: string;
@@ -1302,6 +1303,7 @@ export async function fetchOpsOverdue(): Promise<{
       property_name: string;
       owner_id: string;
       transactions: Transaction[];
+      outstanding?: number;
     }>;
     owner_id: string;
     role: string;
@@ -1347,6 +1349,13 @@ export type Tenancy = {
     service_charge_amount?: number;
     properties?: { name?: string } | { name?: string }[];
   };
+  /** Tenant home only: this period's rent + service charge after part payments. */
+  balance?: {
+    expected: number;
+    paid: number;
+    remaining: number;
+    due_date: string | null;
+  } | null;
 };
 
 export async function fetchUnitTenancy(

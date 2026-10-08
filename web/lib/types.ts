@@ -12,6 +12,8 @@ export type Transaction = {
   charge_type?: ChargeType | null;
   charge_label?: string | null;
   created_at?: string | null;
+  /** Paystack refunds; the net (amount − refunded) counts toward the period. */
+  refunded_amount?: number | string | null;
 };
 
 /** Paid transaction enriched for the portfolio money-in feed. */

@@ -6,34 +6,21 @@ import logging
 import hashlib
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from lib.reminder_job import _today_lagos, unit_is_due_today
 
 logger = logging.getLogger(__name__)
 
-LAGOS = ZoneInfo("Africa/Lagos")
 
+def _outstanding_for_period(db: Any, unit: dict[str, Any], due_date: date) -> float:
+    """Rent + service charge still owed for the period that contains due_date (0 if paid)."""
+    from lib.period_payments import load_period_payments
+    from lib.unit_status import outstanding_for_unit, resolve_unit_status
 
-def _already_paid_rent_today(db: Any, unit_id: str, day: date) -> bool:
-    start = datetime(day.year, day.month, day.day, tzinfo=LAGOS).astimezone(
-        timezone.utc
-    )
-    end = start + timedelta(days=1)
-    rows = (
-        db.table("transactions")
-        .select("id")
-        .eq("unit_id", unit_id)
-        .eq("status", "paid")
-        .eq("charge_type", "rent")
-        .gte("paid_at", start.isoformat())
-        .lt("paid_at", end.isoformat())
-        .limit(1)
-        .execute()
-        .data
-        or []
-    )
-    return bool(rows)
+    txns = load_period_payments(db, [unit], due_date).get(str(unit["id"]), [])
+    if resolve_unit_status(unit, txns, due_date) == "PAID":
+        return 0.0
+    return outstanding_for_unit(unit, txns, due_date)
 
 
 def _tenant_email(user_id: str) -> str | None:
@@ -158,6 +145,7 @@ def _charge_one(
     unit: dict[str, Any],
     method: dict[str, Any],
     due_date: date,
+    amount: float,
 ) -> str:
     """Claim one due cycle, charge once, and converge ambiguous outcomes."""
     from lib.paystack import charge_authorization, verify_transaction
@@ -169,9 +157,7 @@ def _charge_one(
     if not email:
         return "failed_no_email"
 
-    rent = float(unit.get("rent_amount") or 0)
-    sc = float(unit.get("service_charge_amount") or 0)
-    amount = rent + sc
+    amount = round(amount, 2)
     if amount <= 0:
         return "skipped_zero"
 
@@ -289,8 +275,9 @@ def run_autopay_charges(*, today: date | None = None) -> dict[str, int]:
             stats["skipped"] += 1
             continue
 
-        unit_id = str(unit["id"])
-        if _already_paid_rent_today(db, unit_id, day):
+        # Part payments reduce the charge; a covered period is not charged again.
+        outstanding = _outstanding_for_period(db, unit, target_due)
+        if outstanding <= 0:
             stats["skipped"] += 1
             continue
 
@@ -309,13 +296,20 @@ def run_autopay_charges(*, today: date | None = None) -> dict[str, int]:
             stats["failed"] += 1
             continue
 
-        result = _charge_one(
-            db,
-            tenancy=tenancy,
-            unit=unit,
-            method=dict(methods[0]),
-            due_date=target_due,
-        )
+        try:
+            result = _charge_one(
+                db,
+                tenancy=tenancy,
+                unit=unit,
+                method=dict(methods[0]),
+                due_date=target_due,
+                amount=outstanding,
+            )
+        except Exception:
+            # e.g. an earlier failed claim for this period at a different amount
+            # (the tenant part-paid since): the stable key refuses the new amount.
+            logger.exception("Autopay claim failed for unit %s", unit["id"])
+            result = "failed_claim"
         if result == "charged":
             stats["charged"] += 1
         elif result.startswith("failed"):

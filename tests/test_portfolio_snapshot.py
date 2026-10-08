@@ -22,8 +22,8 @@ def _unit(**extra) -> dict:
     return {"rent_amount": 1000, "service_charge_amount": 0, "frequency": "monthly", "due_day": 1, **extra}
 
 
-def _paid(at: str, charge_type: str = "rent") -> dict:
-    return {"status": "paid", "paid_at": at, "created_at": at, "charge_type": charge_type}
+def _paid(at: str, charge_type: str = "rent", amount: float = 1000) -> dict:
+    return {"status": "paid", "paid_at": at, "created_at": at, "charge_type": charge_type, "amount": amount}
 
 
 # --- status rules match web/lib/dashboard.ts -----------------------------------

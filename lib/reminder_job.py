@@ -178,13 +178,17 @@ def run_due_reminders(*, today: date | None = None) -> dict[str, int]:
     rows = _select_all_units(
         lambda: db.table("units")
         .select(
-            "id, label, rent_amount, tenant_contact, due_day, frequency, "
-            "properties(id, name, owner_id)"
+            "id, label, rent_amount, service_charge_amount, tenant_contact, due_day, "
+            "due_month, frequency, properties(id, name, owner_id)"
         )
         .or_("frequency.eq.daily,due_day.not.is.null")
     )
 
     due_rows = [unit for unit in rows if unit_is_due_today(unit, day)]
+    from lib.period_payments import load_period_payments
+    from lib.unit_status import outstanding_for_unit, resolve_unit_status
+
+    period = load_period_payments(db, due_rows, day)
 
     stats = {
         "checked": len(due_rows),
@@ -209,6 +213,12 @@ def run_due_reminders(*, today: date | None = None) -> dict[str, int]:
         if not unit_id or not contact:
             stats["skipped"] += 1
             continue
+
+        paid_rows = period.get(str(unit_id), [])
+        if resolve_unit_status(unit, paid_rows, day) == "PAID":
+            stats["skipped"] += 1
+            continue
+        outstanding = outstanding_for_unit(unit, paid_rows, day)
 
         if _already_reminded_today(db, unit_id, day, kind="due"):
             stats["skipped"] += 1
@@ -242,7 +252,7 @@ def run_due_reminders(*, today: date | None = None) -> dict[str, int]:
         from lib.email_templates import tenant_due
 
         due_mail = tenant_due(
-            amount=unit.get("rent_amount") or 0,
+            amount=outstanding,
             property_name=property_name,
             unit_label=unit_label,
             business_name=business,

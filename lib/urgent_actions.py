@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
+from lib.email_templates import format_naira
 from lib.unit_status import (
+    charge_breakdown,
     days_until_term_end,
     due_date_for_unit,
     lagos_today,
@@ -24,8 +26,8 @@ LEASE_ENDING_DAYS = 60
 LEASE_ENDING_SOON_BOOST_DAYS = 14
 FAILED_LOOKBACK_DAYS = 14
 PORTFOLIO_MAX_UNITS = 5000
-# Enough history for the current period's status; same cap as the property pages
-# and the window portfolio_unit_snapshot (sql/055) reads.
+# Recent rows the snapshot scans for the latest overdue flag (sql/057); paid rows of
+# the current period come uncapped by count up to 120 per unit.
 RECENT_TXN_LIMIT = 36
 
 # Higher = more urgent
@@ -60,6 +62,16 @@ def _priority_for(
     return _PRIORITY.get(kind, 0)
 
 
+def _part_paid(unit: dict, today: date) -> str:
+    """' · ₦X of ₦Y paid' when the tenant has paid some, not all, of this period."""
+    lines = charge_breakdown(unit, unit.get("transactions") or [], today).values()
+    paid = sum(line["paid"] for line in lines)
+    expected = sum(line["expected"] for line in lines)
+    if paid <= 0 or paid >= expected:
+        return ""
+    return f" · {format_naira(paid)} of {format_naira(expected)} paid"
+
+
 def _detail_for(
     kind: ActionKind,
     *,
@@ -72,16 +84,16 @@ def _detail_for(
         due = due_date_for_unit(unit, today)
         if due and due < today:
             days = (today - due).days
-            return f"{days} day{'s' if days != 1 else ''} overdue"
-        return "Past due"
+            return f"{days} day{'s' if days != 1 else ''} overdue" + _part_paid(unit, today)
+        return "Past due" + _part_paid(unit, today)
     if kind == "due_soon":
         due = due_date_for_unit(unit, today)
         if due:
             days = (due - today).days
             if days == 0:
-                return "Due today"
-            return f"Due in {days} day{'s' if days != 1 else ''}"
-        return "Due soon"
+                return "Due today" + _part_paid(unit, today)
+            return f"Due in {days} day{'s' if days != 1 else ''}" + _part_paid(unit, today)
+        return "Due soon" + _part_paid(unit, today)
     if kind == "lease_ending":
         if days_left is None:
             return "Lease ending soon"
@@ -155,7 +167,7 @@ def load_portfolio_snapshot(
     today: date,
     max_units: int = PORTFOLIO_MAX_UNITS,
 ) -> list[dict[str, Any]]:
-    """Every unit in scope with its status-deciding transactions, in one call (sql/055)."""
+    """Every unit in scope with its status-deciding transactions, in one call (sql/057)."""
     if not property_ids:
         return []
     since = datetime.combine(

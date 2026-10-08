@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 ChargeStatus = Literal["PAID", "OVERDUE", "DUE SOON", "PENDING"]
 DUE_SOON_DAYS = 7
+PAID_TOLERANCE = 0.5
 STATUS_RANK = {"OVERDUE": 3, "DUE SOON": 2, "PENDING": 1, "PAID": 0}
 LAGOS = ZoneInfo("Africa/Lagos")
 
@@ -102,54 +103,61 @@ def _parse_txn_day(value: Any) -> date | None:
     return parsed.date()
 
 
-def _paid_in_current_period(
-    unit: dict, transactions: list[dict], today: date, charge_type: str
-) -> bool:
-    matching = [t for t in transactions if _txn_charge_type(t) == charge_type]
+def period_bounds(unit: dict, today: date) -> tuple[date, date]:
+    """First and last day of the current rent period (mirrors periodStart/periodEnd)."""
+    freq = str(unit.get("frequency") or "monthly").strip().lower()
     due = due_date_for_unit(unit, today)
     if due is None:
-        return any(
-            t.get("status") == "paid"
-            and (d := _parse_txn_day(t.get("paid_at") or t.get("created_at")))
-            and (
-                d.year == today.year
-                if str(unit.get("frequency") or "").lower() == "annual"
-                else d.year == today.year and d.month == today.month
-            )
-            for t in matching
-        )
-    freq = str(unit.get("frequency") or "monthly").strip().lower()
+        if freq == "annual":
+            return date(today.year, 1, 1), date(today.year, 12, 31)
+        last = calendar.monthrange(today.year, today.month)[1]
+        return date(today.year, today.month, 1), date(today.year, today.month, last)
     if freq == "daily":
-        start = end = due
-    elif freq == "weekly":
-        start = due - timedelta(days=6)
-        end = due
-    elif freq == "annual":
-        start = date(due.year, 1, 1)
-        end = date(due.year, 12, 31)
-    else:
-        start = date(due.year, due.month, 1)
-        last = calendar.monthrange(due.year, due.month)[1]
-        end = date(due.year, due.month, last)
-    for t in matching:
-        if t.get("status") != "paid":
+        return due, due
+    if freq == "weekly":
+        return due - timedelta(days=6), due
+    if freq == "annual":
+        return date(due.year, 1, 1), date(due.year, 12, 31)
+    last = calendar.monthrange(due.year, due.month)[1]
+    return date(due.year, due.month, 1), date(due.year, due.month, last)
+
+
+def period_window_start(today: date) -> date:
+    """Earliest day any current period can start: 1 Jan, less a week for weekly rent."""
+    return date(today.year, 1, 1) - timedelta(days=7)
+
+
+def _net_paid(txn: dict) -> float:
+    return max(0.0, _to_number(txn.get("amount")) - _to_number(txn.get("refunded_amount")))
+
+
+def _paid_rows_in_period(
+    unit: dict, transactions: list[dict], today: date, charge_type: str
+) -> list[dict]:
+    start, end = period_bounds(unit, today)
+    rows = []
+    for t in transactions:
+        if t.get("status") != "paid" or _txn_charge_type(t) != charge_type:
             continue
         paid = _parse_txn_day(t.get("paid_at") or t.get("created_at"))
         if paid and start <= paid <= end:
-            return True
-    return False
+            rows.append(t)
+    return rows
 
 
-def resolve_charge_status(
-    unit: dict,
-    transactions: list[dict],
-    charge_type: str,
-    today: date,
+def _paid_in_current_period(
+    unit: dict, transactions: list[dict], today: date, charge_type: str
+) -> bool:
+    return bool(_paid_rows_in_period(unit, transactions, today, charge_type))
+
+
+def _status_when_open(
+    transactions: list[dict], charge_type: str, unit: dict, today: date
 ) -> ChargeStatus:
-    matching = [t for t in transactions if _txn_charge_type(t) == charge_type]
-    if _paid_in_current_period(unit, transactions, today, charge_type):
-        return "PAID"
-    if any(t.get("status") == "overdue" for t in matching):
+    if any(
+        t.get("status") == "overdue" and _txn_charge_type(t) == charge_type
+        for t in transactions
+    ):
         return "OVERDUE"
     due = due_date_for_unit(unit, today)
     if due and due < today:
@@ -161,19 +169,67 @@ def resolve_charge_status(
     return "PENDING"
 
 
+def charge_breakdown(
+    unit: dict, transactions: list[dict], today: date
+) -> dict[str, dict[str, Any]]:
+    """Per charge: status, expected, paid this period, remaining (mirrors chargeBreakdown).
+
+    Overpaying one charge covers the other: tenant checkout and autopay record
+    rent + service charge as a single rent row.
+    """
+    expected = {"rent": _to_number(unit.get("rent_amount"))}
+    service = _to_number(unit.get("service_charge_amount"))
+    if service > 0:
+        expected["service_charge"] = service
+    rows = {kind: _paid_rows_in_period(unit, transactions, today, kind) for kind in expected}
+    raw = {kind: sum(_net_paid(t) for t in rows[kind]) for kind in expected}
+    paid = dict(raw)
+    if service > 0:
+        paid["rent"] += max(0.0, raw["service_charge"] - expected["service_charge"])
+        paid["service_charge"] += max(0.0, raw["rent"] - expected["rent"])
+    out: dict[str, dict[str, Any]] = {}
+    for kind, amount in expected.items():
+        if amount > 0:
+            covered = paid[kind] >= amount - PAID_TOLERANCE
+        else:
+            covered = bool(rows[kind])
+        status = "PAID" if covered else _status_when_open(transactions, kind, unit, today)
+        out[kind] = {
+            "status": status,
+            "expected": amount,
+            "paid": min(paid[kind], amount) if amount > 0 else paid[kind],
+            "remaining": 0.0 if covered else max(0.0, amount - paid[kind]),
+        }
+    return out
+
+
+def outstanding_for_unit(unit: dict, transactions: list[dict], today: date) -> float:
+    """What is still owed for the current period across rent and service charge."""
+    return sum(line["remaining"] for line in charge_breakdown(unit, transactions, today).values())
+
+
+def resolve_charge_status(
+    unit: dict,
+    transactions: list[dict],
+    charge_type: str,
+    today: date,
+) -> ChargeStatus:
+    line = charge_breakdown(unit, transactions, today).get(charge_type)
+    if line is not None:
+        return line["status"]
+    if _paid_in_current_period(unit, transactions, today, charge_type):
+        return "PAID"
+    return _status_when_open(transactions, charge_type, unit, today)
+
+
 def resolve_unit_status(
     unit: dict, transactions: list[dict], today: date
 ) -> ChargeStatus:
     """Worst status across rent + configured service charge (not one-off other)."""
-    statuses = [resolve_charge_status(unit, transactions, "rent", today)]
-    if _to_number(unit.get("service_charge_amount")) > 0:
-        statuses.append(
-            resolve_charge_status(unit, transactions, "service_charge", today)
-        )
     worst: ChargeStatus = "PAID"
-    for status in statuses:
-        if STATUS_RANK[status] > STATUS_RANK[worst]:
-            worst = status
+    for line in charge_breakdown(unit, transactions, today).values():
+        if STATUS_RANK[line["status"]] > STATUS_RANK[worst]:
+            worst = line["status"]
     return worst
 
 

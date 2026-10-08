@@ -16,6 +16,7 @@ type OpsRow = {
   property_name: string;
   owner_id: string;
   transactions: Transaction[];
+  outstanding?: number;
 };
 
 export function OpsOverdueClient() {
@@ -171,7 +172,9 @@ export function OpsOverdueClient() {
                   </div>
                   <div className="table-muted">
                     <span className="mono-data">
-                      {formatNaira(Number(row.unit.rent_amount) || 0)}
+                      {formatNaira(
+                        row.outstanding ?? (Number(row.unit.rent_amount) || 0),
+                      )}
                     </span>{" "}
                     · overdue
                     {noContact ? " · no tenant contact" : ""}

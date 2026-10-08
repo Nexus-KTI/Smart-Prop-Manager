@@ -21,7 +21,7 @@ from lib.auth import AuthedUser, get_current_user
 from lib.db import create_service_client
 from lib.invite_bind import require_invite_contact_match
 from lib.rate_limit import enforce_invite_limit, enforce_rate_limit
-from lib.unit_status import lagos_today, resolve_unit_status
+from lib.unit_status import lagos_today, outstanding_for_unit, resolve_unit_status
 from lib.urgent_actions import PORTFOLIO_MAX_UNITS, load_portfolio_snapshot
 
 router = APIRouter(prefix="/staff", tags=["staff"])
@@ -506,6 +506,7 @@ def portfolio_overdue_ops(
                 "property_name": row["property_name"],
                 "owner_id": ctx.owner_id,
                 "transactions": txns,
+                "outstanding": outstanding_for_unit(unit, txns, today),
             }
         )
     return {

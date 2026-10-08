@@ -17,8 +17,8 @@ from lib.urgent_actions import build_urgent_actions  # noqa: E402
 TODAY = date(2026, 8, 20)
 
 
-def _paid(at: str, charge_type: str = "rent") -> dict:
-    return {"status": "paid", "paid_at": at, "created_at": at, "charge_type": charge_type}
+def _paid(at: str, charge_type: str = "rent", amount: float = 100_000) -> dict:
+    return {"status": "paid", "paid_at": at, "created_at": at, "charge_type": charge_type, "amount": amount}
 
 
 def _unit(uid: str, prop: str, *, tenant: str | None = "Ada", due_day: int = 1, rent: float = 100_000,
@@ -52,7 +52,7 @@ PROPS = [
 
 ROWS = [
     # Rent overdue; service charge paid this month → only rent counts.
-    _unit("l1", "late", service=10_000, txns=[_paid("2026-08-02T09:00:00Z", "service_charge")],
+    _unit("l1", "late", service=10_000, txns=[_paid("2026-08-02T09:00:00Z", "service_charge", 10_000)],
           photo="https://cdn/l1.jpg"),
     # Vacant and past due: never overdue money.
     _unit("l2", "late", tenant=None, rent=80_000),

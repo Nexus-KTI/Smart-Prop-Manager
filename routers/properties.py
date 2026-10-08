@@ -31,9 +31,12 @@ UNIT_FIELDS = {
 
 APPLY_NOTE_MAX = 280
 
-# Status needs recent paid rows only — not full payment history per list fetch.
+# Recent rows carry overdue flags; attach_period_payments adds every paid row of the
+# current period, so partial payments sum without a history cap. `id` de-duplicates them.
 # order/limit must be query params (foreign_table=...), not inside select — PGRST100.
-_TXN_EMBED = "transactions(status, amount, paid_at, created_at, charge_type)"
+_TXN_EMBED = (
+    "transactions(id, status, amount, refunded_amount, paid_at, created_at, charge_type)"
+)
 UNITS_WITH_RECENT_TXNS = f"units(*, {_TXN_EMBED})"
 UNIT_WITH_RECENT_TXNS = f"*, {_TXN_EMBED}"
 _RECENT_TXN_LIMIT = 36
@@ -146,6 +149,13 @@ def _normalize_unit_embed(row: dict) -> dict:
     return unit
 
 
+def _attach_period(db, units: list[dict]) -> None:
+    from lib.period_payments import attach_period_payments
+    from lib.unit_status import lagos_today
+
+    attach_period_payments(db, units, lagos_today())
+
+
 def _serialize_portfolio_unit(row: dict) -> dict:
     unit = _normalize_unit_embed(row)
     prop = unit.pop("properties", None) or {}
@@ -218,6 +228,7 @@ def list_portfolio_units(
     rows = query.limit(size + 1).execute().data or []
     page, next_cursor = paginate_desc(rows, size)
     items = [_serialize_portfolio_unit(dict(row)) for row in page]
+    _attach_period(db, [item["unit"] for item in items])
     return {"items": items, "next_cursor": next_cursor}
 
 
@@ -331,6 +342,7 @@ def list_properties(
             item["units"] = []
         else:
             item["units"] = [_normalize_unit_embed(u) for u in units]
+    _attach_period(db, [unit for item in items for unit in item["units"]])
     return {"items": items, "next_cursor": next_cursor}
 
 
@@ -343,6 +355,8 @@ def get_unit(unit_id: str, user: AuthedUser = Depends(get_current_user)):
 
     unit = dict(unit_row)
     property_row = unit.pop("properties", None) or {}
+    unit["transactions"] = []
+    _attach_period(user.db, [unit])
 
     return {
         "unit": unit,
@@ -476,10 +490,9 @@ def list_property_units(
     query = apply_desc_cursor(query, cursor)
     rows = query.limit(size + 1).execute().data or []
     items, next_cursor = paginate_desc(rows, size)
-    return {
-        "items": [_normalize_unit_embed(dict(row)) for row in items],
-        "next_cursor": next_cursor,
-    }
+    units = [_normalize_unit_embed(dict(row)) for row in items]
+    _attach_period(db, units)
+    return {"items": units, "next_cursor": next_cursor}
 
 
 @router.get("/{property_id}")

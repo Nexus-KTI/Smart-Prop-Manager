@@ -338,12 +338,34 @@ def claim_tenancy(payload: dict, user: AuthedUser = Depends(get_current_user)):
     return {"tenancy": _serialize(dict(result.get("tenancy") or tenancy))}
 
 
+def _period_balance(db, unit: Any) -> dict[str, Any] | None:
+    """This period's expected / paid / remaining for the tenant's unit (partial payments)."""
+    from lib.period_payments import load_period_payments
+    from lib.unit_status import charge_breakdown, due_date_for_unit, lagos_today
+
+    if isinstance(unit, list):
+        unit = unit[0] if unit else None
+    if not isinstance(unit, dict) or not unit.get("id"):
+        return None
+    today = lagos_today()
+    txns = load_period_payments(db, [unit], today).get(str(unit["id"]), [])
+    lines = charge_breakdown(unit, txns, today)
+    due = due_date_for_unit(unit, today)
+    return {
+        "expected": sum(line["expected"] for line in lines.values()),
+        "paid": sum(line["paid"] for line in lines.values()),
+        "remaining": sum(line["remaining"] for line in lines.values()),
+        "due_date": due.isoformat() if due else None,
+    }
+
+
 @router.get("/me/current")
 def my_tenancy(user: AuthedUser = Depends(get_current_user)):
     """Tenant: linked tenancy — prefer active, else latest claimed (pending activate)."""
     svc = create_service_client()
     select = (
-        "*, units(id, label, rent_amount, service_charge_amount, properties(name))"
+        "*, units(id, label, rent_amount, service_charge_amount, frequency, due_day, "
+        "due_month, properties(name))"
     )
     active = (
         svc.table("tenancies")
@@ -357,7 +379,9 @@ def my_tenancy(user: AuthedUser = Depends(get_current_user)):
         or []
     )
     if active:
-        return {"tenancy": _serialize(dict(active[0]))}
+        row = _serialize(dict(active[0]))
+        row["balance"] = _period_balance(svc, row.get("units"))
+        return {"tenancy": row}
 
     linked = (
         svc.table("tenancies")

@@ -18,6 +18,7 @@ import {
   trackRenewalBannerViewed,
 } from "@/lib/api";
 import {
+  chargeBreakdown,
   chargeStatusTone,
   chargeTypeLabel,
   daysUntilTermEnd,
@@ -26,7 +27,6 @@ import {
   formatNaira,
   nextDueDateForUnit,
   parseTermEnd,
-  resolveChargeStatus,
 } from "@/lib/dashboard";
 import {
   CHANNEL_LABELS,
@@ -49,6 +49,8 @@ type Props = {
   tenantName?: string | null;
   tenantContact?: string | null;
   paystackPublicKey: string;
+  /** Every paid row of the current period (history pages alone can miss installments). */
+  periodTransactions?: Transaction[];
   transactions: Transaction[];
   initialNextCursor?: string | null;
 };
@@ -102,6 +104,7 @@ export function UnitPaymentsClient({
   tenantName,
   tenantContact,
   paystackPublicKey,
+  periodTransactions = [],
   transactions: initialTransactions,
   initialNextCursor = null,
 }: Props) {
@@ -156,11 +159,22 @@ export function UnitPaymentsClient({
     ],
   );
 
-  const rentStatus = resolveChargeStatus(unitForStatus, transactions, "rent");
+  const statusTransactions = useMemo(() => {
+    const byId = new Map<string, Transaction>();
+    for (const row of [...periodTransactions, ...transactions]) byId.set(row.id, row);
+    return [...byId.values()];
+  }, [periodTransactions, transactions]);
+  const lines = chargeBreakdown(unitForStatus, statusTransactions);
+  const rentStatus = lines.rent?.status ?? "PENDING";
   const hasServiceCharge = serviceChargeAmount > 0;
-  const serviceStatus = hasServiceCharge
-    ? resolveChargeStatus(unitForStatus, transactions, "service_charge")
-    : null;
+  const serviceStatus = hasServiceCharge ? (lines.service_charge?.status ?? null) : null;
+  const paidThisCycle = (lines.rent?.paid ?? 0) + (lines.service_charge?.paid ?? 0);
+  const expectedThisCycle =
+    (lines.rent?.expected ?? 0) + (lines.service_charge?.expected ?? 0);
+  const remainingFor = (type: ChargeType) =>
+    type === "service_charge"
+      ? (lines.service_charge?.remaining ?? 0)
+      : (lines.rent?.remaining ?? 0);
 
   const cycleDueDate = dueDateForUnit(
     dueDay ?? null,
@@ -175,8 +189,8 @@ export function UnitPaymentsClient({
     dueMonth ?? null,
   );
   const amountDueThisCycle =
-    (rentStatus !== "PAID" ? rentAmount : 0) +
-    (hasServiceCharge && serviceStatus !== "PAID" ? serviceChargeAmount : 0);
+    (lines.rent?.remaining ?? 0) + (lines.service_charge?.remaining ?? 0);
+  const partPaid = amountDueThisCycle > 0 && paidThisCycle > 0;
   const cycleTone =
     rentStatus === "OVERDUE" || serviceStatus === "OVERDUE"
       ? "overdue"
@@ -327,8 +341,8 @@ export function UnitPaymentsClient({
       );
       return;
     }
-    const amount =
-      type === "service_charge" ? serviceChargeAmount : rentAmount;
+    const full = type === "service_charge" ? serviceChargeAmount : rentAmount;
+    const amount = remainingFor(type) > 0 ? remainingFor(type) : full;
     const amountKobo = Math.round(amount * 100);
     if (!Number.isFinite(amountKobo) || amountKobo <= 0) {
       setPaystackError(
@@ -509,6 +523,15 @@ export function UnitPaymentsClient({
                     </>
                   )
                 : "Rent and service charge are recorded for this period"
+              : partPaid
+                ? (
+                    <>
+                      <span className="mono-data">{formatNaira(paidThisCycle)}</span>
+                      {" of "}
+                      <span className="mono-data">{formatNaira(expectedThisCycle)}</span>
+                      {" paid"}
+                    </>
+                  )
               : hasServiceCharge && rentStatus !== "PAID" && serviceStatus !== "PAID"
                 ? "Rent + service charge still open"
                 : rentStatus !== "PAID"
@@ -690,8 +713,8 @@ export function UnitPaymentsClient({
               defaultValue={
                 defaultAmountForCharge(
                   chargeType,
-                  rentAmount,
-                  serviceChargeAmount,
+                  remainingFor("rent") || rentAmount,
+                  remainingFor("service_charge") || serviceChargeAmount,
                 ) || ""
               }
               disabled={manualPending}

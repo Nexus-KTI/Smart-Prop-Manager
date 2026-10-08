@@ -379,10 +379,21 @@ class _GuardQuery:
         self.filters[f"{column}>"] = value
         return self
 
+    def in_(self, column, values):
+        self.filters[column] = tuple(values)
+        return self
+
+    def or_(self, expr):
+        self.filters["or"] = expr
+        return self
+
     def order(self, *_args, **_kwargs):
         return self
 
     def limit(self, _n):
+        return self
+
+    def range(self, *_args):
         return self
 
     def execute(self):
@@ -395,7 +406,7 @@ class _GuardQuery:
 
 class _GuardDb:
     def __init__(self, *, unit=None, same_key=(), paid=()):
-        self.unit = unit or {"id": "unit-1", "frequency": "monthly", "due_day": 1}
+        self.unit = unit or {"id": "unit-1", "frequency": "monthly", "due_day": 1, "rent_amount": 1000}
         self.same_key = list(same_key)
         self.paid = list(paid)
 
@@ -403,10 +414,19 @@ class _GuardDb:
         return _GuardQuery(self, name)
 
 
-def _paid_today():
+def _paid_today(amount=1000):
     from lib.reminder_job import _today_lagos
 
-    return [{"status": "paid", "paid_at": f"{_today_lagos().isoformat()}T09:00:00+00:00"}]
+    return [
+        {
+            "id": f"txn-{amount}",
+            "unit_id": "unit-1",
+            "status": "paid",
+            "charge_type": "rent",
+            "amount": amount,
+            "paid_at": f"{_today_lagos().isoformat()}T09:00:00+00:00",
+        }
+    ]
 
 
 def test_saved_card_refuses_second_charge_for_a_paid_month():
@@ -440,6 +460,12 @@ def test_saved_card_weekly_unit_can_pay_again_in_the_same_month():
         _GuardDb(unit={"id": "unit-1", "frequency": "weekly", "due_day": 2}, paid=_paid_today()),
         "unit-1",
         "saved-card:u1:new-key",
+    )
+
+
+def test_saved_card_allows_paying_the_rest_after_a_part_payment():
+    payments._guard_new_saved_card_charge(
+        _GuardDb(paid=_paid_today(amount=400)), "unit-1", "saved-card:u1:new-key"
     )
 
 

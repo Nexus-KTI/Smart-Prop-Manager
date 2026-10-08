@@ -1344,14 +1344,16 @@ def confirm_saved_card(payload: dict, user: AuthedUser = Depends(get_current_use
 
 
 def _guard_new_saved_card_charge(db, unit_id: str, idempotency_key: str) -> None:
-    """Refuse a fresh saved-card charge that would pay this period's rent twice.
+    """Refuse a fresh saved-card charge once this period's rent is fully paid.
 
-    A replay of an existing key skips these checks so the claim can return the
-    first result. Concurrent charges on one unit are refused inside
-    claim_saved_card_transaction, which holds a per-unit lock.
+    Part payments leave the rest open, so the tenant can pay it. A replay of an
+    existing key skips these checks so the claim can return the first result.
+    Concurrent charges on one unit are refused inside claim_saved_card_transaction,
+    which holds a per-unit lock.
     """
+    from lib.period_payments import load_period_payments
     from lib.reminder_job import _today_lagos
-    from lib.unit_status import _paid_in_current_period
+    from lib.unit_status import resolve_unit_status
 
     existing = (
         db.table("transactions")
@@ -1367,7 +1369,7 @@ def _guard_new_saved_card_charge(db, unit_id: str, idempotency_key: str) -> None
 
     unit = _first_row(
         db.table("units")
-        .select("id, frequency, due_day, due_month")
+        .select("id, frequency, due_day, due_month, rent_amount, service_charge_amount")
         .eq("id", unit_id)
         .limit(1)
         .execute()
@@ -1378,18 +1380,9 @@ def _guard_new_saved_card_charge(db, unit_id: str, idempotency_key: str) -> None
     frequency = str(unit.get("frequency") or "monthly").strip().lower()
     if frequency not in {"monthly", "annual"}:
         return
-    paid_rows = (
-        db.table("transactions")
-        .select("status, paid_at, created_at, charge_type")
-        .eq("unit_id", unit_id)
-        .eq("status", "paid")
-        .order("paid_at", desc=True)
-        .limit(24)
-        .execute()
-        .data
-        or []
-    )
-    if _paid_in_current_period(unit, paid_rows, _today_lagos(), "rent"):
+    today = _today_lagos()
+    paid_rows = load_period_payments(db, [unit], today).get(str(unit["id"]), [])
+    if resolve_unit_status(unit, paid_rows, today) == "PAID":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Rent for this period is already paid",
